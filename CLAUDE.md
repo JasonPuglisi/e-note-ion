@@ -186,6 +186,13 @@ both the SHA and comment when new releases are available.
 
 ## To Do
 
+### Misfire handling
+
+APScheduler supports a `misfire_grace_time` parameter on the scheduler that
+re-fires jobs missed during downtime (e.g. container restarts) if they fall
+within a configurable window. Add this to `BackgroundScheduler()` so brief
+restarts don't leave the display stale. No state persistence needed.
+
 ### Content strategy
 
 The current content model needs a more flexible approach to support both
