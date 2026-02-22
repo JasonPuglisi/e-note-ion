@@ -156,6 +156,83 @@ def test_get_variables_missing_station(monkeypatch: pytest.MonkeyPatch) -> None:
     bart.get_variables()
 
 
+def test_get_variables_line2_absent_when_not_set(bart_env: None) -> None:
+  mock_resp = MagicMock()
+  mock_resp.json.return_value = _FAKE_ETD
+  mock_resp.raise_for_status.return_value = None
+  with patch('integrations.bart.requests.get', return_value=mock_resp):
+    result = bart.get_variables()
+  assert 'line2' not in result
+
+
+_FAKE_ETD_TWO_DESTS: dict[str, Any] = {
+  'root': {
+    'station': [
+      {
+        'name': 'Milpitas',
+        'abbr': 'MLPT',
+        'etd': [
+          {
+            'destination': 'Daly City',
+            'abbreviation': 'DALY',
+            'limited': '0',
+            'estimate': [
+              {
+                'minutes': '5',
+                'platform': '2',
+                'direction': 'South',
+                'length': '6',
+                'color': 'GREEN',
+                'hexcolor': '#339933',
+                'bikeflag': '1',
+                'delay': '0',
+                'cancelflag': '0',
+                'dynamicflag': '0',
+              },
+            ],
+          },
+          {
+            'destination': 'Berryessa/North San José',
+            'abbreviation': 'BERY',
+            'limited': '0',
+            'estimate': [
+              {
+                'minutes': '10',
+                'platform': '1',
+                'direction': 'South',
+                'length': '6',
+                'color': 'GREEN',
+                'hexcolor': '#339933',
+                'bikeflag': '1',
+                'delay': '0',
+                'cancelflag': '0',
+                'dynamicflag': '0',
+              },
+            ],
+          },
+        ],
+      }
+    ]
+  }
+}
+
+
+def test_get_variables_two_lines(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setenv('BART_API_KEY', 'testkey')
+  monkeypatch.setenv('BART_STATION', 'MLPT')
+  monkeypatch.setenv('BART_LINE_1_DEST', 'Daly City')
+  monkeypatch.setenv('BART_LINE_2_DEST', 'Berryessa')
+  mock_resp = MagicMock()
+  mock_resp.json.return_value = _FAKE_ETD_TWO_DESTS
+  mock_resp.raise_for_status.return_value = None
+  with patch('integrations.bart.requests.get', return_value=mock_resp):
+    result = bart.get_variables()
+  assert 'line1' in result
+  assert 'line2' in result
+  assert '5' in result['line1'][0][0]
+  assert '10' in result['line2'][0][0]
+
+
 def test_get_variables_http_error_does_not_leak_key(monkeypatch: pytest.MonkeyPatch) -> None:
   api_key = 'supersecretkey99'
   monkeypatch.setenv('BART_API_KEY', api_key)

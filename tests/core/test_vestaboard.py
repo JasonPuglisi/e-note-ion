@@ -1,4 +1,8 @@
+import json
+from unittest.mock import MagicMock, patch
+
 import pytest
+import requests
 
 import integrations.vestaboard as vb
 
@@ -199,3 +203,67 @@ def test_build_grid_flagship_dimensions(monkeypatch: pytest.MonkeyPatch) -> None
   grid = vb._build_grid(['A'] * vb.VestaboardModel.FLAGSHIP.rows)  # noqa: SLF001
   assert len(grid) == vb.VestaboardModel.FLAGSHIP.rows
   assert all(len(row) == vb.VestaboardModel.FLAGSHIP.cols for row in grid)
+
+
+# --- get_state ---
+
+
+def test_get_state_returns_state() -> None:
+  layout = [[0] * vb.model.cols for _ in range(vb.model.rows)]
+  mock_resp = MagicMock()
+  mock_resp.json.return_value = {
+    'currentMessage': {
+      'id': 'abc123',
+      'appeared': '2024-01-01T00:00:00Z',
+      'layout': json.dumps(layout),
+    }
+  }
+  mock_resp.raise_for_status.return_value = None
+  with patch('integrations.vestaboard.requests.get', return_value=mock_resp):
+    state = vb.get_state()
+  assert state.id == 'abc123'
+  assert state.appeared == '2024-01-01T00:00:00Z'
+  assert state.layout == layout
+
+
+# --- set_state ---
+
+
+def test_set_state_posts_grid_to_api() -> None:
+  mock_resp = MagicMock()
+  mock_resp.status_code = 200
+  mock_resp.raise_for_status.return_value = None
+  with patch('integrations.vestaboard.requests.post', return_value=mock_resp) as mock_post:
+    vb.set_state([{'format': ['HELLO']}], {})
+  mock_post.assert_called_once()
+  _, kwargs = mock_post.call_args
+  grid = kwargs['json']
+  assert len(grid) == vb.model.rows
+  assert all(len(row) == vb.model.cols for row in grid)
+
+
+def test_set_state_raises_board_locked_on_423() -> None:
+  mock_resp = MagicMock()
+  mock_resp.status_code = 423
+  with patch('integrations.vestaboard.requests.post', return_value=mock_resp):
+    with pytest.raises(vb.BoardLockedError):
+      vb.set_state([{'format': ['HELLO']}], {})
+
+
+def test_set_state_propagates_http_error() -> None:
+  mock_resp = MagicMock()
+  mock_resp.status_code = 500
+  mock_resp.raise_for_status.side_effect = requests.HTTPError('server error')
+  with patch('integrations.vestaboard.requests.post', return_value=mock_resp):
+    with pytest.raises(requests.HTTPError):
+      vb.set_state([{'format': ['HELLO']}], {})
+
+
+# --- _expand_format (random selection) ---
+
+
+def test_expand_format_picks_from_multiple_options() -> None:
+  opts = [['FIRST'], ['SECOND']]
+  with patch('integrations.vestaboard.random.choice', return_value=opts[1]):
+    result = vb._expand_format(['{v}'], {'v': opts})  # noqa: SLF001
+  assert result == ['SECOND']
