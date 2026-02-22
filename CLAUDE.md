@@ -45,12 +45,14 @@ integrations/vestaboard.py  # Vestaboard API client (get_state, set_state)
 integrations/bart.py        # BART real-time departures integration
 content/
   contrib/                  # Bundled community content (disabled by default)
-    aria.json               # Example contrib file
+    bart.json               # BART real-time departure board
+    bart.md                 # Sidecar doc: configuration and data sources
   user/                     # Personal content (always loaded, git-ignored)
 Dockerfile                  # Single-stage image using ghcr.io/astral-sh/uv
 entrypoint.sh               # Translates env vars (FLAGSHIP/PUBLIC/CONTENT_ENABLED) to CLI flags
 .github/workflows/
   ci.yml                    # Runs checks on every push and pull request to main
+  auto-release.yml          # Creates a GitHub release on version bump, then calls release.yml
   release.yml               # Builds + pushes multi-arch image to ghcr.io on release
 SECURITY.md                 # Vulnerability disclosure policy and API key guidance
 assets/
@@ -103,7 +105,7 @@ for a physical split-flap device whose flaps need time to settle.
 }
 ```
 
-Each content file belongs to a named person/context (e.g. `aria.json`).
+Each content file is named for its context (e.g. `bart.json`).
 `{variable}` placeholders are replaced at random from `variables` options; a
 standalone `{variable}` entry expands to all lines of the chosen option. Lines
 are word-wrapped to fit `model.cols`; excess rows are silently dropped.
@@ -137,7 +139,7 @@ corresponding Vestaboard color square code (63–70).
 
 ```
 python e-note-ion.py                          # Note (3×15), user content only
-python e-note-ion.py --content-enabled aria   # also enable contrib/aria.json
+python e-note-ion.py --content-enabled bart   # also enable contrib/bart.json
 python e-note-ion.py --content-enabled '*'    # enable all contrib content
 python e-note-ion.py --flagship               # target a Flagship board (6×22)
 python e-note-ion.py --public                 # run only public: true templates
@@ -148,10 +150,8 @@ Flags can be combined.
 ## Environment
 
 - `VESTABOARD_KEY` — Vestaboard Read/Write API key (required)
-- `BART_API_KEY` — BART API key (required for the BART integration)
-- `BART_STATION` — originating station code (e.g. `MLPT`)
-- `BART_LINE_1_DEST` — destination substring for first line (e.g. `Daly City`)
-- `BART_LINE_2_DEST` — optional second line destination
+- Integration-specific env vars are documented in each integration's sidecar
+  doc under `content/contrib/<name>.md`
 - Python version managed via `.python-version` (uv)
 - Dependencies managed with `uv` / `pyproject.toml`
 - Dev tools: `ruff` (lint + format), `pyright` (type checking), `bandit`

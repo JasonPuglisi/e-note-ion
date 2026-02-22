@@ -162,10 +162,10 @@ fetch current variable values:
 ```json
 {
   "templates": {
-    "departures": {
-      "schedule": { "cron": "*/5 7-9 * * 1-5", "hold": 60, "timeout": 60 },
+    "my_integration_template": {
+      "schedule": { "cron": "*/5 * * * *", "hold": 60, "timeout": 60 },
       "priority": 8,
-      "integration": "bart",
+      "integration": "my_integration",
       "templates": [
         { "format": ["{line_1}", "{line_2}"] }
       ]
