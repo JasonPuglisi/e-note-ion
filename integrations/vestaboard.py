@@ -161,6 +161,32 @@ _COLOR_TAGS: dict[str, int] = {
   '[K]': 70,  # black
 }
 
+# Sentinels for brace escaping in _expand_format. These bytes cannot appear
+# in user-supplied content, so they serve as safe placeholders for {{ and }}.
+_ESC_BRACE_OPEN = '\x00'  # replacement for {{ (escaped literal {)
+_ESC_BRACE_CLOSE = '\x01'  # replacement for }} (escaped literal })
+
+
+def _next_token(text: str, i: int) -> tuple[str, int]:
+  """Return (raw_token, chars_consumed) for the source token starting at i.
+
+  Recognises multi-char sequences in priority order:
+    ❤️  (2 chars)      — 1 display char; encodes to code 62
+    [X] color tag      — 1 display char; encodes to a color square
+    [[X]] escaped tag  — 3 display chars; encodes as literal [, X, ]
+    any single char    — 1 display char
+  """
+  if text[i : i + 2] == '❤️':
+    return ('❤️', 2)
+  tag3 = text[i : i + 3]
+  if tag3 in _COLOR_TAGS:
+    return (tag3, 3)
+  if (
+    text[i : i + 2] == '[[' and i + 4 < len(text) and f'[{text[i + 2]}]' in _COLOR_TAGS and text[i + 3 : i + 5] == ']]'
+  ):
+    return (text[i : i + 5], 5)
+  return (text[i], 1)
+
 
 # --- Board color ---
 
@@ -244,23 +270,27 @@ def _encode_char(ch: str) -> int:
 def _encode_line(text: str) -> list[int]:
   """Encode a text string into a row of model.cols integer character codes.
 
-  Handles the two-character ❤️ emoji sequence and three-character color tags
-  (e.g. [G], [R]). Output is truncated to model.cols characters and
-  zero-padded on the right.
+  Handles the two-character ❤️ emoji sequence, three-character color tags
+  (e.g. [G], [R]), and five-character escaped color tags (e.g. [[G]] encodes
+  as literal [, G, ] rather than a color square). Output is truncated to
+  model.cols characters and zero-padded on the right.
   """
   cols = model.cols
   codes: list[int] = []
   i = 0
   while i < len(text) and len(codes) < cols:
-    if text[i : i + 2] == '❤️':
+    tok, consumed = _next_token(text, i)
+    i += consumed
+    if tok == '❤️':
       codes.append(62)
-      i += 2
-    elif (tag := text[i : i + 3]) in _COLOR_TAGS:
-      codes.append(_COLOR_TAGS[tag])
-      i += 3
+    elif tok in _COLOR_TAGS:
+      codes.append(_COLOR_TAGS[tok])
+    elif len(tok) == 5:  # escaped color tag [[X]]: emit [, X, ] individually
+      for ch in ('[', tok[2], ']'):
+        if len(codes) < cols:
+          codes.append(_encode_char(ch))
     else:
-      codes.append(_encode_char(text[i]))
-      i += 1
+      codes.append(_encode_char(tok))
   codes += [0] * (cols - len(codes))
   return codes
 
@@ -278,6 +308,10 @@ def _expand_format(
   line of the chosen option.
 
   Options are chosen at random.
+
+  Brace escaping: '{{' and '}}' produce literal '{' and '}' without
+  triggering variable substitution. Color tag escaping is handled by
+  _encode_line (see [[X]] in _next_token).
   """
   chosen: dict[str, list[str]] = {name: random.choice(options) for name, options in variables.items()}  # nosec B311
 
@@ -287,29 +321,31 @@ def _expand_format(
 
   lines: list[str] = []
   for entry in fmt:
+    # Replace escaped braces with sentinels so they survive regex processing.
+    entry = entry.replace('{{', _ESC_BRACE_OPEN).replace('}}', _ESC_BRACE_CLOSE)
     m = re.fullmatch(r'\{(\w+)\}', entry.strip())
     if m:
       # Whole-line variable: expand to all lines of the chosen option.
       lines.extend(chosen.get(m.group(1), ['']))
     else:
       # Inline substitution: use first line of the chosen option.
-      lines.append(re.sub(r'\{(\w+)\}', _sub, entry))
+      result = re.sub(r'\{(\w+)\}', _sub, entry)
+      lines.append(result.replace(_ESC_BRACE_OPEN, '{').replace(_ESC_BRACE_CLOSE, '}'))
 
   return lines
 
 
 def _display_len(text: str) -> int:
-  """Count display characters, treating ❤️ and color tags as single chars."""
+  """Count display characters, treating ❤️ and color tags as single chars.
+
+  Escaped color tags (e.g. [[G]]) count as 3 display chars (literal [, G, ]).
+  """
   count = 0
   i = 0
   while i < len(text):
-    if text[i : i + 2] == '❤️':
-      i += 2
-    elif text[i : i + 3] in _COLOR_TAGS:
-      i += 3
-    else:
-      i += 1
-    count += 1
+    tok, consumed = _next_token(text, i)
+    i += consumed
+    count += 3 if len(tok) == 5 else 1
   return count
 
 
@@ -324,6 +360,10 @@ def _truncate(
     hard     — cut at the column limit, mid-word if necessary.
     word     — cut at the last full word boundary that fits.
     ellipsis — cut at the last full word boundary and append '...'.
+
+  Multi-char tokens (❤️, color tags, escaped color tags) are never split.
+  Escaped color tags (e.g. [[G]]) count as 3 display chars and are treated
+  as atomic: if they don't fit entirely, they are dropped as a unit.
   """
   if _display_len(text) <= max_cols:
     return text
@@ -333,18 +373,15 @@ def _truncate(
   count = 0
   i = 0
   while i < len(text) and count < target:
-    if text[i : i + 2] == '❤️':
-      result.append('❤️')
-      i += 2
-    elif (tag := text[i : i + 3]) in _COLOR_TAGS:
-      result.append(tag)
-      i += 3
-    else:
-      if text[i] == ' ' and strategy in ('word', 'ellipsis'):
-        last_word_end = len(result)
-      result.append(text[i])
-      i += 1
-    count += 1
+    tok, consumed = _next_token(text, i)
+    tok_display = 3 if len(tok) == 5 else 1
+    if count + tok_display > target:
+      break
+    if tok_display == 1 and tok == ' ' and strategy in ('word', 'ellipsis'):
+      last_word_end = len(result)
+    result.append(tok)
+    i += consumed
+    count += tok_display
   if strategy == 'hard' or last_word_end < 0:
     return ''.join(result)
   base = ''.join(result[:last_word_end])

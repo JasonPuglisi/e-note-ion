@@ -39,6 +39,11 @@ on this project collaboratively with the user.
 - Be opinionated — if a proposed approach has a better alternative, push back
   and explain why rather than just implementing what was asked
 
+**GitHub authorship:**
+- When writing GitHub issues, PR descriptions, or comments, make it clear that
+  Claude authored them (e.g. open issue/PR bodies with "— *Claude Code*" or
+  include a note at the top of comments)
+
 ## Project Structure
 
 ```
