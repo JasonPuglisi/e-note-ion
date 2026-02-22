@@ -265,7 +265,7 @@ def main() -> None:
 
   print('Current message:')
   print(vestaboard.get_state())
-  scheduler = BackgroundScheduler()
+  scheduler = BackgroundScheduler(misfire_grace_time=300)
   load_content(scheduler, public_mode=args.public)
   scheduler.start()
 
