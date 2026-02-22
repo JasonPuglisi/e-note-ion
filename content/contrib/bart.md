@@ -2,7 +2,9 @@
 
 BART real-time departure board. Shows upcoming departures from a configured
 originating station across 1–2 lines, with line colors as Vestaboard color
-squares. Runs every 5 minutes on weekday mornings (07:00–09:00).
+squares. Line colors are derived dynamically from the BART routes API on
+first call and cached for the process lifetime. Runs every 5 minutes on
+weekday mornings (07:00–09:00).
 
 ## Configuration
 
@@ -41,5 +43,6 @@ For current lines and termini without an API key, check the schedule PDFs:
 https://www.bart.gov/schedules/pdfs
 
 When BART changes line termini, update the destination dropdown in
-`unraid/e-note-ion.xml` and the `_DEST_COLOR_FALLBACK` dict in
-`integrations/bart.py` to reflect the new abbreviation codes.
+`unraid/e-note-ion.xml` to reflect the new abbreviation codes. No code
+changes are needed — line colors are derived dynamically from the routes API
+and will update automatically when the integration restarts.
