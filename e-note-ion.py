@@ -132,7 +132,7 @@ def worker() -> None:
 
     scheduled = datetime.fromtimestamp(time.time() - (time.monotonic() - message.scheduled_at))
     print(
-      f'[{datetime.now().strftime("%H:%M:%S")}] Sending'
+      f'[{datetime.now().strftime("%H:%M:%S")}] Sending {message.name}'
       f' | scheduled: {scheduled.strftime("%H:%M:%S")}'
       f' | priority: {message.priority}'
       f' | hold: {message.hold}s'
@@ -214,6 +214,8 @@ def _load_file(
     if job.id.startswith(f'{stem}.'):
       job.remove()
 
+  if new_jobs:
+    print(f'Loaded {content_file.parent.name}/{content_file.name}:')
   for job_id, priority, data, schedule in new_jobs:
     scheduler.add_job(
       enqueue,
@@ -221,6 +223,14 @@ def _load_file(
       args=[priority, data, schedule['hold'], schedule['timeout'], job_id],
       id=job_id,
       **parse_cron(schedule['cron']),  # type: ignore[arg-type]
+    )
+    template_name = job_id[len(stem) + 1 :]
+    print(
+      f'  · {template_name}'
+      f'  cron="{schedule["cron"]}"'
+      f'  priority={priority}'
+      f'  hold={schedule["hold"]}s'
+      f'  timeout={schedule["timeout"]}s'
     )
 
 
@@ -330,11 +340,25 @@ def main() -> None:
 
   content_enabled = set(filter(None, args.content_enabled.split(',')))
 
+  board_desc = 'Flagship (6×22)' if args.flagship else 'Note (3×15)'
+  extras: list[str] = []
+  if content_enabled:
+    if '*' in content_enabled:
+      extras.append('all contrib content')
+    else:
+      extras.append(f'contrib: {", ".join(sorted(content_enabled))}')
+  if args.public:
+    extras.append('public mode')
+  if not extras:
+    extras.append('user content only')
+  print(f'Starting e-note-ion — {board_desc}, {", ".join(extras)}')
+
   print('Current message:')
   print(vestaboard.get_state())
   scheduler = BackgroundScheduler(misfire_grace_time=300)
   load_content(scheduler, public_mode=args.public, content_enabled=content_enabled)
   scheduler.start()
+  print(f'Scheduler started — {len(scheduler.get_jobs())} job(s) registered')
 
   threading.Thread(target=worker, daemon=True).start()
   threading.Thread(
