@@ -11,3 +11,7 @@ wheels/
 
 # macOS
 .DS_Store
+
+# User content (personal, not committed to the project repo)
+content/user/*
+!content/user/.gitkeep

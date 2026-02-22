@@ -18,25 +18,31 @@ content modes.
 Pre-built multi-arch images (`linux/amd64`, `linux/arm64`) are published to
 the GitHub Container Registry on each release.
 
-The image ships with bundled sample content that runs automatically — no
-content files needed to get started. To use your own templates, mount a
-directory of JSON files over `/app/content`:
+The image ships with bundled contrib content (disabled by default). Enable
+it by name, or mount your own content directory:
 
 ```bash
 docker run -d \
   --name e-note-ion \
   --restart unless-stopped \
   -e VESTABOARD_KEY=your_api_key_here \
-  -v /path/to/your/content:/app/content \
+  -e CONTENT_ENABLED=aria \
   ghcr.io/jasonpuglisi/e-note-ion:latest
 ```
 
-To target a Flagship board or enable public mode, add the corresponding
-environment variables:
+To mount personal content, add a volume pointing at `/app/content/user`:
 
 ```bash
-  -e FLAGSHIP=true \   # target a Flagship (6×22) instead of a Note (3×15)
-  -e PUBLIC=true \     # only show templates marked public: true
+  -v /path/to/your/content:/app/content/user \
+```
+
+Other environment variables:
+
+```bash
+  -e CONTENT_ENABLED=aria,bart  # enable specific contrib files by stem
+  -e CONTENT_ENABLED='*'        # enable all bundled contrib content
+  -e FLAGSHIP=true              # target a Flagship (6×22) instead of a Note (3×15)
+  -e PUBLIC=true                # only show templates marked public: true
 ```
 
 ### Unraid
@@ -49,9 +55,8 @@ URL:
 https://raw.githubusercontent.com/JasonPuglisi/e-note-ion/main/unraid/e-note-ion.xml
 ```
 
-The template exposes `VESTABOARD_KEY`, `FLAGSHIP`, and `PUBLIC` as UI fields.
-The content path is optional — leave it blank to use the bundled sample
-content, or set it to a host directory containing your own JSON files.
+The template exposes `VESTABOARD_KEY`, `CONTENT_ENABLED`, `FLAGSHIP`, and
+`PUBLIC` as UI fields, and an optional path for personal content.
 
 ## Running directly
 
@@ -64,19 +69,27 @@ python e-note-ion.py
 ```
 
 ```bash
-python e-note-ion.py             # Note (3×15), all templates
-python e-note-ion.py --flagship  # Flagship (6×22)
-python e-note-ion.py --public    # public templates only
+python e-note-ion.py                          # Note (3×15), user content only
+python e-note-ion.py --content-enabled aria   # also enable contrib/aria.json
+python e-note-ion.py --content-enabled '*'    # enable all contrib content
+python e-note-ion.py --flagship               # Flagship (6×22)
+python e-note-ion.py --public                 # public templates only
 ```
 
-`--flagship` and `--public` can be combined.
+Flags can be combined.
 
 ## Content files
 
-Content is defined as JSON files in the `content/` directory. Each file can
-contain multiple named templates, each with its own schedule and display
-settings. Files are watched at runtime — adding, editing, or removing a file
-takes effect within a few seconds without restarting.
+Content is defined as JSON files in two directories:
+
+- **`content/contrib/`** — bundled community-contributed content, disabled by
+  default. Enable files by stem using `--content-enabled` / `CONTENT_ENABLED`.
+- **`content/user/`** — personal content, always loaded. Git-ignored; mount
+  your own directory here or symlink to a private repo for versioning.
+
+Each file can contain multiple named templates, each with its own schedule and
+display settings. Files are watched at runtime — adding, editing, or removing
+a file takes effect within a few seconds without restarting.
 
 ```json
 {

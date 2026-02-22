@@ -42,10 +42,12 @@ on this project collaboratively with the user.
 ```
 e-note-ion.py               # Entry point — scheduler, queue, worker
 integrations/vestaboard.py  # Vestaboard API client (get_state, set_state)
-content/                    # JSON files defining scheduled display content
-  aria.json                 # Example content file
+content/
+  contrib/                  # Bundled community content (disabled by default)
+    aria.json               # Example contrib file
+  user/                     # Personal content (always loaded, git-ignored)
 Dockerfile                  # Single-stage image using ghcr.io/astral-sh/uv
-entrypoint.sh               # Translates FLAGSHIP/PUBLIC env vars to CLI flags
+entrypoint.sh               # Translates env vars (FLAGSHIP/PUBLIC/CONTENT_ENABLED) to CLI flags
 .github/workflows/
   ci.yml                    # Runs checks on every push and pull request to main
   release.yml               # Builds + pushes multi-arch image to ghcr.io on release
@@ -117,12 +119,14 @@ are word-wrapped to fit `model.cols`; excess rows are silently dropped.
 ## Runtime Arguments
 
 ```
-python e-note-ion.py             # run all templates (Note, 3×15)
-python e-note-ion.py --flagship  # target a Flagship board (6×22)
-python e-note-ion.py --public    # run only templates with public: true
+python e-note-ion.py                          # Note (3×15), user content only
+python e-note-ion.py --content-enabled aria   # also enable contrib/aria.json
+python e-note-ion.py --content-enabled '*'    # enable all contrib content
+python e-note-ion.py --flagship               # target a Flagship board (6×22)
+python e-note-ion.py --public                 # run only public: true templates
 ```
 
-`--flagship` and `--public` can be combined.
+Flags can be combined.
 
 ## Environment
 
@@ -142,7 +146,8 @@ published to `ghcr.io/jasonpuglisi/e-note-ion` via GitHub Actions on each
 release. Multi-arch: `linux/amd64` and `linux/arm64`.
 
 Runtime env vars (via `entrypoint.sh`): `VESTABOARD_KEY` (required),
-`FLAGSHIP=true` (Flagship 6×22), `PUBLIC=true` (public templates only).
+`FLAGSHIP=true` (Flagship 6×22), `PUBLIC=true` (public templates only),
+`CONTENT_ENABLED` (comma-separated contrib stems, or `*` for all).
 
 Sample content is bundled at `/app/content`; optionally override by mounting
 a host path there. Unraid CA template: `unraid/e-note-ion.xml`.
