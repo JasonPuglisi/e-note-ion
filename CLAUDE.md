@@ -174,6 +174,12 @@ Increment `version` in `pyproject.toml` with every PR using semver:
 
 Dependencies and pinned versions should be kept current:
 
+- **Security alerts**: check open CodeQL and Dependabot alerts at the start of
+  each session and address any before other work
+  ```
+  gh api repos/JasonPuglisi/e-note-ion/code-scanning/alerts --jq '.[] | select(.state=="open") | {rule: .rule.id, severity: .rule.severity, path: .most_recent_instance.location.path}'
+  gh api repos/JasonPuglisi/e-note-ion/dependabot/alerts --jq '.[] | select(.state=="open") | {pkg: .security_vulnerability.package.name, severity: .security_advisory.severity, summary: .security_advisory.summary}'
+  ```
 - **Dependabot PRs** (automated, weekly): review and merge PRs for pip
   dependencies and GitHub Actions SHA/version bumps; these are the primary
   update mechanism for both
