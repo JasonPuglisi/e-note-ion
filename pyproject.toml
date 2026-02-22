@@ -18,6 +18,9 @@ dependencies = [
     "requests>=2.32.5",
 ]
 
+[project.scripts]
+e-note-ion = "scheduler:main"
+
 [project.urls]
 Repository = "https://github.com/JasonPuglisi/e-note-ion"
 Issues = "https://github.com/JasonPuglisi/e-note-ion/issues"

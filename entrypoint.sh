@@ -8,4 +8,4 @@ set --
 [ "${PUBLIC:-}" = 'true' ]     && set -- "$@" --public
 [ -n "${CONTENT_ENABLED:-}" ]  && set -- "$@" --content-enabled "${CONTENT_ENABLED}"
 
-exec python e-note-ion.py "$@"
+exec python scheduler.py "$@"

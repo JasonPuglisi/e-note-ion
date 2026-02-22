@@ -1,4 +1,3 @@
-import importlib.util
 import json
 import os
 import time
@@ -11,14 +10,7 @@ import pytest
 from apscheduler.schedulers.background import BackgroundScheduler
 
 import integrations.vestaboard as vb
-
-# e-note-ion.py has a hyphen in its name so it can't be imported with a
-# standard import statement. Load it via importlib instead.
-_ROOT = Path(__file__).parent.parent.parent
-_spec = importlib.util.spec_from_file_location('scheduler', _ROOT / 'e-note-ion.py')
-assert _spec is not None and _spec.loader is not None
-_mod: Any = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_mod)  # type: ignore[union-attr]
+import scheduler as _mod
 
 
 @pytest.fixture()

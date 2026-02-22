@@ -20,7 +20,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 # Copy source and bundled contrib content.
-COPY e-note-ion.py entrypoint.sh ./
+COPY scheduler.py entrypoint.sh ./
 COPY integrations/ ./integrations/
 COPY content/contrib/ ./content/contrib/
 
