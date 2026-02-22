@@ -6,34 +6,34 @@ import requests
 
 import integrations.vestaboard as vb
 
-# --- _display_len ---
+# --- display_len ---
 
 
 def test_display_len_plain_text() -> None:
-  assert vb._display_len('HELLO') == 5  # noqa: SLF001
+  assert vb.display_len('HELLO') == 5
 
 
 def test_display_len_empty() -> None:
-  assert vb._display_len('') == 0  # noqa: SLF001
+  assert vb.display_len('') == 0
 
 
 def test_display_len_color_tag() -> None:
-  assert vb._display_len('[G]') == 1  # noqa: SLF001
+  assert vb.display_len('[G]') == 1
 
 
 def test_display_len_all_color_tags() -> None:
   # Each tag counts as 1; 8 tags = 8 display chars
   tags = '[R][O][Y][G][B][V][W][K]'
-  assert vb._display_len(tags) == 8  # noqa: SLF001
+  assert vb.display_len(tags) == 8
 
 
 def test_display_len_heart_emoji() -> None:
-  assert vb._display_len('❤️') == 1  # noqa: SLF001
+  assert vb.display_len('❤️') == 1
 
 
 def test_display_len_mixed() -> None:
   # '[G] 5' = [G](1) + space(1) + 5(1) = 3
-  assert vb._display_len('[G] 5') == 3  # noqa: SLF001
+  assert vb.display_len('[G] 5') == 3
 
 
 # --- _encode_line ---
@@ -128,7 +128,7 @@ def test_wrap_lines_wraps_long_line() -> None:
   # 'HELLO WORLD THIS IS LONG' exceeds 15 cols, should be split
   result = vb._wrap_lines(['HELLO WORLD THIS IS'])  # noqa: SLF001
   assert len(result) >= 2
-  assert all(vb._display_len(r) <= vb.model.cols for r in result)  # noqa: SLF001
+  assert all(vb.display_len(r) <= vb.model.cols for r in result)
 
 
 def test_wrap_lines_drops_excess_rows() -> None:
@@ -141,7 +141,7 @@ def test_wrap_lines_drops_excess_rows() -> None:
 def test_wrap_lines_word_longer_than_cols_truncated() -> None:
   long_word = 'A' * (vb.model.cols + 5)
   result = vb._wrap_lines([long_word])  # noqa: SLF001
-  assert vb._display_len(result[0]) <= vb.model.cols  # noqa: SLF001
+  assert vb.display_len(result[0]) <= vb.model.cols
 
 
 def test_wrap_lines_does_not_join_separate_lines() -> None:
@@ -233,16 +233,16 @@ def test_next_token_incomplete_escaped_tag_not_matched() -> None:
   assert consumed == 1
 
 
-# --- _display_len (escaped tags) ---
+# --- display_len (escaped tags) ---
 
 
 def test_display_len_escaped_color_tag() -> None:
-  assert vb._display_len('[[G]]') == 3  # noqa: SLF001
+  assert vb.display_len('[[G]]') == 3
 
 
 def test_display_len_real_vs_escaped_tag() -> None:
-  assert vb._display_len('[G]') == 1  # noqa: SLF001
-  assert vb._display_len('[[G]]') == 3  # noqa: SLF001
+  assert vb.display_len('[G]') == 1
+  assert vb.display_len('[[G]]') == 3
 
 
 # --- _encode_line (escaped tags) ---
@@ -263,14 +263,14 @@ def test_truncate_does_not_split_escaped_color_tag() -> None:
   # [[G]] is 3 display chars; truncating to 2 must not produce a partial sequence
   result = vb._truncate('[[G]]AB', 2)  # noqa: SLF001
   assert '[[G' not in result
-  assert vb._display_len(result) <= 2  # noqa: SLF001
+  assert vb.display_len(result) <= 2
 
 
 def test_truncate_includes_escaped_color_tag_when_it_fits() -> None:
   # Truncating to 4 display chars: [[G]] (3) + A (1) fits
   result = vb._truncate('[[G]]AB', 4)  # noqa: SLF001
   assert result == '[[G]]A'
-  assert vb._display_len(result) == 4  # noqa: SLF001
+  assert vb.display_len(result) == 4
 
 
 # --- _expand_format (brace escaping) ---
@@ -291,10 +291,27 @@ def test_expand_format_escaped_brace_whole_line_not_expanded() -> None:
   assert result == ['{lines}']
 
 
+# --- _get_headers ---
+
+
+def test_get_headers_raises_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.delenv('VESTABOARD_API_KEY', raising=False)
+  with pytest.raises(RuntimeError, match='VESTABOARD_API_KEY'):
+    vb._get_headers()  # noqa: SLF001
+
+
+def test_get_headers_returns_correct_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setenv('VESTABOARD_API_KEY', 'my-test-key')
+  headers = vb._get_headers()  # noqa: SLF001
+  assert headers['X-Vestaboard-Read-Write-Key'] == 'my-test-key'
+  assert headers['Content-Type'] == 'application/json'
+
+
 # --- get_state ---
 
 
-def test_get_state_returns_state() -> None:
+def test_get_state_returns_state(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setenv('VESTABOARD_API_KEY', 'test-key')
   layout = [[0] * vb.model.cols for _ in range(vb.model.rows)]
   mock_resp = MagicMock()
   mock_resp.json.return_value = {
@@ -312,10 +329,23 @@ def test_get_state_returns_state() -> None:
   assert state.layout == layout
 
 
+def test_get_state_passes_auth_header(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setenv('VESTABOARD_API_KEY', 'sentinel-key')
+  layout = [[0] * vb.model.cols for _ in range(vb.model.rows)]
+  mock_resp = MagicMock()
+  mock_resp.json.return_value = {'currentMessage': {'id': 'x', 'appeared': 'y', 'layout': json.dumps(layout)}}
+  mock_resp.raise_for_status.return_value = None
+  with patch('integrations.vestaboard.requests.get', return_value=mock_resp) as mock_get:
+    vb.get_state()
+  _, kwargs = mock_get.call_args
+  assert kwargs['headers']['X-Vestaboard-Read-Write-Key'] == 'sentinel-key'
+
+
 # --- set_state ---
 
 
-def test_set_state_posts_grid_to_api() -> None:
+def test_set_state_posts_grid_to_api(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setenv('VESTABOARD_API_KEY', 'test-key')
   mock_resp = MagicMock()
   mock_resp.status_code = 200
   mock_resp.raise_for_status.return_value = None
@@ -328,7 +358,8 @@ def test_set_state_posts_grid_to_api() -> None:
   assert all(len(row) == vb.model.cols for row in grid)
 
 
-def test_set_state_raises_board_locked_on_423() -> None:
+def test_set_state_raises_board_locked_on_423(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setenv('VESTABOARD_API_KEY', 'test-key')
   mock_resp = MagicMock()
   mock_resp.status_code = 423
   with patch('integrations.vestaboard.requests.post', return_value=mock_resp):
@@ -336,13 +367,25 @@ def test_set_state_raises_board_locked_on_423() -> None:
       vb.set_state([{'format': ['HELLO']}], {})
 
 
-def test_set_state_propagates_http_error() -> None:
+def test_set_state_propagates_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setenv('VESTABOARD_API_KEY', 'test-key')
   mock_resp = MagicMock()
   mock_resp.status_code = 500
   mock_resp.raise_for_status.side_effect = requests.HTTPError('server error')
   with patch('integrations.vestaboard.requests.post', return_value=mock_resp):
     with pytest.raises(requests.HTTPError):
       vb.set_state([{'format': ['HELLO']}], {})
+
+
+def test_set_state_passes_auth_header(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setenv('VESTABOARD_API_KEY', 'sentinel-key')
+  mock_resp = MagicMock()
+  mock_resp.status_code = 200
+  mock_resp.raise_for_status.return_value = None
+  with patch('integrations.vestaboard.requests.post', return_value=mock_resp) as mock_post:
+    vb.set_state([{'format': ['HELLO']}], {})
+  _, kwargs = mock_post.call_args
+  assert kwargs['headers']['X-Vestaboard-Read-Write-Key'] == 'sentinel-key'
 
 
 # --- _expand_format (random selection) ---

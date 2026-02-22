@@ -119,7 +119,7 @@ def _build_line(color_tag: str, estimates: list[dict[str, Any]]) -> str:
   parts: list[str] = []
   for est in estimates:
     t = _format_minutes(est['minutes'])
-    if vestaboard._display_len(base + ' '.join(parts + [t])) > vestaboard.model.cols:  # noqa: SLF001
+    if vestaboard.display_len(base + ' '.join(parts + [t])) > vestaboard.model.cols:
       break
     parts.append(t)
   return base + (' '.join(parts) if parts else '--')

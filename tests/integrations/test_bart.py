@@ -173,14 +173,14 @@ def test_build_line_basic() -> None:
   result = bart._build_line('[G]', estimates)  # noqa: SLF001
   assert result.startswith('[G]')
   assert '5' in result
-  assert vb._display_len(result) <= vb.model.cols  # noqa: SLF001
+  assert vb.display_len(result) <= vb.model.cols
 
 
 def test_build_line_stops_at_col_limit() -> None:
   # Enough estimates to potentially overflow the board width
   estimates = [{'minutes': str(i)} for i in range(1, 30)]
   result = bart._build_line('[G]', estimates)  # noqa: SLF001
-  assert vb._display_len(result) <= vb.model.cols  # noqa: SLF001
+  assert vb.display_len(result) <= vb.model.cols
 
 
 def test_build_line_empty_estimates() -> None:
