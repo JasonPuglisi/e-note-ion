@@ -209,8 +209,9 @@ All non-trivial work follows a plan-then-execute cycle:
    with an appropriate milestone.
 2. **Post an in-depth implementation plan as a comment** on the issue. The plan
    should cover: specific files and functions to change, the approach with
-   rationale, edge cases, and any open questions. Do this before writing any
-   code.
+   rationale, edge cases, any open questions, and a **## Tests** section listing
+   what new tests will be added and which existing tests need updating. Do this
+   before writing any code.
 3. **Wait for feedback.** The user reviews the plan in GitHub and may leave
    comments or request changes. Do not begin implementation until the plan is
    approved (explicitly or implicitly by the user asking to proceed).
