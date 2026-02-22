@@ -245,8 +245,38 @@ both the SHA and comment when new releases are available.
 ### Keeping integration data current
 
 Some integrations embed static lists (station codes, terminal destinations,
-etc.) that can go stale. See `content/README.md` for per-integration update
-instructions and authoritative data sources.
+etc.) that can go stale. Each contrib integration has a sidecar
+`content/contrib/<name>.md` with authoritative data sources and update
+instructions — check there when data may need refreshing.
+
+### Contrib integration doc template
+
+Every `content/contrib/<name>.json` must have a companion
+`content/contrib/<name>.md` with the following sections:
+
+```markdown
+# <name>.json
+
+One-sentence description. Schedule summary.
+
+## Configuration
+
+| Variable | Required | Description |
+|---|---|---|
+| `VAR_NAME` | Yes/No | What it does |
+
+## Keeping data current
+
+### <Data type>
+
+Authoritative source: <URL>
+
+Instructions for verifying and updating any hardcoded lists (station codes,
+destination names, API endpoint changes, etc.).
+```
+
+After adding a new integration doc, add a row to the table in
+`content/README.md`.
 
 ## To Do
 

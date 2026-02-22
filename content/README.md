@@ -13,49 +13,19 @@ are available to all users, but are **disabled by default**. Enable individual
 files by name using `--content-enabled` (or the `CONTENT_ENABLED` env var):
 
 ```bash
-python e-note-ion.py --content-enabled aria         # enable one file
-python e-note-ion.py --content-enabled aria,bart    # enable multiple
-python e-note-ion.py --content-enabled '*'          # enable all
+python e-note-ion.py --content-enabled bart        # enable one file
+python e-note-ion.py --content-enabled bart,other  # enable multiple
+python e-note-ion.py --content-enabled '*'         # enable all
 ```
 
-To contribute content, open a pull request adding a JSON file here.
+To contribute content, open a pull request adding a `.json` file and a
+companion `.md` doc (see template in `CLAUDE.md`).
 
 ### Files
 
-#### `bart.json`
-
-BART real-time departure board. Shows upcoming departures from a configured
-originating station across 1–2 lines, with line colors as Vestaboard color
-squares. Runs every 5 minutes on weekday mornings (06:00–10:00).
-
-**Required env vars:** `BART_API_KEY`, `BART_STATION`, `BART_LINE_1_DEST`
-**Optional env vars:** `BART_LINE_2_DEST`
-
-Free API key: https://api.bart.gov/api/register.aspx
-
-##### Keeping BART data current
-
-The Unraid template (`unraid/e-note-ion.xml`) contains hardcoded dropdowns for
-station codes and terminal destinations. These need updating when BART opens
-new stations or changes line termini.
-
-**Station codes** — authoritative source:
-https://api.bart.gov/docs/overview/abbrev.aspx
-The `BART_STATION` dropdown uses `CODE - Display Name` format. `bart.py`
-parses only the code (splits on first space), so labels are for display only.
-
-**Terminal destinations** — the `BART_LINE_x_DEST` values are substring-
-matched against destination names returned by the BART ETD API. To see current
-destinations for a station, call the API directly (requires an API key):
-```
-https://api.bart.gov/api/etd.aspx?cmd=etd&orig=MLPT&key=<key>&json=y
-```
-For current lines and termini without an API key, check the schedule PDFs:
-https://www.bart.gov/schedules/pdfs
-
-When updating, change both the `Default=` dropdown list in
-`unraid/e-note-ion.xml` and verify that the destination strings match what
-the ETD API actually returns (the `destination` field in each `etd` entry).
+| File | Description |
+|---|---|
+| [`bart.json`](contrib/bart.md) | BART real-time departure board |
 
 ## `user/`
 
