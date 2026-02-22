@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   check:
-    name: Lint, type-check, and security scan
+    name: Lint, type-check, security scan, and tests
     runs-on: ubuntu-latest
 
     steps:
