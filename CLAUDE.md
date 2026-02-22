@@ -169,9 +169,11 @@ Steps:
 3. If release-worthy (see below), bump `version` in `pyproject.toml`
 4. Commit with `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
    (commits are auto-signed via `commit.gpgsign = true` in global git config)
-5. `git push -u origin feat/description`
+5. Verify signing succeeded: `git log -1 --show-signature` must show a valid signature before pushing
+6. `git push -u origin feat/description`
 7. `gh pr create --label <label> --assignee JasonPuglisi`
-8. After merge: `git checkout main && git pull && git branch -d feat/description`
+8. Enable auto-merge: `gh pr merge --squash --delete-branch --auto`; CI will merge automatically once checks pass
+9. After merge: `git checkout main && git pull && git branch -d feat/description`
 9. Keep `README.md` up to date with any user-facing changes
 10. For any TODOs identified during work, create a GitHub issue assigned to JasonPuglisi and the appropriate milestone
 
