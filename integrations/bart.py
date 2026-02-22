@@ -35,6 +35,36 @@ _LINE_COLOR_TAG: dict[str, str] = {
   'BEIGE': '[W]',  # no beige on Vestaboard; white is closest
 }
 
+# Static fallback: destination substring (lowercase) → color tag.
+# Used when the API returns no estimates for a destination so we can still
+# show a color square alongside the no-service indicator.
+# Where a destination is served by multiple lines with different colors, the
+# most common pairing for typical commute use is listed.
+_DEST_COLOR_FALLBACK: dict[str, str] = {
+  'antioch': '[Y]',
+  'berryessa': '[G]',
+  'daly city': '[G]',
+  'dublin': '[B]',
+  'millbrae': '[R]',
+  'pittsburg': '[Y]',
+  'richmond': '[O]',
+  'san francisco': '[R]',
+}
+
+
+def _no_service_line(dest_filter: str) -> str:
+  """Return a no-service display line for the given destination filter.
+
+  Looks up a color tag from the static fallback map using substring matching,
+  producing e.g. '[G] NO SERVICE'. Falls back to 'NO SERVICE' if no color
+  can be determined.
+  """
+  dest_lower = dest_filter.lower()
+  for key, tag in _DEST_COLOR_FALLBACK.items():
+    if key in dest_lower or dest_lower in key:
+      return f'{tag} NO SERVICE'
+  return 'NO SERVICE'
+
 
 def _format_minutes(mins: str) -> str:
   """Convert a BART API minutes string to a short display string."""
@@ -99,7 +129,7 @@ def get_variables() -> dict[str, list[list[str]]]:
   }
 
   for i, dest_filter in enumerate(dest_filters, 1):
-    line_value = '--'
+    line_value = _no_service_line(dest_filter)
     for etd in etds:
       if dest_filter.lower() in etd['destination'].lower():
         estimates = etd.get('estimate', [])
