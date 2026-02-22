@@ -38,6 +38,10 @@ on this project collaboratively with the user.
 - When scope or approach is ambiguous, ask rather than assume
 - Be opinionated — if a proposed approach has a better alternative, push back
   and explain why rather than just implementing what was asked
+- Actively watch for gaps, flaws, and improvement opportunities during work —
+  open GitHub issues for anything worth tracking without waiting to be asked
+  (missing tests, stale docs, inconsistencies, security issues, UX rough edges,
+  new feature ideas that surface during implementation)
 
 **GitHub authorship:**
 - When writing GitHub issues, PR descriptions, or comments, make it clear that
@@ -226,9 +230,10 @@ All non-trivial work follows a plan-then-execute cycle:
    rationale, edge cases, any open questions, and a **## Tests** section listing
    what new tests will be added and which existing tests need updating. Do this
    before writing any code.
-3. **Wait for feedback.** The user reviews the plan in GitHub and may leave
-   comments or request changes. Do not begin implementation until the plan is
-   approved (explicitly or implicitly by the user asking to proceed).
+3. **Wait for a 👍 reaction from JasonPuglisi on the latest plan comment.**
+   A reaction from anyone else does not count. Do not begin implementation
+   until that reaction is present. Check via the GitHub API or by viewing the
+   issue before starting work.
 4. **Execute the approved plan.** Follow the steps below.
 
 For simple or clearly-scoped tasks (typo fixes, one-line changes), the plan
