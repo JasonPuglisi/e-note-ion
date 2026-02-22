@@ -10,7 +10,13 @@
       "public": true,
       "integration": "bart",
       "templates": [
-        { "format": ["BART {station}", "{line1}", "{line2}"] }
+        {
+          "format": [
+            "BART {station}",
+            "{line1}",
+            "{line2}"
+          ]
+        }
       ]
     }
   }
