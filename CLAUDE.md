@@ -197,6 +197,10 @@ key handling, `# nosec` justifications), documentation drift (README / CLAUDE.md
 stale TODO/FIXME comments, **CI/CD workflow hygiene** (job permissions scoped to
 minimum required, CI steps match the documented check suite, job/step names
 accurately describe what they do, post-merge workflows on `main` passing clean),
+**branch ruleset integrity** (verify via
+`gh api repos/JasonPuglisi/e-note-ion/rulesets/13082160 --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'`
+that required status check names match actual CI job names in `ci.yml`, ruleset
+enforcement is `active`, and allowed merge methods are correct),
 and **issue/milestone hygiene**:
 - Every open issue has an appropriate milestone (no orphans)
 - Milestone scope is right-sized — merge single-issue milestones into a broader
@@ -217,6 +221,8 @@ prevention to the checklist or workflow — not just a one-off fix. Examples:
   to the health review above
 - Post-merge failure not noticed → added post-merge run check to step 10
   of the Execution steps
+- CI job rename broke ruleset required check → added ruleset integrity to
+  health review; added inline comments in `ci.yml` linking to ruleset
 
 ### Planning before implementation
 
