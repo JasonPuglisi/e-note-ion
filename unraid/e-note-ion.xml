@@ -46,6 +46,50 @@
     Mask="false"/>
 
   <Config
+    Name="BART API Key"
+    Target="BART_API_KEY"
+    Default=""
+    Mode=""
+    Description="Required if using the BART integration (CONTENT_ENABLED=bart). Free API key at https://api.bart.gov/api/register.aspx"
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="true"/>
+
+  <Config
+    Name="BART station"
+    Target="BART_STATION"
+    Default="12TH - 12th St. Oakland City Center|16TH - 16th St. Mission|19TH - 19th St. Oakland|24TH - 24th St. Mission|ANTC - Antioch|ASHB - Ashby|BALB - Balboa Park|BAYF - Bay Fair|BERY - Berryessa/North San Jose|CAST - Castro Valley|CIVC - Civic Center|COLS - Coliseum|COLM - Colma|CONC - Concord|DALY - Daly City|DBRK - Downtown Berkeley|DUBL - Dublin/Pleasanton|DELN - El Cerrito del Norte|PLZA - El Cerrito Plaza|EMBR - Embarcadero|FRMT - Fremont|FTVL - Fruitvale|GLEN - Glen Park|HAYW - Hayward|LAFY - Lafayette|LAKE - Lake Merritt|MCAR - MacArthur|MLBR - Millbrae|MLPT - Milpitas|MONT - Montgomery St.|NBRK - North Berkeley|NCON - North Concord/Martinez|OAKL - Oakland Intl Airport|ORIN - Orinda|PITT - Pittsburg/Bay Point|PCTR - Pittsburg Center|PHIL - Pleasant Hill|POWL - Powell St.|RICH - Richmond|ROCK - Rockridge|SBRN - San Bruno|SFIA - San Francisco Intl Airport|SANL - San Leandro|SHAY - South Hayward|SSAN - South San Francisco|UCTY - Union City|WARM - Warm Springs/South Fremont|WCRK - Walnut Creek|WDUB - West Dublin|WOAK - West Oakland"
+    Mode=""
+    Description="Required if using the BART integration. Your originating BART station."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"/>
+
+  <Config
+    Name="BART line 1 destination"
+    Target="BART_LINE_1_DEST"
+    Default="Antioch|Berryessa/North San Jose|Daly City|Dublin/Pleasanton|Millbrae|Pittsburg/Bay Point|Richmond|San Francisco Intl Airport"
+    Mode=""
+    Description="Required if using the BART integration. Destination for the first departure line shown."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"/>
+
+  <Config
+    Name="BART line 2 destination"
+    Target="BART_LINE_2_DEST"
+    Default="|Antioch|Berryessa/North San Jose|Daly City|Dublin/Pleasanton|Millbrae|Pittsburg/Bay Point|Richmond|San Francisco Intl Airport"
+    Mode=""
+    Description="Optional second BART departure line. Leave blank to show only one line."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"/>
+
+  <Config
     Name="Flagship mode"
     Target="FLAGSHIP"
     Default="false|true"

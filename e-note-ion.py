@@ -16,6 +16,7 @@
 # space), and --content-enabled to opt into bundled contrib content.
 
 import argparse
+import importlib
 import json
 import threading
 import time
@@ -28,6 +29,16 @@ from typing import Any
 from apscheduler.schedulers.background import BackgroundScheduler
 
 import integrations.vestaboard as vestaboard
+
+# Cache of loaded integration modules, keyed by name.
+_integrations: dict[str, Any] = {}
+
+
+def _get_integration(name: str) -> Any:
+  if name not in _integrations:
+    _integrations[name] = importlib.import_module(f'integrations.{name}')
+  return _integrations[name]
+
 
 # --- Message ---
 
@@ -127,7 +138,10 @@ def worker() -> None:
       f' | hold: {message.hold}s'
     )
     try:
-      vestaboard.set_state(message.data['templates'], message.data['variables'])
+      variables = message.data['variables']
+      if 'integration' in message.data:
+        variables = _get_integration(message.data['integration']).get_variables()
+      vestaboard.set_state(message.data['templates'], variables)
     except vestaboard.BoardLockedError as e:
       print(f'Board locked: {e}. Retrying in {_LOCK_RETRY_DELAY}s.')
       time.sleep(_LOCK_RETRY_DELAY)
@@ -170,14 +184,17 @@ def _load_file(
     priority = template['priority']
     if not isinstance(priority, int) or not (0 <= priority <= 10):
       raise ValueError(f'{stem}.{template_name}: priority must be an integer between 0 and 10, got {priority!r}')
+    data: dict[str, Any] = {
+      'templates': template['templates'],
+      'variables': content.get('variables', {}),
+    }
+    if 'integration' in template:
+      data['integration'] = template['integration']
     new_jobs.append(
       (
         f'{stem}.{template_name}',
         priority,
-        {
-          'templates': template['templates'],
-          'variables': content['variables'],
-        },
+        data,
         template['schedule'],
       )
     )

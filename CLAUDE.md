@@ -42,6 +42,7 @@ on this project collaboratively with the user.
 ```
 e-note-ion.py               # Entry point — scheduler, queue, worker
 integrations/vestaboard.py  # Vestaboard API client (get_state, set_state)
+integrations/bart.py        # BART real-time departures integration
 content/
   contrib/                  # Bundled community content (disabled by default)
     aria.json               # Example contrib file
@@ -106,6 +107,21 @@ Each content file belongs to a named person/context (e.g. `aria.json`).
 standalone `{variable}` entry expands to all lines of the chosen option. Lines
 are word-wrapped to fit `model.cols`; excess rows are silently dropped.
 
+### Integration templates
+
+Templates can include `"integration": "<name>"` instead of (or alongside) a
+static `variables` dict. When the job fires, the worker calls
+`integrations.<name>.get_variables()`, which returns the same
+`dict[str, list[list[str]]]` structure as static variables. This allows
+dynamic data (e.g. real-time API responses) to populate `{variable}`
+placeholders in the format. The `variables` key is optional when an
+integration is present.
+
+Color squares can be embedded in format strings and integration output using
+short tags: `[R]` `[O]` `[Y]` `[G]` `[B]` `[V]` `[W]` `[K]` (red, orange,
+yellow, green, blue, violet, white, black). Each tag encodes to the
+corresponding Vestaboard color square code (63–70).
+
 ## Priority Queue Behaviour
 
 - `PriorityQueue` is a min-heap; `QueuedMessage.__lt__` inverts priority so
@@ -131,6 +147,10 @@ Flags can be combined.
 ## Environment
 
 - `VESTABOARD_KEY` — Vestaboard Read/Write API key (required)
+- `BART_API_KEY` — BART API key (required for the BART integration)
+- `BART_STATION` — originating station code (e.g. `MLPT`)
+- `BART_LINE_1_DEST` — destination substring for first line (e.g. `Daly City`)
+- `BART_LINE_2_DEST` — optional second line destination
 - Python version managed via `.python-version` (uv)
 - Dependencies managed with `uv` / `pyproject.toml`
 - Dev tools: `ruff` (lint + format), `pyright` (type checking), `bandit`
@@ -220,6 +240,12 @@ Dependencies and pinned versions should be kept current:
 GitHub Actions are pinned to full commit SHAs with a `# vX.Y.Z` comment.
 Dependabot reads the comment to identify the version and will open PRs to bump
 both the SHA and comment when new releases are available.
+
+### Keeping integration data current
+
+Some integrations embed static lists (station codes, terminal destinations,
+etc.) that can go stale. See `content/README.md` for per-integration update
+instructions and authoritative data sources.
 
 ## To Do
 
