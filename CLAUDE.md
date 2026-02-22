@@ -36,6 +36,8 @@ on this project collaboratively with the user.
 - Raise security concerns proactively, even when not explicitly asked
 - Prefer reversible, auditable changes; flag anything destructive before acting
 - When scope or approach is ambiguous, ask rather than assume
+- Be opinionated — if a proposed approach has a better alternative, push back
+  and explain why rather than just implementing what was asked
 
 ## Project Structure
 
