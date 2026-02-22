@@ -156,7 +156,8 @@ Flags can be combined.
 - Dev tools: `ruff` (lint + format), `pyright` (type checking), `bandit`
   (security linting), `pip-audit` (dependency CVE scanning), `pre-commit`
 - Run checks: `uv run ruff check .`, `uv run ruff format --check .`,
-  `uv run pyright`, `uv run bandit -c pyproject.toml -r .`, `uv run pip-audit`
+  `uv run pyright`, `uv run bandit -c pyproject.toml -r .`, `uv run pip-audit`,
+  `uv run pre-commit run pretty-format-json --all-files`
 - Install hooks (once after cloning): `uv run pre-commit install`
 
 ## Docker
