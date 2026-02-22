@@ -42,3 +42,23 @@ Layout: Keep all important content within a 40pt safe border. No GitHub label
 or watermark. Clean, centered composition with the display above the title and
 tagline stacked below.
 ```
+
+## Icon (`icon.png`)
+
+The app icon was generated using [Claude](https://claude.ai) (Anthropic),
+continuing the same chat session as the social preview to preserve aesthetic
+context. The final prompt used:
+
+```
+Now generate a square app icon at 256×256 pixels for the same project.
+
+Center element: A single split-flap display tile, dark (near-black
+purple-dark), showing the ❤ character in warm cream/white with a subtle
+glow. Include a horizontal split line across the middle of the tile. The
+tile should be large and prominent, filling most of the icon, with
+slightly rounded corners and a subtle drop shadow.
+
+Use the same pastel pink-to-lavender gradient background and overall
+aesthetic as the social preview. No text, no wordmark — icon only. Should
+read clearly at small sizes like 32–64px.
+```

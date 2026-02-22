@@ -4,22 +4,13 @@
   <Repository>ghcr.io/jasonpuglisi/e-note-ion</Repository>
   <Registry>https://github.com/JasonPuglisi/e-note-ion/pkgs/container/e-note-ion</Registry>
   <Network>bridge</Network>
-  <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/JasonPuglisi/e-note-ion/issues</Support>
+  <Support><!-- TODO: replace with Unraid forum thread URL before CA submission --></Support>
   <Project>https://github.com/JasonPuglisi/e-note-ion</Project>
-  <Overview>E•NOTE•ION is a cron-based content scheduler for Vestaboard split-flap displays. Supports both the Note (3×15) and Flagship (6×22). Content is defined in JSON files and displayed on a schedule with priority queueing.</Overview>
-  <Category>Tools:</Category>
-  <WebUI/>
+  <Overview>E•NOTE•ION is a cron-based content scheduler for Vestaboard split-flap displays. Supports both the Note (3×15) and Flagship (6×22). Content is defined in JSON files and displayed on a schedule with priority queueing. Ships with sample content that runs automatically out of the box.</Overview>
+  <Category>HomeAutomation</Category>
   <TemplateURL>https://raw.githubusercontent.com/JasonPuglisi/e-note-ion/main/unraid/e-note-ion.xml</TemplateURL>
-  <Icon/>
-  <ExtraParams/>
-  <PostArgs/>
-  <CPUset/>
-  <DateInstalled/>
-  <DonateText/>
-  <DonateLink/>
-  <Requires/>
+  <Icon>https://raw.githubusercontent.com/JasonPuglisi/e-note-ion/main/assets/icon.png</Icon>
 
   <Config
     Name="Vestaboard API Key"
@@ -46,9 +37,9 @@
   <Config
     Name="Flagship mode"
     Target="FLAGSHIP"
-    Default="false"
+    Default="false|true"
     Mode=""
-    Description="Set to true to target a Vestaboard Flagship (6x22) instead of a Note (3x15)."
+    Description="Set to true to target a Vestaboard Flagship (6×22) instead of a Note (3×15)."
     Type="Variable"
     Display="always"
     Required="false"
@@ -57,7 +48,7 @@
   <Config
     Name="Public mode"
     Target="PUBLIC"
-    Default="false"
+    Default="false|true"
     Mode=""
     Description="Set to true to only show templates marked public: true. Useful when the display is in a shared or guest-visible space."
     Type="Variable"
