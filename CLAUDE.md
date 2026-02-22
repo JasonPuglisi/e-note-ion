@@ -134,6 +134,33 @@ Content files are mounted at `/app/content`. Example Unraid path:
 
 The Unraid Community Applications template is at `unraid/e-note-ion.xml`.
 
+## Development Workflow
+
+Never commit directly to `main`. Always work on a named branch and open a PR.
+
+Branch naming:
+- `feat/short-description` — new features or enhancements
+- `fix/short-description` — bug fixes
+- `chore/short-description` — maintenance, deps, tooling, docs
+
+Steps:
+1. `git checkout -b feat/description`
+2. Make changes; run the full check suite
+3. Bump `version` in `pyproject.toml` following the rules below
+4. Commit with `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
+5. `git push -u origin feat/description`
+6. `gh pr create`
+
+## Versioning
+
+Increment `version` in `pyproject.toml` with every PR using semver:
+
+- **Patch** (`0.x.y` → `0.x.y+1`): bug fixes, dependency updates, docs,
+  tooling changes
+- **Minor** (`0.x.y` → `0.x+1.0`): new features, non-breaking additions
+- **Major** (`x.y.z` → `x+1.0.0`): breaking changes to content JSON format,
+  CLI interface, or Docker environment variables
+
 ## Documentation
 
 Keep `README.md` up to date whenever making changes. It is the user-facing
