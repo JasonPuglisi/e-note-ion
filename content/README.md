@@ -2,7 +2,7 @@
 
 This directory contains the JSON files that define what gets displayed on the
 board. Files are watched at runtime — add, edit, or remove a file and it takes
-effect within a few seconds without restarting.
+effect within ~5 seconds without restarting.
 
 See the root [README](../README.md) for the full content file format.
 

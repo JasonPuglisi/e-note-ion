@@ -184,7 +184,7 @@ def _load_file(
   _valid_truncation = {'hard', 'word', 'ellipsis'}
   new_jobs = []
   for template_name, template in content['templates'].items():
-    if public_mode and not template['public']:
+    if public_mode and not template.get('public', True):
       continue
     priority = template['priority']
     if not isinstance(priority, int) or not (0 <= priority <= 10):
