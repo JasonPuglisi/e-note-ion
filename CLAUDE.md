@@ -158,6 +158,7 @@ Steps:
 5. Stop and ask the user to sign the commit before pushing
 6. `git push -u origin feat/description`
 7. `gh pr create --label <label>`
+8. After merge: `git checkout main && git pull && git branch -d feat/description`
 
 ## Versioning
 
@@ -168,6 +169,21 @@ Increment `version` in `pyproject.toml` with every PR using semver:
 - **Minor** (`0.x.y` → `0.x+1.0`): new features, non-breaking additions
 - **Major** (`x.y.z` → `x+1.0.0`): breaking changes to content JSON format,
   CLI interface, or Docker environment variables
+
+## Maintenance
+
+Dependencies and pinned versions should be kept current:
+
+- **Dependabot PRs** (automated, weekly): review and merge PRs for pip
+  dependencies and GitHub Actions SHA/version bumps; these are the primary
+  update mechanism for both
+- **Pre-commit hooks**: run `uv run pre-commit autoupdate` monthly to update
+  hook versions in `.pre-commit-config.yaml`, then commit the changes
+- **Full check suite**: run before every release to confirm everything passes
+
+GitHub Actions are pinned to full commit SHAs with a `# vX.Y.Z` comment.
+Dependabot reads the comment to identify the version and will open PRs to bump
+both the SHA and comment when new releases are available.
 
 ## Documentation
 
