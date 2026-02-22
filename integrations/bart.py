@@ -83,7 +83,11 @@ def get_variables() -> dict[str, list[list[str]]]:
     params={'cmd': 'etd', 'orig': station, 'key': api_key, 'json': 'y'},
     timeout=10,
   )
-  r.raise_for_status()
+  try:
+    r.raise_for_status()
+  except requests.HTTPError as e:
+    # Re-raise without the URL to avoid leaking the API key in logs.
+    raise requests.HTTPError(f'BART API error: {e.response.status_code} {e.response.reason}') from None
   data = r.json()
 
   station_data = data['root']['station'][0]

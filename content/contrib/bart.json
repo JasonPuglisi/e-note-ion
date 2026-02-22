@@ -2,7 +2,7 @@
   "templates": {
     "departures": {
       "schedule": {
-        "cron": "*/5 6-10 * * 1-5",
+        "cron": "*/5 7-9 * * 1-5",
         "hold": 290,
         "timeout": 60
       },
