@@ -143,13 +143,20 @@ Branch naming:
 - `fix/short-description` — bug fixes
 - `chore/short-description` — maintenance, deps, tooling, docs
 
+PR labels (apply one or more):
+- `enhancement` — new features or enhancements (`feat/`)
+- `bug` — bug fixes (`fix/`)
+- `chore` — maintenance, tooling, deps, docs (`chore/`)
+- `security` — security fixes or improvements
+- `dependencies` — dependency updates
+
 Steps:
 1. `git checkout -b feat/description`
 2. Make changes; run the full check suite
 3. Bump `version` in `pyproject.toml` following the rules below
 4. Commit with `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
 5. `git push -u origin feat/description`
-6. `gh pr create`
+6. `gh pr create --label <label>`
 
 ## Versioning
 
