@@ -65,24 +65,9 @@ for a physical split-flap device whose flaps need time to settle.
 ```
 
 Each content file belongs to a named person/context (e.g. `aria.json`).
-
-The `public` field controls visibility mode. When the program is run with
-`--public`, only templates with `"public": true` are scheduled — useful when
-the display is in a shared or guest-visible space. Templates with
-`"public": false` are personal/private and only run in the default mode.
-
-Variables are lists of options substituted into `{variable}` placeholders in
-template format strings. Each option is itself a list of strings (one per
-line). A format entry that is exactly `{variable}` expands into all lines of
-the chosen option; an inline `{variable}` within other text is replaced by the
-first line. Options are chosen at random. When a template has multiple
-`{ "format": [...] }` entries, one is also chosen at random.
-
-After variable expansion, lines are automatically word-wrapped to fit
-`model.cols`. Words are packed greedily; a word that alone exceeds the column
-width is hard-truncated. If wrapping produces more lines than `model.rows`,
-the excess is silently dropped. This means content from dynamic sources (e.g.
-API responses) doesn't need to be pre-fitted to the board dimensions.
+`{variable}` placeholders are replaced at random from `variables` options; a
+standalone `{variable}` entry expands to all lines of the chosen option. Lines
+are word-wrapped to fit `model.cols`; excess rows are silently dropped.
 
 ## Priority Queue Behaviour
 
@@ -159,6 +144,7 @@ Steps:
 6. `git push -u origin feat/description`
 7. `gh pr create --label <label>`
 8. After merge: `git checkout main && git pull && git branch -d feat/description`
+9. Keep `README.md` up to date with any user-facing changes
 
 ## Release Strategy
 
@@ -197,12 +183,6 @@ Dependencies and pinned versions should be kept current:
 GitHub Actions are pinned to full commit SHAs with a `# vX.Y.Z` comment.
 Dependabot reads the comment to identify the version and will open PRs to bump
 both the SHA and comment when new releases are available.
-
-## Documentation
-
-Keep `README.md` up to date whenever making changes. It is the user-facing
-reference and should accurately reflect the current setup, usage, and
-configuration options at all times.
 
 ## Code Conventions
 
