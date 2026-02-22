@@ -21,7 +21,7 @@ on this project collaboratively with the user.
   background threads must be caught and logged, never silently swallowed
 
 **Security:**
-- Treat `VESTABOARD_KEY` and all future API credentials as secrets — never
+- Treat `VESTABOARD_API_KEY` and all future API credentials as secrets — never
   log, echo, or expose them in output, errors, or intermediary state
 - Validate and sanitize all data fetched from external APIs before rendering
   to the display (bounds-check lengths, strip unexpected characters)
@@ -151,7 +151,7 @@ Flags can be combined.
 
 ## Environment
 
-- `VESTABOARD_KEY` — Vestaboard Read/Write API key (required)
+- `VESTABOARD_API_KEY` — Vestaboard Read/Write API key (required)
 - Integration-specific env vars are documented in each integration's sidecar
   doc under `content/contrib/<name>.md`
 - Python version managed via `.python-version` (uv)
@@ -170,7 +170,7 @@ The image is built on `ghcr.io/astral-sh/uv:python3.14-bookworm-slim` and
 published to `ghcr.io/jasonpuglisi/e-note-ion` via GitHub Actions on each
 release. Multi-arch: `linux/amd64` and `linux/arm64`.
 
-Runtime env vars (via `entrypoint.sh`): `VESTABOARD_KEY` (required),
+Runtime env vars (via `entrypoint.sh`): `VESTABOARD_API_KEY` (required),
 `FLAGSHIP=true` (Flagship 6×22), `PUBLIC=true` (public templates only),
 `CONTENT_ENABLED` (comma-separated contrib stems, or `*` for all).
 
@@ -319,7 +319,7 @@ After adding a new integration doc, add a row to the table in
 Open issues are tracked on GitHub: https://github.com/JasonPuglisi/e-note-ion/issues
 
 Milestones:
-- **v1.0 — Public Release**: CA submission (#10), PyPI publish (#16), unit tests (#58), rename VESTABOARD_KEY (#52), refine Unraid icon (#53), verbose logging (#54)
+- **v1.0 — Public Release**: CA submission (#10), PyPI publish (#16), unit tests (#58), rename VESTABOARD_API_KEY (#52), refine Unraid icon (#53), verbose logging (#54)
 - **Content & Integrations**: default content and API integrations (#13), dynamic dependency loading (#35), structured config (#36), escape sequences (#38), BART env var consistency (#57)
 - **Notion Integration**: Notion database as content source (#30)
 

@@ -14,7 +14,7 @@
 
   <Config
     Name="Vestaboard API Key"
-    Target="VESTABOARD_KEY"
+    Target="VESTABOARD_API_KEY"
     Default=""
     Mode=""
     Description="Your Vestaboard Read/Write API key. Found in the Vestaboard app under Settings."
