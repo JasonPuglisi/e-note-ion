@@ -1,5 +1,7 @@
 # e-note-ion
 
+![e-note-ion](assets/social-preview.png)
+
 [![CI](https://github.com/JasonPuglisi/e-note-ion/actions/workflows/ci.yml/badge.svg)](https://github.com/JasonPuglisi/e-note-ion/actions/workflows/ci.yml)
 
 A cron-based content scheduler for Vestaboard split-flap displays. Supports
