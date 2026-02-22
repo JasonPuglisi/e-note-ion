@@ -5,7 +5,7 @@
   <Registry>https://github.com/JasonPuglisi/e-note-ion/pkgs/container/e-note-ion</Registry>
   <Network>bridge</Network>
   <Privileged>false</Privileged>
-  <Support><!-- TODO: replace with Unraid forum thread URL before CA submission --></Support>
+  <Support>https://github.com/JasonPuglisi/e-note-ion/issues</Support>
   <Project>https://github.com/JasonPuglisi/e-note-ion</Project>
   <Overview>E•NOTE•ION is a cron-based content scheduler for Vestaboard split-flap displays. Supports both the Note (3×15) and Flagship (6×22). Content is defined in JSON files and displayed on a schedule with priority queueing. Ships with bundled contrib content (opt-in via CONTENT_ENABLED) and supports personal content via a host-mounted directory.</Overview>
   <Category>HomeAutomation</Category>

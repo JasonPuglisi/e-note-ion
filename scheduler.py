@@ -252,6 +252,10 @@ def _load_file(
       job.remove()
 
   max_name = max((len(job_id[len(stem) + 1 :]) for job_id, *_ in new_jobs), default=0)
+  max_cron = max((len(schedule['cron']) for _, _, _, schedule in new_jobs), default=0)
+  max_priority = max((len(str(priority)) for _, priority, _, _ in new_jobs), default=0)
+  max_hold = max((len(str(schedule['hold'])) for _, _, _, schedule in new_jobs), default=0)
+  max_timeout = max((len(str(schedule['timeout'])) for _, _, _, schedule in new_jobs), default=0)
   if new_jobs:
     print(f'Loaded {content_file.parent.name}/{content_file.name}:')
   for job_id, priority, data, schedule in new_jobs:
@@ -265,10 +269,10 @@ def _load_file(
     template_name = job_id[len(stem) + 1 :]
     print(
       f'  · {template_name.ljust(max_name)}'
-      f'  cron="{schedule["cron"]}"'
-      f'  priority={priority}'
-      f'  hold={schedule["hold"]}s'
-      f'  timeout={schedule["timeout"]}s'
+      f'  cron="{schedule["cron"].ljust(max_cron)}"'
+      f'  priority={str(priority).ljust(max_priority)}'
+      f'  hold={str(schedule["hold"]).ljust(max_hold)}s'
+      f'  timeout={str(schedule["timeout"]).ljust(max_timeout)}s'
     )
 
 
