@@ -153,22 +153,29 @@ PR labels (apply one or more):
 Steps:
 1. `git checkout -b feat/description`
 2. Make changes; run the full check suite
-3. Bump `version` in `pyproject.toml` following the rules below
+3. If release-worthy (see below), bump `version` in `pyproject.toml`
 4. Commit with `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
 5. Stop and ask the user to sign the commit before pushing
 6. `git push -u origin feat/description`
 7. `gh pr create --label <label>`
 8. After merge: `git checkout main && git pull && git branch -d feat/description`
 
-## Versioning
+## Release Strategy
 
-Increment `version` in `pyproject.toml` with every PR using semver:
+Only create a GitHub release (and bump `version` in `pyproject.toml`) when the
+PR contains **release-worthy** changes:
 
-- **Patch** (`0.x.y` → `0.x.y+1`): bug fixes, dependency updates, docs,
-  tooling changes
-- **Minor** (`0.x.y` → `0.x+1.0`): new features, non-breaking additions
-- **Major** (`x.y.z` → `x+1.0.0`): breaking changes to content JSON format,
-  CLI interface, or Docker environment variables
+| Release-worthy | Not release-worthy |
+|---|---|
+| Source code changes (`.py` files) | CI/CD workflow changes |
+| Runtime dependency changes | Dev-only dependency changes |
+| `Dockerfile` or `entrypoint.sh` changes | Docs-only changes |
+| Security fixes | Repo config / tooling changes |
+
+Semver rules when bumping:
+- **Patch** (`0.x.y+1`): bug fixes, dependency updates, security fixes
+- **Minor** (`0.x+1.0`): new features, non-breaking additions
+- **Major** (`x+1.0.0`): breaking changes to content JSON, CLI, or Docker env vars
 
 ## Maintenance
 
