@@ -184,6 +184,30 @@ GitHub Actions are pinned to full commit SHAs with a `# vX.Y.Z` comment.
 Dependabot reads the comment to identify the version and will open PRs to bump
 both the SHA and comment when new releases are available.
 
+## To Do
+
+### Content strategy
+
+The current content model needs a more flexible approach to support both
+bundled defaults and user customisation without manual file editing or repo
+cloning. Key design goals:
+
+- **Public vs. private split**: public templates are safe to commit to the repo
+  (and may eventually accept community contributions); private templates contain
+  personal information and must never be committed
+- **Bundled defaults**: the image should ship with public sample content that
+  runs out of the box — no host mount required. Users who mount a host path
+  override this with their own files
+- **Easy customisation**: users (especially on Unraid) should be able to
+  configure their own content without cloning the repo or editing files
+  manually — possible approaches include environment-variable-driven templates,
+  a simple web UI, or a well-documented host-mount workflow
+- **Community contributions**: once public/private separation is clean, the
+  `content/` directory (or a `content/public/` subdirectory) could accept
+  contributed templates via PRs
+- Consider splitting `content/` into `content/public/` (committed, bundled in
+  image) and `content/private/` (gitignored, mounted from host)
+
 ## Code Conventions
 
 - 2-space indentation

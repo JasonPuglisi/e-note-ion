@@ -18,14 +18,13 @@ ENV UV_COMPILE_BYTECODE=1 \
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
-# Copy source.
+# Copy source and bundled sample content.
 COPY e-note-ion.py entrypoint.sh ./
 COPY integrations/ ./integrations/
+COPY content/ ./content/
 
-# Create content mount point, ensure entrypoint is executable, and drop to
-# a non-root user.
+# Ensure entrypoint is executable and drop to a non-root user.
 RUN chmod +x entrypoint.sh \
-    && mkdir -p content \
     && chown -R nobody:nogroup /app
 
 USER nobody

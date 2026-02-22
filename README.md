@@ -18,6 +18,10 @@ content modes.
 Pre-built multi-arch images (`linux/amd64`, `linux/arm64`) are published to
 the GitHub Container Registry on each release.
 
+The image ships with bundled sample content that runs automatically — no
+content files needed to get started. To use your own templates, mount a
+directory of JSON files over `/app/content`:
+
 ```bash
 docker run -d \
   --name e-note-ion \
@@ -45,8 +49,9 @@ URL:
 https://raw.githubusercontent.com/JasonPuglisi/e-note-ion/main/unraid/e-note-ion.xml
 ```
 
-The template exposes `VESTABOARD_KEY`, `FLAGSHIP`, and `PUBLIC` as UI fields,
-and defaults the content path to `/mnt/user/appdata/e-note-ion/content`.
+The template exposes `VESTABOARD_KEY`, `FLAGSHIP`, and `PUBLIC` as UI fields.
+The content path is optional — leave it blank to use the bundled sample
+content, or set it to a host directory containing your own JSON files.
 
 ## Running directly
 
