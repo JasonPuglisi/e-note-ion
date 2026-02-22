@@ -55,6 +55,13 @@ jobs:
     name: Build and push Docker image
     needs: release
     if: needs.release.outputs.tag != ''
+
+    permissions:
+      contents: read       # checkout
+      packages: write      # push to GHCR
+      attestations: write  # build provenance
+      id-token: write      # sign attestation
+
     uses: ./.github/workflows/release.yml
     with:
       tag: ${{ needs.release.outputs.tag }}

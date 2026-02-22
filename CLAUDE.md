@@ -222,8 +222,10 @@ PR labels (apply one or more):
 At natural breakpoints (before a minor/major release, after a sprint of feature
 work), do a lightweight review of: test coverage gaps, code pattern consistency
 across integrations, dependency health (`pip-audit`), security posture (timeouts,
-key handling, `# nosec` justifications), documentation drift, and stale
-TODO/FIXME comments. Open issues for any gaps found; fix trivial things inline.
+key handling, `# nosec` justifications), documentation drift, stale TODO/FIXME
+comments, and **CI/CD workflow hygiene** (job permissions scoped to minimum
+required, CI steps match the documented check suite, no stale or misleading step
+names). Open issues for any gaps found; fix trivial things inline.
 See #65 for the full checklist.
 
 ### Planning before implementation
@@ -258,7 +260,9 @@ step may be skipped — use judgement.
 7. `gh pr create --label <label> --assignee JasonPuglisi`
 8. Enable auto-merge: `gh pr merge --squash --delete-branch --auto`
 9. Wait for merge: `gh pr checks <number> --watch`; once all pass and the PR merges, proceed
-10. After merge: `git checkout main && git pull && git branch -d feat/description`
+10. After merge: `git checkout main && git pull && git branch -d feat/description`; then
+    check post-merge workflows on main with `gh run list --branch main --limit 5` and
+    verify no `startup_failure` or failed runs from the merge commit
 11. Keep `README.md` and `CLAUDE.md` up to date as part of the same PR —
     new env vars, CLI flags, content format fields, project structure changes,
     and workflow changes should all be reflected before merge
