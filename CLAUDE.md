@@ -143,28 +143,6 @@ short tags: `[R]` `[O]` `[Y]` `[G]` `[B]` `[V]` `[W]` `[K]` (red, orange,
 yellow, green, blue, violet, white, black). Each tag encodes to the
 corresponding Vestaboard color square code (63–70).
 
-## Priority Queue Behaviour
-
-- `PriorityQueue` is a min-heap; `QueuedMessage.__lt__` inverts priority so
-  higher numeric priority is popped first.
-- Ties are broken by `seq` (insertion order) — earlier enqueued wins.
-- If a higher-priority message arrives while a lower-priority one is holding the
-  display, it will be run next once `hold` expires.
-- If a message waits longer than its `timeout` (e.g. blocked by a long-holding
-  higher-priority message), it is silently discarded.
-
-## Runtime Arguments
-
-```
-python e-note-ion.py                          # Note (3×15), user content only
-python e-note-ion.py --content-enabled bart   # also enable contrib/bart.json
-python e-note-ion.py --content-enabled '*'    # enable all contrib content
-python e-note-ion.py --flagship               # target a Flagship board (6×22)
-python e-note-ion.py --public                 # run only public: true templates
-```
-
-Flags can be combined.
-
 ## Environment
 
 - `VESTABOARD_API_KEY` — Vestaboard Read/Write API key (required)
@@ -182,16 +160,8 @@ Flags can be combined.
 
 ## Docker
 
-The image is built on `ghcr.io/astral-sh/uv:python3.14-bookworm-slim` and
-published to `ghcr.io/jasonpuglisi/e-note-ion` via GitHub Actions on each
-release. Multi-arch: `linux/amd64` and `linux/arm64`.
-
-Runtime env vars (via `entrypoint.sh`): `VESTABOARD_API_KEY` (required),
-`FLAGSHIP=true` (Flagship 6×22), `PUBLIC=true` (public templates only),
-`CONTENT_ENABLED` (comma-separated contrib stems, or `*` for all).
-
-Sample content is bundled at `/app/content`; optionally override by mounting
-a host path there. Unraid CA template: `unraid/e-note-ion.xml`.
+Image: `ghcr.io/jasonpuglisi/e-note-ion` (multi-arch, auto-published on release).
+Runtime env vars mirror CLI flags — see `entrypoint.sh` and `README.md`.
 
 ## Development Workflow
 
@@ -222,11 +192,31 @@ PR labels (apply one or more):
 At natural breakpoints (before a minor/major release, after a sprint of feature
 work), do a lightweight review of: test coverage gaps, code pattern consistency
 across integrations, dependency health (`pip-audit`), security posture (timeouts,
-key handling, `# nosec` justifications), documentation drift, stale TODO/FIXME
-comments, and **CI/CD workflow hygiene** (job permissions scoped to minimum
-required, CI steps match the documented check suite, no stale or misleading step
-names). Open issues for any gaps found; fix trivial things inline.
-See #65 for the full checklist.
+key handling, `# nosec` justifications), documentation drift (README / CLAUDE.md
+/ sidecar docs accurate and not duplicating each other; auto-loaded files lean),
+stale TODO/FIXME comments, **CI/CD workflow hygiene** (job permissions scoped to
+minimum required, CI steps match the documented check suite, job/step names
+accurately describe what they do, post-merge workflows on `main` passing clean),
+and **issue/milestone hygiene**:
+- Every open issue has an appropriate milestone (no orphans)
+- Milestone scope is right-sized — merge single-issue milestones into a broader
+  one; split a milestone if it's grown unfocused
+- Blocking relationships are explicit (e.g. "Blocked by #X" in issue body)
+- Tracking/parent issues have sub-issues linked via the GitHub sub-issues API
+  (`gh api repos/JasonPuglisi/e-note-ion/issues/<n>/sub_issues`)
+- Issues in the wrong milestone get reassigned (e.g. architectural work that
+  must land before v1.0 belongs in v1.0, not a feature milestone)
+- Stale or superseded issues are closed with a note
+
+Open issues for any gaps found; fix trivial things inline. See #65 for the full
+checklist.
+
+When something slips through, ask **why it wasn't caught** and add a
+prevention to the checklist or workflow — not just a one-off fix. Examples:
+- Stale job name → added "job/step names accurately describe what they do"
+  to the health review above
+- Post-merge failure not noticed → added post-merge run check to step 10
+  of the Execution steps
 
 ### Planning before implementation
 
@@ -291,6 +281,9 @@ Semver rules when bumping:
 
 Dependencies and pinned versions should be kept current:
 
+- **Open issues**: `gh issue list --state open` — the GitHub issue tracker at
+  https://github.com/JasonPuglisi/e-note-ion/issues is the source of truth for
+  all TODOs and planned work; check it at the start of each session
 - **Security alerts**: check open CodeQL and Dependabot alerts at the start of
   each session and address any before other work
   ```
@@ -343,18 +336,6 @@ destination names, API endpoint changes, etc.).
 
 After adding a new integration doc, add a row to the table in
 `content/README.md`.
-
-## To Do
-
-Open issues are tracked on GitHub: https://github.com/JasonPuglisi/e-note-ion/issues
-
-Milestones:
-- **v1.0 — Public Release**: CA submission (#10), PyPI publish (#16), unit tests (#58), rename VESTABOARD_API_KEY (#52), refine Unraid icon (#53), verbose logging (#54)
-- **Content & Integrations**: default content and API integrations (#13), dynamic dependency loading (#35), structured config (#36), escape sequences (#38), BART env var consistency (#57)
-- **Notion Integration**: Notion database as content source (#30)
-
-When identifying new TODOs during development, create a GitHub issue rather
-than adding prose here. Reference the issue number in commit messages and PRs.
 
 ## Code Conventions
 
