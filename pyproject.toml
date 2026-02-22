@@ -1,0 +1,51 @@
+[project]
+name = "E-NOTE-ION"
+version = "0.1.0"
+description = "Automation for Vestaboard displays - with emotion!"
+keywords = ["vestaboard", "note", "flagship", "automation", "schedule", "scheduling"]
+authors = [
+  { name = "Jason Puglisi", email = "jason@pugli.si" }
+]
+maintainers = [
+  { name = "Jason Puglisi", email = "jason@pugli.si" }
+]
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE.txt"]
+requires-python = ">=3.14"
+dependencies = [
+    "apscheduler>=3.11.2",
+    "requests>=2.32.5",
+]
+
+[project.urls]
+Repository = "https://github.com/JasonPuglisi/e-note-ion"
+Issues = "https://github.com/JasonPuglisi/e-note-ion/issues"
+
+[dependency-groups]
+dev = [
+    "bandit>=1.9.3",
+    "pip-audit>=2.10.0",
+    "pre-commit>=4.5.1",
+    "pyright>=1.1.408",
+    "ruff>=0.15.2",
+]
+
+[tool.ruff]
+line-length = 120
+indent-width = 2
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]  # pycodestyle errors, pyflakes, isort
+
+[tool.bandit]
+exclude_dirs = [".venv"]
+# Add skips = ["BXXX"] here for any false positives that arise
+
+[tool.pyright]
+pythonVersion = "3.14"
+typeCheckingMode = "standard"

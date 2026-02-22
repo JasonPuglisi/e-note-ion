@@ -1,0 +1,67 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>e-note-ion</Name>
+  <Repository>ghcr.io/jasonpuglisi/e-note-ion</Repository>
+  <Registry>https://github.com/JasonPuglisi/e-note-ion/pkgs/container/e-note-ion</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/JasonPuglisi/e-note-ion/issues</Support>
+  <Project>https://github.com/JasonPuglisi/e-note-ion</Project>
+  <Overview>Cron-based content scheduler for a Vestaboard split-flap display. Supports both the Note (3x15) and Flagship (6x22). Content is defined in JSON files and displayed on a schedule with priority queueing.</Overview>
+  <Category>Tools:</Category>
+  <WebUI/>
+  <TemplateURL>https://raw.githubusercontent.com/JasonPuglisi/e-note-ion/main/unraid/e-note-ion.xml</TemplateURL>
+  <Icon/>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+
+  <Config
+    Name="Vestaboard API Key"
+    Target="VESTABOARD_KEY"
+    Default=""
+    Mode=""
+    Description="Your Vestaboard Read/Write API key. Found in the Vestaboard app under Settings."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="true"/>
+
+  <Config
+    Name="Content directory"
+    Target="/app/content"
+    Default="/mnt/user/appdata/e-note-ion/content"
+    Mode="rw"
+    Description="Directory containing your content JSON files. Create this path and add your JSON files before starting the container."
+    Type="Path"
+    Display="always"
+    Required="true"
+    Mask="false"/>
+
+  <Config
+    Name="Flagship mode"
+    Target="FLAGSHIP"
+    Default="false"
+    Mode=""
+    Description="Set to true to target a Vestaboard Flagship (6x22) instead of a Note (3x15)."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"/>
+
+  <Config
+    Name="Public mode"
+    Target="PUBLIC"
+    Default="false"
+    Mode=""
+    Description="Set to true to only show templates marked public: true. Useful when the display is in a shared or guest-visible space."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"/>
+</Container>

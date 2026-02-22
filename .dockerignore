@@ -1,0 +1,16 @@
+.git
+.venv
+.ruff_cache
+__pycache__
+*.pyc
+*.pyo
+.claude
+CLAUDE.md
+.pre-commit-config.yaml
+.DS_Store
+.python-version
+content/
+unraid/
+.github/
+README.md
+LICENSE.txt
