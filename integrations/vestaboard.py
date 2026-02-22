@@ -15,7 +15,6 @@ import json
 import os
 import random
 import re
-import sys
 from enum import Enum
 from typing import Literal
 
@@ -23,17 +22,24 @@ import requests
 
 # --- API configuration ---
 
-try:
-  _API_KEY = os.environ['VESTABOARD_API_KEY']
-except KeyError:
-  print('Vestaboard API key missing in environment variable `VESTABOARD_API_KEY`')
-  sys.exit(1)
-
 _HOST = 'https://rw.vestaboard.com'
-_HEADERS = {
-  'X-Vestaboard-Read-Write-Key': _API_KEY,
-  'Content-Type': 'application/json',
-}
+
+
+def _get_headers() -> dict[str, str]:
+  """Return the auth headers for the Vestaboard API.
+
+  Reads VESTABOARD_API_KEY from the environment on each call so that the
+  module can be imported without the key being present (e.g. in tests that
+  don't exercise the API).
+  """
+  api_key = os.environ.get('VESTABOARD_API_KEY', '')
+  if not api_key:
+    raise RuntimeError('VESTABOARD_API_KEY environment variable is not set')
+  return {
+    'X-Vestaboard-Read-Write-Key': api_key,
+    'Content-Type': 'application/json',
+  }
+
 
 # --- Board model ---
 
@@ -254,7 +260,7 @@ class VestaboardState:
 
 def get_state(color: VestaboardColor = VestaboardColor.BLACK) -> VestaboardState:
   """Fetch and return the current board state."""
-  r = requests.get(_HOST, headers=_HEADERS, timeout=10)
+  r = requests.get(_HOST, headers=_get_headers(), timeout=10)
   r.raise_for_status()
   return VestaboardState(r.json(), color)
 
@@ -335,7 +341,7 @@ def _expand_format(
   return lines
 
 
-def _display_len(text: str) -> int:
+def display_len(text: str) -> int:
   """Count display characters, treating ❤️ and color tags as single chars.
 
   Escaped color tags (e.g. [[G]]) count as 3 display chars (literal [, G, ]).
@@ -365,7 +371,7 @@ def _truncate(
   Escaped color tags (e.g. [[G]]) count as 3 display chars and are treated
   as atomic: if they don't fit entirely, they are dropped as a unit.
   """
-  if _display_len(text) <= max_cols:
+  if display_len(text) <= max_cols:
     return text
   target = max_cols - (3 if strategy == 'ellipsis' else 0)
   result: list[str] = []
@@ -402,14 +408,14 @@ def _wrap_lines(
   cols = model.cols
   result: list[str] = []
   for line in lines:
-    if _display_len(line) <= cols:
+    if display_len(line) <= cols:
       result.append(line)
       continue
     words = line.split(' ')
     current: list[str] = []
     current_len = 0
     for word in words:
-      word_len = _display_len(word)
+      word_len = display_len(word)
       if word_len > cols:
         # Word alone won't fit: flush current row, then truncate the word.
         if current:
@@ -470,7 +476,7 @@ def set_state(
   lines = _wrap_lines(lines, truncation)
   grid = _build_grid(lines)
   print(render_grid(grid))
-  r = requests.post(_HOST, json=grid, headers=_HEADERS, timeout=10)
+  r = requests.post(_HOST, json=grid, headers=_get_headers(), timeout=10)
   if r.status_code == 423:
     raise BoardLockedError('board is locked (rate-limited or quiet hours)')
   r.raise_for_status()
