@@ -3,16 +3,17 @@
 # BART real-time departure integration.
 #
 # Fetches upcoming departure estimates from the BART API and returns them as
-# a variables dict for use with content templates. Line colors are read from
-# the API response automatically — no manual color configuration needed.
+# a variables dict for use with content templates. Line colors are derived
+# dynamically from the BART routes API on first call and cached for the
+# process lifetime.
 #
 # Required env vars:
 #   BART_API_KEY    — API key (free at https://api.bart.gov/api/register.aspx)
 #   BART_STATION    — Originating station code (e.g. MLPT for Milpitas)
 #
 # Optional env vars (configure 1–2 lines to display):
-#   BART_LINE_1_DEST — Destination substring to match (e.g. "Daly City")
-#   BART_LINE_2_DEST — Second destination substring (optional)
+#   BART_LINE_1_DEST — Destination abbreviation code (e.g. DALY for Daly City)
+#   BART_LINE_2_DEST — Second destination code (optional)
 
 import os
 from typing import Any
@@ -35,34 +36,71 @@ _LINE_COLOR_TAG: dict[str, str] = {
   'BEIGE': '[W]',  # no beige on Vestaboard; white is closest
 }
 
-# Static fallback: destination abbreviation code → color tag.
-# Used when the API returns no estimates for a destination so we can still
-# show a color square alongside the no-service indicator.
-# Where a destination is served by multiple lines with different colors, the
-# most common pairing for typical commute use is listed.
-_DEST_COLOR_FALLBACK: dict[str, str] = {
-  'ANTC': '[Y]',  # Antioch
-  'BERY': '[G]',  # Berryessa/North San José
-  'DALY': '[G]',  # Daly City
-  'DUBL': '[B]',  # Dublin/Pleasanton
-  'MLBR': '[R]',  # Millbrae
-  'PITT': '[Y]',  # Pittsburg/Bay Point
-  'PCTR': '[Y]',  # Pittsburg Center
-  'RICH': '[O]',  # Richmond
-  'SFIA': '[R]',  # San Francisco Intl Airport
-}
+# Module-level route color cache: dest_abbr → [color_tags].
+# None = not yet populated; {} = populated but empty (or failed).
+_dest_color_cache: dict[str, list[str]] | None = None
 
 
-def _no_service_line(dest_code: str) -> str:
-  """Return a no-service display line for the given destination abbreviation code.
+def _fetch_dest_colors(api_key: str, origin: str) -> dict[str, list[str]]:
+  """Build a dest_abbr → [color_tags] map using the BART routes API.
 
-  Looks up a color tag from the static fallback map, producing e.g.
-  '[G] NO SERVICE'. Falls back to 'NO SERVICE' if the code is unknown.
+  Calls /route.aspx?cmd=routes once, then /route.aspx?cmd=routeinfo for each
+  route. Only routes that serve the origin station are included. Routes are
+  processed in ascending number order so multi-color destinations have a
+  deterministic tag order (lowest route number first).
+
+  Raises requests.HTTPError on API failure; the caller handles degradation.
   """
-  tag = _DEST_COLOR_FALLBACK.get(dest_code.upper())
-  if tag:
-    return f'{tag} NO SERVICE'
-  return 'NO SERVICE'
+  r = requests.get(
+    f'{_API_BASE}/route.aspx',
+    params={'cmd': 'routes', 'key': api_key, 'json': 'y'},
+    timeout=10,
+  )
+  r.raise_for_status()
+  raw_routes = r.json()['root']['routes']['route']
+  if isinstance(raw_routes, dict):
+    raw_routes = [raw_routes]
+
+  routes = sorted(raw_routes, key=lambda rt: int(rt.get('number', 0)))
+  origin_upper = origin.upper()
+  color_map: dict[str, list[str]] = {}
+
+  for route in routes:
+    tag = _LINE_COLOR_TAG.get(route.get('color', '').upper())
+    if not tag:
+      continue
+    ri = requests.get(
+      f'{_API_BASE}/route.aspx',
+      params={'cmd': 'routeinfo', 'route': route['number'], 'key': api_key, 'json': 'y'},
+      timeout=10,
+    )
+    ri.raise_for_status()
+    route_info = ri.json()['root']['routes']['route']
+
+    stations = route_info.get('config', {}).get('station', [])
+    if isinstance(stations, str):
+      stations = [stations]
+    if origin_upper not in [s.upper() for s in stations]:
+      continue
+
+    dest = route_info.get('destination', '').upper()
+    if dest:
+      if dest not in color_map:
+        color_map[dest] = []
+      if tag not in color_map[dest]:
+        color_map[dest].append(tag)
+
+  return color_map
+
+
+def _no_service_line(dest_abbr: str, color_map: dict[str, list[str]]) -> str:
+  """Return a no-service display line for the given destination abbreviation.
+
+  Looks up a color tag from the dynamic color map, producing e.g.
+  '[G] NO SERVICE'. Falls back to 'NO SERVICE' if the destination is unknown.
+  """
+  tags = color_map.get(dest_abbr.upper(), [])
+  return f'{tags[0]} NO SERVICE' if tags else 'NO SERVICE'
 
 
 def _format_minutes(mins: str) -> str:
@@ -92,7 +130,12 @@ def get_variables() -> dict[str, list[list[str]]]:
 
   Returns keys: 'station', 'line1', and optionally 'line2'. Each value is a
   single-option list (no randomness — departure times are always current).
+
+  The route color cache is populated lazily on first call. If the routes API
+  fails, no-service lines degrade to colorless 'NO SERVICE'.
   """
+  global _dest_color_cache
+
   api_key = os.environ.get('BART_API_KEY', '').strip()
   if not api_key:
     raise RuntimeError('BART_API_KEY environment variable is not set')
@@ -105,6 +148,13 @@ def get_variables() -> dict[str, list[list[str]]]:
   dest_filters = [d for key in ('BART_LINE_1_DEST', 'BART_LINE_2_DEST') if (d := os.environ.get(key, '').strip())]
   if not dest_filters:
     raise RuntimeError('At least one of BART_LINE_1_DEST or BART_LINE_2_DEST must be set')
+
+  if _dest_color_cache is None:
+    try:
+      _dest_color_cache = _fetch_dest_colors(api_key, station)
+    except Exception as e:  # noqa: BLE001
+      print(f'Warning: could not build BART color cache: {e}')
+      _dest_color_cache = {}
 
   r = requests.get(
     f'{_API_BASE}/etd.aspx',
@@ -127,7 +177,7 @@ def get_variables() -> dict[str, list[list[str]]]:
   }
 
   for i, dest_code in enumerate(dest_filters, 1):
-    line_value = _no_service_line(dest_code)
+    line_value = _no_service_line(dest_code, _dest_color_cache)
     for etd in etds:
       if dest_code.upper() == etd.get('abbreviation', '').upper():
         estimates = etd.get('estimate', [])
