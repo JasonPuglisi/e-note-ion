@@ -4,14 +4,40 @@
 
 [![CI](https://github.com/JasonPuglisi/e-note-ion/actions/workflows/ci.yml/badge.svg)](https://github.com/JasonPuglisi/e-note-ion/actions/workflows/ci.yml)
 
-A cron-based content scheduler for Vestaboard split-flap displays. Supports
-both the [Note](https://shop.vestaboard.com/products/note) (3×15) and the
-Flagship (6×22). Schedules and sends templated messages on a per-template cron
-schedule, with support for priority queuing, hold durations, and public/private
-content modes.
+A self-hosted, code-first content scheduler for Vestaboard split-flap
+displays. Define your board content as version-controlled JSON — cron
+schedules, templated messages, live data integrations, and a priority queue —
+with no web UI or cloud dependency required. Supports both the
+[Note](https://shop.vestaboard.com/products/note) (3×15) and the Flagship
+(6×22).
 
 > This project is primarily agent-developed using [Claude](https://claude.ai),
-> with human design, decision-making, guidance, and review.
+> with human design, decision-making, guidance, and review. See
+> [Philosophy](#philosophy) for more on the approach.
+
+## Who this is for
+
+E•NOTE•ION is built for developers and power users who want to treat their
+board like infrastructure: content in files, schedules in cron, secrets in env
+vars, deploys in Docker.
+
+If you'd prefer a friendlier experience — a web UI, drag-and-drop scheduling,
+and a polished setup flow — check out
+[FiestaBoard](https://github.com/Fiestaboard/FiestaBoard), which nails that
+use case beautifully.
+
+## See also
+
+The Vestaboard community has built a lot of great tooling:
+
+| Project | What it does well |
+|---|---|
+| [FiestaBoard](https://github.com/Fiestaboard/FiestaBoard) | Full-featured self-hosted app with a web UI and a rich scheduling experience |
+| [Vestaboard+](https://www.vestaboard.com/vestaboard-plus) | Official cloud subscription with Zapier/IFTTT integration and a curated app marketplace |
+| [jparise/vesta](https://github.com/jparise/vesta) | Clean Python library for the Vestaboard API — great if you want to build your own tooling |
+| [natekspencer/hacs-vestaboard](https://github.com/natekspencer/hacs-vestaboard) | Home Assistant integration for triggering board updates from automations |
+| [Zapier](https://zapier.com) / [IFTTT](https://ifttt.com) | No-code workflow triggers via Vestaboard+ — lowest barrier to entry |
+| MCP servers | Emerging tools for LLM-driven board updates from Claude and other agents |
 
 ## Running with Docker (recommended)
 
@@ -176,6 +202,20 @@ fetch current variable values:
 
 See [`content/README.md`](content/README.md) for available integrations and
 their configuration.
+
+## Philosophy
+
+**Content as code.** Board messages live in JSON files alongside your other
+dotfiles and configs. They're version-controlled, diff-able, and deployable
+the same way as everything else. There's no database to back up, no UI state
+to sync, and no vendor lock-in — just files, cron, and a single Python
+process.
+
+**An AI development experiment.** E•NOTE•ION is also an ongoing exploration of
+agentic software development. Most of the implementation is written by Claude,
+with a human setting direction, reviewing plans, and making architectural
+calls. The goal isn't to remove the human — it's to see how far thoughtful
+human–AI collaboration can go on a real project with real constraints.
 
 ## Development
 
