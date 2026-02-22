@@ -259,7 +259,7 @@ step may be skipped — use judgement.
 8. Enable auto-merge: `gh pr merge --squash --delete-branch --auto`
 9. Wait for merge: `gh pr checks <number> --watch`; once all pass and the PR merges, proceed
 10. After merge: `git checkout main && git pull && git branch -d feat/description`; then
-    check post-merge workflows on main with `gh run list --branch main --limit 5`,
+    check post-merge workflows on main with `gh run list --branch main --commit $(git rev-parse HEAD)`,
     watch any in-progress runs to completion (`gh run watch <id>`), and verify all
     runs from the merge commit succeeded with no `startup_failure` or failures
 11. Keep `README.md` and `CLAUDE.md` up to date as part of the same PR —
