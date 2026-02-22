@@ -158,8 +158,9 @@ Flags can be combined.
   (security linting), `pip-audit` (dependency CVE scanning), `pre-commit`
 - Run checks: `uv run ruff check .`, `uv run ruff format --check .`,
   `uv run pyright`, `uv run bandit -c pyproject.toml -r .`, `uv run pip-audit`,
-  `uv run pre-commit run pretty-format-json --all-files`
+  `uv run pre-commit run pretty-format-json --all-files`, `uv run pytest`
 - Install hooks (once after cloning): `uv run pre-commit install`
+- Tests live in `tests/`; use `pytest` with `unittest.mock` for HTTP calls
 
 ## Docker
 
@@ -190,11 +191,34 @@ PR labels (apply one or more):
 - `security` — security fixes or improvements
 - `dependencies` — dependency updates
 
-When the user asks for a new feature or fix, create a GitHub issue first to
-track the work, then implement it. Always assign the issue to JasonPuglisi and
-set an appropriate milestone.
+### Tests
 
-Steps:
+- PRs that introduce new logic **must** include corresponding tests in `tests/`
+- Use `pytest`; mock HTTP calls with `unittest.mock`
+- CI runs `uv run pytest` — tests must pass before merge
+- When working on existing code that lacks tests, add retroactive coverage as
+  part of the same PR where feasible
+
+### Planning before implementation
+
+All non-trivial work follows a plan-then-execute cycle:
+
+1. **Create or identify a GitHub issue** for the work. Assign to JasonPuglisi
+   with an appropriate milestone.
+2. **Post an in-depth implementation plan as a comment** on the issue. The plan
+   should cover: specific files and functions to change, the approach with
+   rationale, edge cases, and any open questions. Do this before writing any
+   code.
+3. **Wait for feedback.** The user reviews the plan in GitHub and may leave
+   comments or request changes. Do not begin implementation until the plan is
+   approved (explicitly or implicitly by the user asking to proceed).
+4. **Execute the approved plan.** Follow the steps below.
+
+For simple or clearly-scoped tasks (typo fixes, one-line changes), the plan
+step may be skipped — use judgement.
+
+### Execution steps
+
 1. `git checkout -b feat/description`
 2. Make changes; run the full check suite
 3. If release-worthy (see below), bump `version` in `pyproject.toml`
@@ -292,8 +316,9 @@ After adding a new integration doc, add a row to the table in
 Open issues are tracked on GitHub: https://github.com/JasonPuglisi/e-note-ion/issues
 
 Milestones:
-- **v1.0 — Public Release**: CA submission (#10), misfire handling (#11)
-- **Content & Integrations**: public/private content strategy (#12), default content and API integrations (#13)
+- **v1.0 — Public Release**: CA submission (#10), PyPI publish (#16), unit tests (#58), rename VESTABOARD_KEY (#52), refine Unraid icon (#53), verbose logging (#54)
+- **Content & Integrations**: default content and API integrations (#13), dynamic dependency loading (#35), structured config (#36), escape sequences (#38), BART env var consistency (#57)
+- **Notion Integration**: Notion database as content source (#30)
 
 When identifying new TODOs during development, create a GitHub issue rather
 than adding prose here. Reference the issue number in commit messages and PRs.
