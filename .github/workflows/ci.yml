@@ -41,6 +41,9 @@ jobs:
       - name: pip-audit
         run: uv run pip-audit
 
+      - name: Run tests
+        run: uv run pytest
+
   docker:
     name: Docker build
     runs-on: ubuntu-latest

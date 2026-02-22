@@ -28,6 +28,7 @@ dev = [
     "pip-audit>=2.10.0",
     "pre-commit>=4.5.1",
     "pyright>=1.1.408",
+    "pytest>=8.3.5",
     "ruff>=0.15.2",
 ]
 
@@ -42,8 +43,12 @@ indent-style = "space"
 [tool.ruff.lint]
 select = ["E", "F", "I"]  # pycodestyle errors, pyflakes, isort
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
 [tool.bandit]
-exclude_dirs = [".venv"]
+exclude_dirs = [".venv", "tests"]
 # Add skips = ["BXXX"] here for any false positives that arise
 
 [tool.pyright]
