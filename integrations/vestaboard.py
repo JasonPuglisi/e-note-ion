@@ -17,6 +17,7 @@ import random
 import re
 import sys
 from enum import Enum
+from typing import Literal
 
 import requests
 
@@ -140,6 +141,12 @@ _COLOR_DISPLAY: tuple[str, ...] = (
 _CHAR_CODES: dict[str, int] = {ch: code for code, ch in enumerate(_CHAR_MAP) if ch}
 _CHAR_CODES['❤️'] = 62  # U+2764 + U+FE0F variation selector
 _CHAR_CODES['°'] = 62  # degree sign on the Flagship (same code as ❤ on Note)
+
+# Truncation strategy: how to shorten a line that exceeds model.cols.
+#   hard     — cut at the column limit, mid-word if necessary (default)
+#   word     — cut at the last full word that fits
+#   ellipsis — cut at the last full word and append '...'
+TruncationStrategy = Literal['hard', 'word', 'ellipsis']
 
 # Short color tags usable in format strings and integration output.
 # Each tag is exactly 3 characters and encodes to a Vestaboard color square.
@@ -306,12 +313,26 @@ def _display_len(text: str) -> int:
   return count
 
 
-def _truncate(text: str, max_cols: int) -> str:
-  """Truncate text to at most max_cols display characters."""
+def _truncate(
+  text: str,
+  max_cols: int,
+  strategy: TruncationStrategy = 'hard',
+) -> str:
+  """Truncate text to at most max_cols display characters.
+
+  Strategies:
+    hard     — cut at the column limit, mid-word if necessary.
+    word     — cut at the last full word boundary that fits.
+    ellipsis — cut at the last full word boundary and append '...'.
+  """
+  if _display_len(text) <= max_cols:
+    return text
+  target = max_cols - (3 if strategy == 'ellipsis' else 0)
   result: list[str] = []
+  last_word_end = -1  # len(result) just before the most recent space
   count = 0
   i = 0
-  while i < len(text) and count < max_cols:
+  while i < len(text) and count < target:
     if text[i : i + 2] == '❤️':
       result.append('❤️')
       i += 2
@@ -319,18 +340,27 @@ def _truncate(text: str, max_cols: int) -> str:
       result.append(tag)
       i += 3
     else:
+      if text[i] == ' ' and strategy in ('word', 'ellipsis'):
+        last_word_end = len(result)
       result.append(text[i])
       i += 1
     count += 1
-  return ''.join(result)
+  if strategy == 'hard' or last_word_end < 0:
+    return ''.join(result)
+  base = ''.join(result[:last_word_end])
+  return base + ('...' if strategy == 'ellipsis' else '')
 
 
-def _wrap_lines(lines: list[str]) -> list[str]:
+def _wrap_lines(
+  lines: list[str],
+  truncation: TruncationStrategy = 'hard',
+) -> list[str]:
   """Word-wrap lines to fit model.cols, returning at most model.rows lines.
 
   Each input line is split on spaces and words are packed greedily into rows.
-  A word that alone exceeds model.cols is hard-truncated. Lines are never
-  joined together — wrapping only splits; short lines pass through unchanged.
+  A word that alone exceeds model.cols is truncated using `truncation`. Lines
+  are never joined together — wrapping only splits; short lines pass through
+  unchanged.
   """
   cols = model.cols
   result: list[str] = []
@@ -344,12 +374,12 @@ def _wrap_lines(lines: list[str]) -> list[str]:
     for word in words:
       word_len = _display_len(word)
       if word_len > cols:
-        # Word alone won't fit: flush current row, then hard-truncate the word.
+        # Word alone won't fit: flush current row, then truncate the word.
         if current:
           result.append(' '.join(current))
           current = []
           current_len = 0
-        result.append(_truncate(word, cols))
+        result.append(_truncate(word, cols, truncation))
         continue
       if not current:
         current = [word]
@@ -388,6 +418,7 @@ class BoardLockedError(Exception):
 def set_state(
   templates: list[dict],
   variables: dict[str, list],
+  truncation: TruncationStrategy = 'hard',
 ) -> None:
   """Render a template and write it to the Vestaboard.
 
@@ -399,7 +430,7 @@ def set_state(
   """
   template = random.choice(templates)  # nosec B311
   lines = _expand_format(template['format'], variables)
-  lines = _wrap_lines(lines)
+  lines = _wrap_lines(lines, truncation)
   grid = _build_grid(lines)
   print(render_grid(grid))
   r = requests.post(_HOST, json=grid, headers=_HEADERS, timeout=10)
