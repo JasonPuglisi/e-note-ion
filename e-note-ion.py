@@ -141,7 +141,11 @@ def worker() -> None:
       variables = message.data['variables']
       if 'integration' in message.data:
         variables = _get_integration(message.data['integration']).get_variables()
-      vestaboard.set_state(message.data['templates'], variables)
+      vestaboard.set_state(
+        message.data['templates'],
+        variables,
+        message.data.get('truncation', 'hard'),
+      )
     except vestaboard.BoardLockedError as e:
       print(f'Board locked: {e}. Retrying in {_LOCK_RETRY_DELAY}s.')
       time.sleep(_LOCK_RETRY_DELAY)
@@ -177,6 +181,7 @@ def _load_file(
   # Prefix the stem with the parent directory name (user or contrib) so that
   # files with the same name in different directories don't collide.
   stem = f'{content_file.parent.name}.{content_file.stem}'
+  _valid_truncation = {'hard', 'word', 'ellipsis'}
   new_jobs = []
   for template_name, template in content['templates'].items():
     if public_mode and not template['public']:
@@ -184,9 +189,14 @@ def _load_file(
     priority = template['priority']
     if not isinstance(priority, int) or not (0 <= priority <= 10):
       raise ValueError(f'{stem}.{template_name}: priority must be an integer between 0 and 10, got {priority!r}')
+    truncation = template.get('truncation', 'hard')
+    if truncation not in _valid_truncation:
+      valid = ', '.join(sorted(_valid_truncation))
+      raise ValueError(f'{stem}.{template_name}: truncation must be one of {valid}, got {truncation!r}')
     data: dict[str, Any] = {
       'templates': template['templates'],
       'variables': content.get('variables', {}),
+      'truncation': truncation,
     }
     if 'integration' in template:
       data['integration'] = template['integration']

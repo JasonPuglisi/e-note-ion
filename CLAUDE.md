@@ -88,6 +88,7 @@ for a physical split-flap device whose flaps need time to settle.
       },
       "priority": 5,           // integer 0–10; higher number = higher priority
       "public": true,          // if false, skipped when running with --public
+      "truncation": "word",    // optional: "hard" (default), "word", "ellipsis"
       "templates": [
         { "format": ["LINE ONE", "LINE {variable}"] }
       ]
