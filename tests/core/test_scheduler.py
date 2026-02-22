@@ -476,6 +476,90 @@ def test_load_file_public_key_missing_included_in_public_mode(sched: BackgroundS
   assert len(sched.get_jobs()) == 1
 
 
+# --- _validate_template ---
+
+
+def _base_template() -> dict[str, Any]:
+  return {
+    'schedule': {'cron': '0 8 * * *', 'hold': 60, 'timeout': 60},
+    'priority': 5,
+    'templates': [{'format': ['HELLO']}],
+  }
+
+
+def test_validate_template_valid_passes() -> None:
+  _mod._validate_template('ctx.tmpl', _base_template())
+
+
+def test_validate_template_missing_schedule_raises() -> None:
+  t = _base_template()
+  del t['schedule']
+  with pytest.raises(ValueError, match='schedule'):
+    _mod._validate_template('ctx.tmpl', t)
+
+
+def test_validate_template_invalid_cron_raises() -> None:
+  t = _base_template()
+  t['schedule']['cron'] = 123
+  with pytest.raises(ValueError, match='cron'):
+    _mod._validate_template('ctx.tmpl', t)
+
+
+def test_validate_template_negative_hold_raises() -> None:
+  t = _base_template()
+  t['schedule']['hold'] = -1
+  with pytest.raises(ValueError, match='hold'):
+    _mod._validate_template('ctx.tmpl', t)
+
+
+def test_validate_template_negative_timeout_raises() -> None:
+  t = _base_template()
+  t['schedule']['timeout'] = -5
+  with pytest.raises(ValueError, match='timeout'):
+    _mod._validate_template('ctx.tmpl', t)
+
+
+def test_validate_template_invalid_priority_raises() -> None:
+  t = _base_template()
+  t['priority'] = 99
+  with pytest.raises(ValueError, match='priority'):
+    _mod._validate_template('ctx.tmpl', t)
+
+
+def test_validate_template_invalid_truncation_raises() -> None:
+  t = _base_template()
+  t['truncation'] = 'bogus'
+  with pytest.raises(ValueError, match='truncation'):
+    _mod._validate_template('ctx.tmpl', t)
+
+
+def test_validate_template_no_templates_no_integration_raises() -> None:
+  t = _base_template()
+  del t['templates']
+  with pytest.raises(ValueError, match='templates.*integration|integration.*templates'):
+    _mod._validate_template('ctx.tmpl', t)
+
+
+def test_validate_template_integration_only_passes() -> None:
+  t = _base_template()
+  del t['templates']
+  t['integration'] = 'bart'
+  _mod._validate_template('ctx.tmpl', t)
+
+
+def test_validate_template_both_templates_and_integration_passes() -> None:
+  t = _base_template()
+  t['integration'] = 'bart'
+  _mod._validate_template('ctx.tmpl', t)
+
+
+def test_validate_template_zero_hold_timeout_passes() -> None:
+  t = _base_template()
+  t['schedule']['hold'] = 0
+  t['schedule']['timeout'] = 0
+  _mod._validate_template('ctx.tmpl', t)
+
+
 # --- main ---
 
 

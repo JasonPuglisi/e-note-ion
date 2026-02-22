@@ -174,6 +174,42 @@ def parse_cron(cron: str) -> dict[str, str]:
   return {'minute': minute, 'hour': hour, 'day': day, 'month': month, 'day_of_week': day_of_week}
 
 
+_VALID_TRUNCATION: frozenset[str] = frozenset({'hard', 'word', 'ellipsis'})
+
+
+def _validate_template(name: str, template: dict[str, Any]) -> None:
+  """Validate a single template dict, raising ValueError with a clear message.
+
+  Checks: schedule fields (cron str, hold/timeout non-negative int),
+  priority range, truncation value, and that at least one of templates or
+  integration is present.
+  """
+  schedule = template.get('schedule')
+  if not isinstance(schedule, dict):
+    raise ValueError(f'{name}: missing or invalid "schedule" field')
+  cron = schedule.get('cron')
+  if not isinstance(cron, str) or not cron.strip():
+    raise ValueError(f'{name}: schedule.cron must be a non-empty string')
+  for field in ('hold', 'timeout'):
+    val = schedule.get(field)
+    if not isinstance(val, int) or val < 0:
+      raise ValueError(f'{name}: schedule.{field} must be a non-negative integer, got {val!r}')
+
+  priority = template.get('priority')
+  if not isinstance(priority, int) or not (0 <= priority <= 10):
+    raise ValueError(f'{name}: priority must be an integer between 0 and 10, got {priority!r}')
+
+  truncation = template.get('truncation', 'hard')
+  if truncation not in _VALID_TRUNCATION:
+    valid = ', '.join(sorted(_VALID_TRUNCATION))
+    raise ValueError(f'{name}: truncation must be one of {valid}, got {truncation!r}')
+
+  has_templates = 'templates' in template
+  has_integration = 'integration' in template
+  if not has_templates and not has_integration:
+    raise ValueError(f'{name}: must have "templates" and/or "integration"')
+
+
 def _load_file(
   scheduler: BackgroundScheduler,
   content_file: Path,
@@ -187,20 +223,15 @@ def _load_file(
   # Prefix the stem with the parent directory name (user or contrib) so that
   # files with the same name in different directories don't collide.
   stem = f'{content_file.parent.name}.{content_file.stem}'
-  _valid_truncation = {'hard', 'word', 'ellipsis'}
   new_jobs = []
   for template_name, template in content['templates'].items():
     if public_mode and not template.get('public', True):
       continue
+    _validate_template(f'{stem}.{template_name}', template)
     priority = template['priority']
-    if not isinstance(priority, int) or not (0 <= priority <= 10):
-      raise ValueError(f'{stem}.{template_name}: priority must be an integer between 0 and 10, got {priority!r}')
     truncation = template.get('truncation', 'hard')
-    if truncation not in _valid_truncation:
-      valid = ', '.join(sorted(_valid_truncation))
-      raise ValueError(f'{stem}.{template_name}: truncation must be one of {valid}, got {truncation!r}')
     data: dict[str, Any] = {
-      'templates': template['templates'],
+      'templates': template.get('templates', []),
       'variables': content.get('variables', {}),
       'truncation': truncation,
     }
