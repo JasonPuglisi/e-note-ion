@@ -10,7 +10,8 @@ WORKDIR /app
 # Compile bytecode at install time (faster startup) and use copy mode
 # so layer snapshots aren't affected by hardlink counts.
 ENV UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy
+    UV_LINK_MODE=copy \
+    PYTHONUNBUFFERED=1
 
 # Install dependencies before copying source for better layer caching.
 # There is no [build-system] in pyproject.toml so --no-install-project is
