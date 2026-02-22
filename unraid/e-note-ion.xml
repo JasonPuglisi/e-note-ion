@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>E•NOTE•ION</Name>
+  <Name>E-NOTE-ION</Name>
   <Repository>ghcr.io/jasonpuglisi/e-note-ion</Repository>
   <Registry>https://github.com/JasonPuglisi/e-note-ion/pkgs/container/e-note-ion</Registry>
   <Network>bridge</Network>
@@ -13,7 +13,7 @@
   <WebUI/>
   <TemplateURL>https://raw.githubusercontent.com/JasonPuglisi/e-note-ion/main/unraid/e-note-ion.xml</TemplateURL>
   <Icon/>
-  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <ExtraParams/>
   <PostArgs/>
   <CPUset/>
   <DateInstalled/>
