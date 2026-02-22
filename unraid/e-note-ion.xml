@@ -7,7 +7,7 @@
   <Privileged>false</Privileged>
   <Support><!-- TODO: replace with Unraid forum thread URL before CA submission --></Support>
   <Project>https://github.com/JasonPuglisi/e-note-ion</Project>
-  <Overview>E•NOTE•ION is a cron-based content scheduler for Vestaboard split-flap displays. Supports both the Note (3×15) and Flagship (6×22). Content is defined in JSON files and displayed on a schedule with priority queueing. Ships with sample content that runs automatically out of the box.</Overview>
+  <Overview>E•NOTE•ION is a cron-based content scheduler for Vestaboard split-flap displays. Supports both the Note (3×15) and Flagship (6×22). Content is defined in JSON files and displayed on a schedule with priority queueing. Ships with bundled contrib content (opt-in via CONTENT_ENABLED) and supports personal content via a host-mounted directory.</Overview>
   <Category>HomeAutomation</Category>
   <TemplateURL>https://raw.githubusercontent.com/JasonPuglisi/e-note-ion/main/unraid/e-note-ion.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/JasonPuglisi/e-note-ion/main/assets/icon.png</Icon>
@@ -24,11 +24,22 @@
     Mask="true"/>
 
   <Config
-    Name="Content directory"
-    Target="/app/content"
+    Name="Enabled contrib content"
+    Target="CONTENT_ENABLED"
+    Default=""
+    Mode=""
+    Description="Comma-separated list of bundled content file stems to enable (e.g. aria,bart), or * to enable all. Leave blank to disable all bundled content and use only your personal content directory."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"/>
+
+  <Config
+    Name="User content directory"
+    Target="/app/content/user"
     Default=""
     Mode="rw"
-    Description="Optional. Path to a directory of content JSON files on the host. If left blank, the bundled sample content runs automatically. Mount your own directory here to use custom templates instead."
+    Description="Optional. Path to a directory of personal content JSON files on the host. Files placed here are always loaded automatically. Leave blank if you only want to use bundled contrib content."
     Type="Path"
     Display="always"
     Required="false"

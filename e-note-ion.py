@@ -3,14 +3,17 @@
 # Scheduler for sending timed messages to a Vestaboard split-flap display.
 # Supports both the Note (3×15) and Flagship (6×22); defaults to Note.
 #
-# Content is defined in JSON files under content/. Each file describes one or
-# more named templates, each with its own cron schedule, priority, and timing
-# constraints. At runtime, scheduled messages are pushed into a priority queue
-# and consumed by a single worker thread that sends them to the display one at
-# a time, ensuring the physical flaps are never driven concurrently.
+# Content is defined in JSON files under content/contrib/ (bundled, opt-in
+# via --content-enabled) and content/user/ (personal, always loaded). Each
+# file describes one or more named templates, each with its own cron schedule,
+# priority, and timing constraints. At runtime, scheduled messages are pushed
+# into a priority queue and consumed by a single worker thread that sends them
+# to the display one at a time, ensuring the physical flaps are never driven
+# concurrently.
 #
 # Run with --flagship to target a Flagship board, --public to restrict output
-# to templates marked as public (useful when the display is in a shared space).
+# to templates marked as public (useful when the display is in a shared
+# space), and --content-enabled to opt into bundled contrib content.
 
 import argparse
 import json
@@ -157,7 +160,9 @@ def _load_file(
   with open(content_file) as f:
     content = json.load(f)
 
-  stem = content_file.stem
+  # Prefix the stem with the parent directory name (user or contrib) so that
+  # files with the same name in different directories don't collide.
+  stem = f'{content_file.parent.name}.{content_file.stem}'
   new_jobs = []
   for template_name, template in content['templates'].items():
     if public_mode and not template['public']:
@@ -195,44 +200,68 @@ def _load_file(
 def load_content(
   scheduler: BackgroundScheduler,
   public_mode: bool = False,
+  content_enabled: set[str] | None = None,
 ) -> None:
-  # Reads all JSON files from content/ and registers each template as a
-  # scheduled job. In public mode, templates marked public: false are skipped.
-  content_path = Path('content')
-  for content_file in content_path.glob('*.json'):
-    _load_file(scheduler, content_file, public_mode)
+  # Reads JSON files from content/user/ (always) and content/contrib/
+  # (only stems listed in content_enabled, or all if '*' is present).
+  if content_enabled is None:
+    content_enabled = set()
+
+  user_path = Path('content') / 'user'
+  if user_path.is_dir():
+    for f in sorted(user_path.glob('*.json')):
+      _load_file(scheduler, f, public_mode)
+
+  contrib_path = Path('content') / 'contrib'
+  if contrib_path.is_dir() and content_enabled:
+    for f in sorted(contrib_path.glob('*.json')):
+      if '*' in content_enabled or f.stem in content_enabled:
+        _load_file(scheduler, f, public_mode)
 
 
 def watch_content(
   scheduler: BackgroundScheduler,
   public_mode: bool,
+  content_enabled: set[str],
   interval: int = 5,
 ) -> None:
-  # Daemon thread that polls content/*.json every `interval` seconds and
+  # Daemon thread that polls content directories every `interval` seconds and
   # reloads jobs whenever files are added, removed, or modified.
-  content_path = Path('content')
-  mtimes: dict[Path, float] = {p: p.stat().st_mtime for p in content_path.glob('*.json')}
+  def eligible_files() -> set[Path]:
+    files: set[Path] = set()
+    user_path = Path('content') / 'user'
+    if user_path.is_dir():
+      files |= set(user_path.glob('*.json'))
+    contrib_path = Path('content') / 'contrib'
+    if contrib_path.is_dir() and content_enabled:
+      for p in contrib_path.glob('*.json'):
+        if '*' in content_enabled or p.stem in content_enabled:
+          files.add(p)
+    return files
+
+  mtimes: dict[Path, float] = {p: p.stat().st_mtime for p in eligible_files()}
 
   while True:
     time.sleep(interval)
     try:
-      current = set(content_path.glob('*.json'))
+      current = eligible_files()
       known = set(mtimes)
 
       for path in current - known:
         try:
           _load_file(scheduler, path, public_mode)
           mtimes[path] = path.stat().st_mtime
-          print(f'Content loaded: {path.name}')
+          print(f'Content loaded: {path.parent.name}/{path.name}')
         except Exception as e:
-          print(f'Error reloading {path.name}: {e}')
+          print(f'Error loading {path.parent.name}/{path.name}: {e}')
 
       for path in known - current:
+        stem = f'{path.parent.name}.{path.stem}'
         for job in scheduler.get_jobs():
-          if job.id.startswith(f'{path.stem}.'):
+          if job.id.startswith(f'{stem}.'):
             job.remove()
         del mtimes[path]
-        print(f'Content removed: {path.name}')
+        print(f'Content removed: {path.parent.name}/{path.name}')
 
       for path in current & known:
         try:
@@ -243,9 +272,9 @@ def watch_content(
           try:
             _load_file(scheduler, path, public_mode)
             mtimes[path] = mtime
-            print(f'Content reloaded: {path.name}')
+            print(f'Content reloaded: {path.parent.name}/{path.name}')
           except Exception as e:
-            print(f'Error reloading {path.name}: {e}')
+            print(f'Error reloading {path.parent.name}/{path.name}: {e}')
     except Exception as e:
       print(f'Watcher error: {e}')
 
@@ -258,19 +287,34 @@ def main() -> None:
     action='store_true',
     help='Target a Vestaboard Flagship (6×22) instead of a Note (3×15)',
   )
+  parser.add_argument(
+    '--content-enabled',
+    default='',
+    help=(
+      'Comma-separated list of contrib content file stems to enable '
+      '(e.g. aria,bart), or * to enable all bundled contrib content. '
+      'Contrib content is disabled by default.'
+    ),
+  )
   args = parser.parse_args()
 
   if args.flagship:
     vestaboard.model = vestaboard.VestaboardModel.FLAGSHIP
 
+  content_enabled = set(filter(None, args.content_enabled.split(',')))
+
   print('Current message:')
   print(vestaboard.get_state())
   scheduler = BackgroundScheduler(misfire_grace_time=300)
-  load_content(scheduler, public_mode=args.public)
+  load_content(scheduler, public_mode=args.public, content_enabled=content_enabled)
   scheduler.start()
 
   threading.Thread(target=worker, daemon=True).start()
-  threading.Thread(target=watch_content, args=(scheduler, args.public), daemon=True).start()
+  threading.Thread(
+    target=watch_content,
+    args=(scheduler, args.public, content_enabled),
+    daemon=True,
+  ).start()
 
   try:
     while True:

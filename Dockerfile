@@ -19,13 +19,15 @@ ENV UV_COMPILE_BYTECODE=1 \
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
-# Copy source and bundled sample content.
+# Copy source and bundled contrib content.
 COPY e-note-ion.py entrypoint.sh ./
 COPY integrations/ ./integrations/
-COPY content/ ./content/
+COPY content/contrib/ ./content/contrib/
 
-# Ensure entrypoint is executable and drop to a non-root user.
-RUN chmod +x entrypoint.sh \
+# Create user content directory, ensure entrypoint is executable, drop to
+# a non-root user.
+RUN mkdir -p content/user \
+    && chmod +x entrypoint.sh \
     && chown -R nobody:nogroup /app
 
 USER nobody
@@ -33,6 +35,6 @@ USER nobody
 # Put the venv on PATH so `python` resolves without needing `uv run`.
 ENV PATH="/app/.venv/bin:$PATH"
 
-VOLUME ["/app/content"]
+VOLUME ["/app/content/user"]
 
 ENTRYPOINT ["/app/entrypoint.sh"]
