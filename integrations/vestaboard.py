@@ -141,6 +141,19 @@ _CHAR_CODES: dict[str, int] = {ch: code for code, ch in enumerate(_CHAR_MAP) if 
 _CHAR_CODES['❤️'] = 62  # U+2764 + U+FE0F variation selector
 _CHAR_CODES['°'] = 62  # degree sign on the Flagship (same code as ❤ on Note)
 
+# Short color tags usable in format strings and integration output.
+# Each tag is exactly 3 characters and encodes to a Vestaboard color square.
+_COLOR_TAGS: dict[str, int] = {
+  '[R]': 63,  # red
+  '[O]': 64,  # orange
+  '[Y]': 65,  # yellow
+  '[G]': 66,  # green
+  '[B]': 67,  # blue
+  '[V]': 68,  # violet
+  '[W]': 69,  # white
+  '[K]': 70,  # black
+}
+
 
 # --- Board color ---
 
@@ -224,8 +237,9 @@ def _encode_char(ch: str) -> int:
 def _encode_line(text: str) -> list[int]:
   """Encode a text string into a row of model.cols integer character codes.
 
-  Handles the two-character ❤️ emoji sequence. Output is truncated to
-  model.cols characters and zero-padded on the right.
+  Handles the two-character ❤️ emoji sequence and three-character color tags
+  (e.g. [G], [R]). Output is truncated to model.cols characters and
+  zero-padded on the right.
   """
   cols = model.cols
   codes: list[int] = []
@@ -234,6 +248,9 @@ def _encode_line(text: str) -> list[int]:
     if text[i : i + 2] == '❤️':
       codes.append(62)
       i += 2
+    elif (tag := text[i : i + 3]) in _COLOR_TAGS:
+      codes.append(_COLOR_TAGS[tag])
+      i += 3
     else:
       codes.append(_encode_char(text[i]))
       i += 1
@@ -275,12 +292,14 @@ def _expand_format(
 
 
 def _display_len(text: str) -> int:
-  """Count display characters, treating the two-char ❤️ sequence as one."""
+  """Count display characters, treating ❤️ and color tags as single chars."""
   count = 0
   i = 0
   while i < len(text):
     if text[i : i + 2] == '❤️':
       i += 2
+    elif text[i : i + 3] in _COLOR_TAGS:
+      i += 3
     else:
       i += 1
     count += 1
@@ -296,6 +315,9 @@ def _truncate(text: str, max_cols: int) -> str:
     if text[i : i + 2] == '❤️':
       result.append('❤️')
       i += 2
+    elif (tag := text[i : i + 3]) in _COLOR_TAGS:
+      result.append(tag)
+      i += 3
     else:
       result.append(text[i])
       i += 1
