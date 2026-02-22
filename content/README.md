@@ -22,12 +22,6 @@ To contribute content, open a pull request adding a JSON file here.
 
 ### Files
 
-#### `aria.json`
-
-Sample content for Aria, a cat. Schedules breakfast and dinner reminders at
-08:00 and 20:00, with an hourly default message, each paired with a random
-cat-themed quip.
-
 #### `bart.json`
 
 BART real-time departure board. Shows upcoming departures from a configured
