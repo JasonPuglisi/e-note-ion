@@ -70,9 +70,9 @@
   <Config
     Name="BART line 1 destination"
     Target="BART_LINE_1_DEST"
-    Default="Antioch|Berryessa/North San Jose|Daly City|Dublin/Pleasanton|Millbrae|Pittsburg/Bay Point|Richmond|San Francisco Intl Airport"
+    Default="ANTC|BERY|DALY|DUBL|MLBR|PITT|PCTR|RICH|SFIA"
     Mode=""
-    Description="Required if using the BART integration. Destination for the first departure line shown."
+    Description="Required if using the BART integration. Destination station abbreviation code for the first departure line shown. See https://api.bart.gov/docs/overview/abbrev.aspx"
     Type="Variable"
     Display="always"
     Required="false"
@@ -81,9 +81,9 @@
   <Config
     Name="BART line 2 destination"
     Target="BART_LINE_2_DEST"
-    Default="|Antioch|Berryessa/North San Jose|Daly City|Dublin/Pleasanton|Millbrae|Pittsburg/Bay Point|Richmond|San Francisco Intl Airport"
+    Default="|ANTC|BERY|DALY|DUBL|MLBR|PITT|PCTR|RICH|SFIA"
     Mode=""
-    Description="Optional second BART departure line. Leave blank to show only one line."
+    Description="Optional second BART departure line. Station abbreviation code. Leave blank to show only one line."
     Type="Variable"
     Display="always"
     Required="false"
