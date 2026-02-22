@@ -172,10 +172,11 @@ Steps:
 5. Verify signing succeeded: `git log -1 --show-signature` must show a valid signature before pushing
 6. `git push -u origin feat/description`
 7. `gh pr create --label <label> --assignee JasonPuglisi`
-8. Enable auto-merge: `gh pr merge --squash --delete-branch --auto`; CI will merge automatically once checks pass
-9. After merge: `git checkout main && git pull && git branch -d feat/description`
-9. Keep `README.md` up to date with any user-facing changes
-10. For any TODOs identified during work, create a GitHub issue assigned to JasonPuglisi and the appropriate milestone
+8. Enable auto-merge: `gh pr merge --squash --delete-branch --auto`
+9. Wait for merge: `gh pr checks <number> --watch`; once all pass and the PR merges, proceed
+10. After merge: `git checkout main && git pull && git branch -d feat/description`
+11. Keep `README.md` up to date with any user-facing changes
+12. For any TODOs identified during work, create a GitHub issue assigned to JasonPuglisi and the appropriate milestone
 
 ## Release Strategy
 
