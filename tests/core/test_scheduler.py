@@ -556,3 +556,36 @@ def test_main_content_enabled_in_banner(monkeypatch: pytest.MonkeyPatch, capsys:
     _mod.main()
   out = capsys.readouterr().out
   assert 'contrib: bart' in out
+
+
+# --- _get_integration ---
+
+
+def test_get_integration_unknown_raises() -> None:
+  with pytest.raises(ValueError, match='Unknown integration'):
+    _mod._get_integration('os')
+
+
+def test_get_integration_path_traversal_raises() -> None:
+  with pytest.raises(ValueError, match='Unknown integration'):
+    _mod._get_integration('../something')
+
+
+def test_get_integration_known_loads_module() -> None:
+  import integrations.bart as bart_mod
+
+  with patch('importlib.import_module', return_value=bart_mod) as mock_import:
+    result = _mod._get_integration('bart')
+  mock_import.assert_called_once_with('integrations.bart')
+  assert result is bart_mod
+
+
+def test_get_integration_caches_module() -> None:
+  import integrations.bart as bart_mod
+
+  # Clear cache so the test starts fresh.
+  _mod._integrations.pop('bart', None)
+  with patch('importlib.import_module', return_value=bart_mod) as mock_import:
+    _mod._get_integration('bart')
+    _mod._get_integration('bart')
+  mock_import.assert_called_once()
