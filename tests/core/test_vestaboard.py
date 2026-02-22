@@ -205,6 +205,92 @@ def test_build_grid_flagship_dimensions(monkeypatch: pytest.MonkeyPatch) -> None
   assert all(len(row) == vb.VestaboardModel.FLAGSHIP.cols for row in grid)
 
 
+# --- _next_token ---
+
+
+def test_next_token_heart() -> None:
+  assert vb._next_token('❤️', 0) == ('❤️', 2)  # noqa: SLF001
+
+
+def test_next_token_color_tag() -> None:
+  assert vb._next_token('[G]', 0) == ('[G]', 3)  # noqa: SLF001
+
+
+def test_next_token_escaped_color_tag() -> None:
+  tok, consumed = vb._next_token('[[G]]', 0)  # noqa: SLF001
+  assert tok == '[[G]]'
+  assert consumed == 5
+
+
+def test_next_token_single_char() -> None:
+  assert vb._next_token('A', 0) == ('A', 1)  # noqa: SLF001
+
+
+def test_next_token_incomplete_escaped_tag_not_matched() -> None:
+  # [[G] without closing ]] is NOT an escaped tag
+  tok, consumed = vb._next_token('[[G]', 0)  # noqa: SLF001
+  assert tok == '['  # falls through to single char
+  assert consumed == 1
+
+
+# --- _display_len (escaped tags) ---
+
+
+def test_display_len_escaped_color_tag() -> None:
+  assert vb._display_len('[[G]]') == 3  # noqa: SLF001
+
+
+def test_display_len_real_vs_escaped_tag() -> None:
+  assert vb._display_len('[G]') == 1  # noqa: SLF001
+  assert vb._display_len('[[G]]') == 3  # noqa: SLF001
+
+
+# --- _encode_line (escaped tags) ---
+
+
+def test_encode_line_escaped_color_tag_not_green() -> None:
+  result = vb._encode_line('[[G]]')  # noqa: SLF001
+  assert result[0] != 66  # must not be green (code 66)
+  assert result[1] == 7  # 'G' is code 7
+  assert result[2] == 0  # ']' is not in char map → blank
+  assert len(result) == vb.model.cols
+
+
+# --- _truncate (escaped tags) ---
+
+
+def test_truncate_does_not_split_escaped_color_tag() -> None:
+  # [[G]] is 3 display chars; truncating to 2 must not produce a partial sequence
+  result = vb._truncate('[[G]]AB', 2)  # noqa: SLF001
+  assert '[[G' not in result
+  assert vb._display_len(result) <= 2  # noqa: SLF001
+
+
+def test_truncate_includes_escaped_color_tag_when_it_fits() -> None:
+  # Truncating to 4 display chars: [[G]] (3) + A (1) fits
+  result = vb._truncate('[[G]]AB', 4)  # noqa: SLF001
+  assert result == '[[G]]A'
+  assert vb._display_len(result) == 4  # noqa: SLF001
+
+
+# --- _expand_format (brace escaping) ---
+
+
+def test_expand_format_escaped_braces_not_substituted() -> None:
+  result = vb._expand_format(['{{variable}}'], {'variable': [['VALUE']]})  # noqa: SLF001
+  assert result == ['{variable}']
+
+
+def test_expand_format_escaped_braces_in_inline() -> None:
+  result = vb._expand_format(['{{hi}} {name}'], {'name': [['WORLD']]})  # noqa: SLF001
+  assert result == ['{hi} WORLD']
+
+
+def test_expand_format_escaped_brace_whole_line_not_expanded() -> None:
+  result = vb._expand_format(['{{lines}}'], {'lines': [['A', 'B']]})  # noqa: SLF001
+  assert result == ['{lines}']
+
+
 # --- get_state ---
 
 
