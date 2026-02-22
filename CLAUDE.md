@@ -201,6 +201,15 @@ PR labels (apply one or more):
 - When working on existing code that lacks tests, add retroactive coverage as
   part of the same PR where feasible
 
+### Periodic health review
+
+At natural breakpoints (before a minor/major release, after a sprint of feature
+work), do a lightweight review of: test coverage gaps, code pattern consistency
+across integrations, dependency health (`pip-audit`), security posture (timeouts,
+key handling, `# nosec` justifications), documentation drift, and stale
+TODO/FIXME comments. Open issues for any gaps found; fix trivial things inline.
+See #65 for the full checklist.
+
 ### Planning before implementation
 
 All non-trivial work follows a plan-then-execute cycle:

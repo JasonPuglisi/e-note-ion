@@ -148,6 +148,19 @@ def _make_content(
   return {'templates': {'tmpl': template}}
 
 
+def test_load_file_prints_registration(
+  sched: BackgroundScheduler, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content()))
+  _mod._load_file(sched, f, False)
+  out = capsys.readouterr().out
+  assert 'test.json' in out
+  assert 'tmpl' in out
+  assert 'cron=' in out
+  assert 'priority=' in out
+
+
 def test_load_file_registers_job(sched: BackgroundScheduler, tmp_path: Path) -> None:
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))
@@ -307,3 +320,17 @@ def test_worker_board_locked_discards_after_timeout() -> None:
     with pytest.raises(KeyboardInterrupt):
       _mod.worker()
   assert _mod._queue.empty()
+
+
+def test_worker_log_includes_template_name(capsys: pytest.CaptureFixture[str]) -> None:
+  msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  msg.name = 'user.test.my_template'
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch('integrations.vestaboard.set_state'),
+    patch('time.sleep'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+  out = capsys.readouterr().out
+  assert 'user.test.my_template' in out
