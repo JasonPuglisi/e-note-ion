@@ -9,7 +9,6 @@ CLAUDE.md
 .pre-commit-config.yaml
 .DS_Store
 .python-version
-content/
 unraid/
 .github/
 README.md
