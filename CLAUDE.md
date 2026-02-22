@@ -65,24 +65,9 @@ for a physical split-flap device whose flaps need time to settle.
 ```
 
 Each content file belongs to a named person/context (e.g. `aria.json`).
-
-The `public` field controls visibility mode. When the program is run with
-`--public`, only templates with `"public": true` are scheduled — useful when
-the display is in a shared or guest-visible space. Templates with
-`"public": false` are personal/private and only run in the default mode.
-
-Variables are lists of options substituted into `{variable}` placeholders in
-template format strings. Each option is itself a list of strings (one per
-line). A format entry that is exactly `{variable}` expands into all lines of
-the chosen option; an inline `{variable}` within other text is replaced by the
-first line. Options are chosen at random. When a template has multiple
-`{ "format": [...] }` entries, one is also chosen at random.
-
-After variable expansion, lines are automatically word-wrapped to fit
-`model.cols`. Words are packed greedily; a word that alone exceeds the column
-width is hard-truncated. If wrapping produces more lines than `model.rows`,
-the excess is silently dropped. This means content from dynamic sources (e.g.
-API responses) doesn't need to be pre-fitted to the board dimensions.
+`{variable}` placeholders are replaced at random from `variables` options; a
+standalone `{variable}` entry expands to all lines of the chosen option. Lines
+are word-wrapped to fit `model.cols`; excess rows are silently dropped.
 
 ## Priority Queue Behaviour
 
@@ -153,22 +138,30 @@ PR labels (apply one or more):
 Steps:
 1. `git checkout -b feat/description`
 2. Make changes; run the full check suite
-3. Bump `version` in `pyproject.toml` following the rules below
+3. If release-worthy (see below), bump `version` in `pyproject.toml`
 4. Commit with `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
 5. Stop and ask the user to sign the commit before pushing
 6. `git push -u origin feat/description`
 7. `gh pr create --label <label>`
 8. After merge: `git checkout main && git pull && git branch -d feat/description`
+9. Keep `README.md` up to date with any user-facing changes
 
-## Versioning
+## Release Strategy
 
-Increment `version` in `pyproject.toml` with every PR using semver:
+Only create a GitHub release (and bump `version` in `pyproject.toml`) when the
+PR contains **release-worthy** changes:
 
-- **Patch** (`0.x.y` → `0.x.y+1`): bug fixes, dependency updates, docs,
-  tooling changes
-- **Minor** (`0.x.y` → `0.x+1.0`): new features, non-breaking additions
-- **Major** (`x.y.z` → `x+1.0.0`): breaking changes to content JSON format,
-  CLI interface, or Docker environment variables
+| Release-worthy | Not release-worthy |
+|---|---|
+| Source code changes (`.py` files) | CI/CD workflow changes |
+| Runtime dependency changes | Dev-only dependency changes |
+| `Dockerfile` or `entrypoint.sh` changes | Docs-only changes |
+| Security fixes | Repo config / tooling changes |
+
+Semver rules when bumping:
+- **Patch** (`0.x.y+1`): bug fixes, dependency updates, security fixes
+- **Minor** (`0.x+1.0`): new features, non-breaking additions
+- **Major** (`x+1.0.0`): breaking changes to content JSON, CLI, or Docker env vars
 
 ## Maintenance
 
@@ -191,11 +184,29 @@ GitHub Actions are pinned to full commit SHAs with a `# vX.Y.Z` comment.
 Dependabot reads the comment to identify the version and will open PRs to bump
 both the SHA and comment when new releases are available.
 
-## Documentation
+## To Do
 
-Keep `README.md` up to date whenever making changes. It is the user-facing
-reference and should accurately reflect the current setup, usage, and
-configuration options at all times.
+### Content strategy
+
+The current content model needs a more flexible approach to support both
+bundled defaults and user customisation without manual file editing or repo
+cloning. Key design goals:
+
+- **Public vs. private split**: public templates are safe to commit to the repo
+  (and may eventually accept community contributions); private templates contain
+  personal information and must never be committed
+- **Bundled defaults**: the image should ship with public sample content that
+  runs out of the box — no host mount required. Users who mount a host path
+  override this with their own files
+- **Easy customisation**: users (especially on Unraid) should be able to
+  configure their own content without cloning the repo or editing files
+  manually — possible approaches include environment-variable-driven templates,
+  a simple web UI, or a well-documented host-mount workflow
+- **Community contributions**: once public/private separation is clean, the
+  `content/` directory (or a `content/public/` subdirectory) could accept
+  contributed templates via PRs
+- Consider splitting `content/` into `content/public/` (committed, bundled in
+  image) and `content/private/` (gitignored, mounted from host)
 
 ## Code Conventions
 
