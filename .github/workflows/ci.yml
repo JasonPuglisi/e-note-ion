@@ -10,6 +10,8 @@ permissions:
   contents: read
 
 jobs:
+  # Required by the main branch ruleset. If you rename this job, update the
+  # ruleset at https://github.com/JasonPuglisi/e-note-ion/rules/13082160
   check:
     name: Lint, type-check, security scan, and tests
     runs-on: ubuntu-latest
@@ -47,6 +49,8 @@ jobs:
       - name: Run tests
         run: uv run pytest
 
+  # Required by the main branch ruleset. If you rename this job, update the
+  # ruleset at https://github.com/JasonPuglisi/e-note-ion/rules/13082160
   docker:
     name: Docker build
     runs-on: ubuntu-latest
