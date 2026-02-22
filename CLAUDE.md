@@ -155,8 +155,9 @@ Steps:
 2. Make changes; run the full check suite
 3. Bump `version` in `pyproject.toml` following the rules below
 4. Commit with `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
-5. `git push -u origin feat/description`
-6. `gh pr create --label <label>`
+5. Stop and ask the user to sign the commit before pushing
+6. `git push -u origin feat/description`
+7. `gh pr create --label <label>`
 
 ## Versioning
 
