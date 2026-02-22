@@ -52,8 +52,8 @@ Dockerfile                  # Single-stage image using ghcr.io/astral-sh/uv
 entrypoint.sh               # Translates env vars (FLAGSHIP/PUBLIC/CONTENT_ENABLED) to CLI flags
 .github/workflows/
   ci.yml                    # Runs checks on every push and pull request to main
-  auto-release.yml          # Creates a GitHub release on version bump, then calls release.yml
-  release.yml               # Builds + pushes multi-arch image to ghcr.io on release
+  auto-release.yml          # Creates a release on version bump; calls release.yml
+  release.yml               # Builds + pushes multi-arch image to ghcr.io
 SECURITY.md                 # Vulnerability disclosure policy and API key guidance
 assets/
   icon.png                  # App icon (256×256) for Unraid CA
@@ -209,7 +209,9 @@ Steps:
 11. Keep `README.md` and `CLAUDE.md` up to date as part of the same PR —
     new env vars, CLI flags, content format fields, project structure changes,
     and workflow changes should all be reflected before merge
-12. For any TODOs identified during work, create a GitHub issue assigned to JasonPuglisi with an appropriate milestone; reference the issue number in commit messages and PRs
+12. For any TODOs identified during work, create a GitHub issue assigned to
+    JasonPuglisi with an appropriate milestone; reference the issue number in
+    commit messages and PRs
 
 ## Release Strategy
 

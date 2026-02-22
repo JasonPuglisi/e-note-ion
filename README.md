@@ -127,7 +127,7 @@ display settings.
 | `timeout` | Seconds the message can wait in the queue before being discarded |
 | `priority` | Integer 0–10; higher number runs first when multiple messages are queued |
 | `public` | If `false`, excluded when running with `--public` |
-| `truncation` | How to handle overlong text: `hard` (default), `word` (cut at last full word), or `ellipsis` (cut at last word and append `...`) |
+| `truncation` | `hard` cuts mid-word (default); `word` stops at a word boundary; `ellipsis` adds `...` |
 
 ### Variables
 
