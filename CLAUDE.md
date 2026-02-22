@@ -206,7 +206,9 @@ Steps:
 8. Enable auto-merge: `gh pr merge --squash --delete-branch --auto`
 9. Wait for merge: `gh pr checks <number> --watch`; once all pass and the PR merges, proceed
 10. After merge: `git checkout main && git pull && git branch -d feat/description`
-11. Keep `README.md` up to date with any user-facing changes
+11. Keep `README.md` and `CLAUDE.md` up to date as part of the same PR —
+    new env vars, CLI flags, content format fields, project structure changes,
+    and workflow changes should all be reflected before merge
 12. For any TODOs identified during work, create a GitHub issue assigned to JasonPuglisi with an appropriate milestone; reference the issue number in commit messages and PRs
 
 ## Release Strategy
