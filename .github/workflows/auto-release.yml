@@ -4,16 +4,15 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: write
-  packages: write
-  attestations: write
-  id-token: write
+permissions: {}
 
 jobs:
   release:
     name: Create release on version bump
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: write  # create GitHub release
 
     outputs:
       tag: ${{ steps.create.outputs.tag }}

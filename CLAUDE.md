@@ -32,6 +32,13 @@ on this project collaboratively with the user.
 - Apply principle of least privilege — integrations should request only the
   OAuth scopes and API permissions they strictly need
 
+**Pre-v1.0 stance:**
+- No backwards compatibility concerns before v1.0 — breaking changes to the
+  content JSON format, CLI flags, Docker env vars, and internal APIs are all
+  fair game
+- Refactor early and often when it sets up a better foundation; don't hold
+  back to preserve existing behaviour
+
 **Decision-making:**
 - Raise security concerns proactively, even when not explicitly asked
 - Prefer reversible, auditable changes; flag anything destructive before acting
