@@ -30,11 +30,17 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 import integrations.vestaboard as vestaboard
 
+# Allowlist of valid integration names. Must be extended when a new integration
+# is added to integrations/.
+_KNOWN_INTEGRATIONS: frozenset[str] = frozenset({'bart'})
+
 # Cache of loaded integration modules, keyed by name.
 _integrations: dict[str, Any] = {}
 
 
 def _get_integration(name: str) -> Any:
+  if name not in _KNOWN_INTEGRATIONS:
+    raise ValueError(f'Unknown integration: {name!r}')
   if name not in _integrations:
     _integrations[name] = importlib.import_module(f'integrations.{name}')
   return _integrations[name]
