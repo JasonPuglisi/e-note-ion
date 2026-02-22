@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>e-note-ion</Name>
+  <Name>E•NOTE•ION</Name>
   <Repository>ghcr.io/jasonpuglisi/e-note-ion</Repository>
   <Registry>https://github.com/JasonPuglisi/e-note-ion/pkgs/container/e-note-ion</Registry>
   <Network>bridge</Network>
@@ -8,7 +8,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/JasonPuglisi/e-note-ion/issues</Support>
   <Project>https://github.com/JasonPuglisi/e-note-ion</Project>
-  <Overview>Cron-based content scheduler for a Vestaboard split-flap display. Supports both the Note (3x15) and Flagship (6x22). Content is defined in JSON files and displayed on a schedule with priority queueing.</Overview>
+  <Overview>E•NOTE•ION is a cron-based content scheduler for Vestaboard split-flap displays. Supports both the Note (3×15) and Flagship (6×22). Content is defined in JSON files and displayed on a schedule with priority queueing.</Overview>
   <Category>Tools:</Category>
   <WebUI/>
   <TemplateURL>https://raw.githubusercontent.com/JasonPuglisi/e-note-ion/main/unraid/e-note-ion.xml</TemplateURL>
