@@ -1,7 +1,7 @@
 [project]
 name = "E-NOTE-ION"
-version = "0.1.3"
-description = "Automation for Vestaboard displays - with emotion!"
+version = "0.1.4"
+description = "Automation for Vestaboard displays — with emotion!"
 keywords = ["vestaboard", "note", "flagship", "automation", "schedule", "scheduling"]
 authors = [
   { name = "Jason Puglisi", email = "jason@pugli.si" }
