@@ -223,6 +223,8 @@ prevention to the checklist or workflow — not just a one-off fix. Examples:
   of the Execution steps
 - CI job rename broke ruleset required check → added ruleset integrity to
   health review; added inline comments in `ci.yml` linking to ruleset
+- Post-merge runs not waited on → tightened step 10 to require watching
+  in-progress runs to completion before declaring done
 
 ### Planning before implementation
 
@@ -257,8 +259,9 @@ step may be skipped — use judgement.
 8. Enable auto-merge: `gh pr merge --squash --delete-branch --auto`
 9. Wait for merge: `gh pr checks <number> --watch`; once all pass and the PR merges, proceed
 10. After merge: `git checkout main && git pull && git branch -d feat/description`; then
-    check post-merge workflows on main with `gh run list --branch main --limit 5` and
-    verify no `startup_failure` or failed runs from the merge commit
+    check post-merge workflows on main with `gh run list --branch main --limit 5`,
+    watch any in-progress runs to completion (`gh run watch <id>`), and verify all
+    runs from the merge commit succeeded with no `startup_failure` or failures
 11. Keep `README.md` and `CLAUDE.md` up to date as part of the same PR —
     new env vars, CLI flags, content format fields, project structure changes,
     and workflow changes should all be reflected before merge
