@@ -99,13 +99,13 @@ def test_build_line_empty_estimates() -> None:
 
 
 def test_no_service_line_known_dest() -> None:
-  result = bart._no_service_line('Daly City')  # noqa: SLF001
+  result = bart._no_service_line('DALY')  # noqa: SLF001
   assert 'NO SERVICE' in result
   assert '[G]' in result
 
 
 def test_no_service_line_unknown_dest() -> None:
-  result = bart._no_service_line('Unknown City')  # noqa: SLF001
+  result = bart._no_service_line('ZZZZ')  # noqa: SLF001
   assert result == 'NO SERVICE'
 
 
@@ -116,7 +116,7 @@ def test_no_service_line_unknown_dest() -> None:
 def bart_env(monkeypatch: pytest.MonkeyPatch) -> None:
   monkeypatch.setenv('BART_API_KEY', 'testkey')
   monkeypatch.setenv('BART_STATION', 'MLPT')
-  monkeypatch.setenv('BART_LINE_1_DEST', 'Daly City')
+  monkeypatch.setenv('BART_LINE_1_DEST', 'DALY')
   monkeypatch.delenv('BART_LINE_2_DEST', raising=False)
 
 
@@ -154,6 +154,43 @@ def test_get_variables_missing_station(monkeypatch: pytest.MonkeyPatch) -> None:
   monkeypatch.delenv('BART_STATION', raising=False)
   with pytest.raises(RuntimeError, match='BART_STATION'):
     bart.get_variables()
+
+
+def test_get_variables_matches_by_abbreviation_code(bart_env: None) -> None:
+  # BART_LINE_1_DEST="DALY" matches ETD entry with abbreviation="DALY"
+  mock_resp = MagicMock()
+  mock_resp.json.return_value = _FAKE_ETD
+  mock_resp.raise_for_status.return_value = None
+  with patch('integrations.bart.requests.get', return_value=mock_resp):
+    result = bart.get_variables()
+  assert '[G]' in result['line1'][0][0]
+  assert '5' in result['line1'][0][0]
+
+
+def test_get_variables_code_matching_is_case_insensitive(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setenv('BART_API_KEY', 'testkey')
+  monkeypatch.setenv('BART_STATION', 'MLPT')
+  monkeypatch.setenv('BART_LINE_1_DEST', 'daly')  # lowercase
+  monkeypatch.delenv('BART_LINE_2_DEST', raising=False)
+  mock_resp = MagicMock()
+  mock_resp.json.return_value = _FAKE_ETD
+  mock_resp.raise_for_status.return_value = None
+  with patch('integrations.bart.requests.get', return_value=mock_resp):
+    result = bart.get_variables()
+  assert '[G]' in result['line1'][0][0]
+
+
+def test_get_variables_unknown_code_shows_no_service(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setenv('BART_API_KEY', 'testkey')
+  monkeypatch.setenv('BART_STATION', 'MLPT')
+  monkeypatch.setenv('BART_LINE_1_DEST', 'ZZZZ')
+  monkeypatch.delenv('BART_LINE_2_DEST', raising=False)
+  mock_resp = MagicMock()
+  mock_resp.json.return_value = _FAKE_ETD
+  mock_resp.raise_for_status.return_value = None
+  with patch('integrations.bart.requests.get', return_value=mock_resp):
+    result = bart.get_variables()
+  assert 'NO SERVICE' in result['line1'][0][0]
 
 
 def test_get_variables_line2_absent_when_not_set(bart_env: None) -> None:
@@ -220,8 +257,8 @@ _FAKE_ETD_TWO_DESTS: dict[str, Any] = {
 def test_get_variables_two_lines(monkeypatch: pytest.MonkeyPatch) -> None:
   monkeypatch.setenv('BART_API_KEY', 'testkey')
   monkeypatch.setenv('BART_STATION', 'MLPT')
-  monkeypatch.setenv('BART_LINE_1_DEST', 'Daly City')
-  monkeypatch.setenv('BART_LINE_2_DEST', 'Berryessa')
+  monkeypatch.setenv('BART_LINE_1_DEST', 'DALY')
+  monkeypatch.setenv('BART_LINE_2_DEST', 'BERY')
   mock_resp = MagicMock()
   mock_resp.json.return_value = _FAKE_ETD_TWO_DESTS
   mock_resp.raise_for_status.return_value = None
@@ -237,7 +274,7 @@ def test_get_variables_http_error_does_not_leak_key(monkeypatch: pytest.MonkeyPa
   api_key = 'supersecretkey99'
   monkeypatch.setenv('BART_API_KEY', api_key)
   monkeypatch.setenv('BART_STATION', 'MLPT')
-  monkeypatch.setenv('BART_LINE_1_DEST', 'Daly City')
+  monkeypatch.setenv('BART_LINE_1_DEST', 'DALY')
   mock_resp = MagicMock()
   mock_resp.status_code = 401
   mock_resp.reason = 'Unauthorized'

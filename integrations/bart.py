@@ -35,34 +35,33 @@ _LINE_COLOR_TAG: dict[str, str] = {
   'BEIGE': '[W]',  # no beige on Vestaboard; white is closest
 }
 
-# Static fallback: destination substring (lowercase) → color tag.
+# Static fallback: destination abbreviation code → color tag.
 # Used when the API returns no estimates for a destination so we can still
 # show a color square alongside the no-service indicator.
 # Where a destination is served by multiple lines with different colors, the
 # most common pairing for typical commute use is listed.
 _DEST_COLOR_FALLBACK: dict[str, str] = {
-  'antioch': '[Y]',
-  'berryessa': '[G]',
-  'daly city': '[G]',
-  'dublin': '[B]',
-  'millbrae': '[R]',
-  'pittsburg': '[Y]',
-  'richmond': '[O]',
-  'san francisco': '[R]',
+  'ANTC': '[Y]',  # Antioch
+  'BERY': '[G]',  # Berryessa/North San José
+  'DALY': '[G]',  # Daly City
+  'DUBL': '[B]',  # Dublin/Pleasanton
+  'MLBR': '[R]',  # Millbrae
+  'PITT': '[Y]',  # Pittsburg/Bay Point
+  'PCTR': '[Y]',  # Pittsburg Center
+  'RICH': '[O]',  # Richmond
+  'SFIA': '[R]',  # San Francisco Intl Airport
 }
 
 
-def _no_service_line(dest_filter: str) -> str:
-  """Return a no-service display line for the given destination filter.
+def _no_service_line(dest_code: str) -> str:
+  """Return a no-service display line for the given destination abbreviation code.
 
-  Looks up a color tag from the static fallback map using substring matching,
-  producing e.g. '[G] NO SERVICE'. Falls back to 'NO SERVICE' if no color
-  can be determined.
+  Looks up a color tag from the static fallback map, producing e.g.
+  '[G] NO SERVICE'. Falls back to 'NO SERVICE' if the code is unknown.
   """
-  dest_lower = dest_filter.lower()
-  for key, tag in _DEST_COLOR_FALLBACK.items():
-    if key in dest_lower or dest_lower in key:
-      return f'{tag} NO SERVICE'
+  tag = _DEST_COLOR_FALLBACK.get(dest_code.upper())
+  if tag:
+    return f'{tag} NO SERVICE'
   return 'NO SERVICE'
 
 
@@ -101,8 +100,7 @@ def get_variables() -> dict[str, list[list[str]]]:
   station_raw = os.environ.get('BART_STATION', '').strip()
   if not station_raw:
     raise RuntimeError('BART_STATION environment variable is not set')
-  # Accept both raw codes (MLPT) and dropdown format (MLPT - Milpitas).
-  station = station_raw.split()[0]
+  station = station_raw
 
   dest_filters = [d for key in ('BART_LINE_1_DEST', 'BART_LINE_2_DEST') if (d := os.environ.get(key, '').strip())]
   if not dest_filters:
@@ -128,10 +126,10 @@ def get_variables() -> dict[str, list[list[str]]]:
     'station': [[station_name]],
   }
 
-  for i, dest_filter in enumerate(dest_filters, 1):
-    line_value = _no_service_line(dest_filter)
+  for i, dest_code in enumerate(dest_filters, 1):
+    line_value = _no_service_line(dest_code)
     for etd in etds:
-      if dest_filter.lower() in etd['destination'].lower():
+      if dest_code.upper() == etd.get('abbreviation', '').upper():
         estimates = etd.get('estimate', [])
         if estimates:
           color_tag = _LINE_COLOR_TAG.get(estimates[0].get('color', ''), '[ ]')
