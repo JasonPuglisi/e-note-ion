@@ -220,6 +220,7 @@ def _load_file(
     if job.id.startswith(f'{stem}.'):
       job.remove()
 
+  max_name = max((len(job_id[len(stem) + 1 :]) for job_id, *_ in new_jobs), default=0)
   if new_jobs:
     print(f'Loaded {content_file.parent.name}/{content_file.name}:')
   for job_id, priority, data, schedule in new_jobs:
@@ -232,7 +233,7 @@ def _load_file(
     )
     template_name = job_id[len(stem) + 1 :]
     print(
-      f'  · {template_name}'
+      f'  · {template_name.ljust(max_name)}'
       f'  cron="{schedule["cron"]}"'
       f'  priority={priority}'
       f'  hold={schedule["hold"]}s'
