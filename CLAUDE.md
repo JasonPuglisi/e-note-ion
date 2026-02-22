@@ -110,20 +110,11 @@ The image is built on `ghcr.io/astral-sh/uv:python3.14-bookworm-slim` and
 published to `ghcr.io/jasonpuglisi/e-note-ion` via GitHub Actions on each
 release. Multi-arch: `linux/amd64` and `linux/arm64`.
 
-Runtime configuration via environment variables (used by `entrypoint.sh`):
+Runtime env vars (via `entrypoint.sh`): `VESTABOARD_KEY` (required),
+`FLAGSHIP=true` (Flagship 6×22), `PUBLIC=true` (public templates only).
 
-| Variable        | Values        | Default | Effect                            |
-|-----------------|---------------|---------|-----------------------------------|
-| `VESTABOARD_KEY`| string        | —       | API key (required)                |
-| `FLAGSHIP`      | `true`/`false`| `false` | Targets Flagship (6×22) board     |
-| `PUBLIC`        | `true`/`false`| `false` | Restricts to public templates     |
-
-Sample content is bundled in the image at `/app/content` and runs
-automatically. A host path can be mounted over `/app/content` to use custom
-templates instead (optional). Example Unraid path:
-`/mnt/user/appdata/e-note-ion/content`.
-
-The Unraid Community Applications template is at `unraid/e-note-ion.xml`.
+Sample content is bundled at `/app/content`; optionally override by mounting
+a host path there. Unraid CA template: `unraid/e-note-ion.xml`.
 
 ## Development Workflow
 
@@ -146,12 +137,12 @@ Steps:
 2. Make changes; run the full check suite
 3. If release-worthy (see below), bump `version` in `pyproject.toml`
 4. Commit with `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
-5. Stop and ask the user to sign the commit before pushing
+5. Tell the user to sign (`git commit --amend --no-edit -S`) and wait for confirmation
 6. `git push -u origin feat/description`
-7. `gh pr create --label <label>`
+7. `gh pr create --label <label> --assignee JasonPuglisi`
 8. After merge: `git checkout main && git pull && git branch -d feat/description`
 9. Keep `README.md` up to date with any user-facing changes
-10. For any TODOs identified during work, create a GitHub issue and assign to the appropriate milestone
+10. For any TODOs identified during work, create a GitHub issue assigned to JasonPuglisi and the appropriate milestone
 
 ## Release Strategy
 
