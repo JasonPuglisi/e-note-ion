@@ -190,6 +190,10 @@ PR labels (apply one or more):
 - `security` — security fixes or improvements
 - `dependencies` — dependency updates
 
+When the user asks for a new feature or fix, create a GitHub issue first to
+track the work, then implement it. Always assign the issue to JasonPuglisi and
+set an appropriate milestone.
+
 Steps:
 1. `git checkout -b feat/description`
 2. Make changes; run the full check suite
@@ -203,7 +207,7 @@ Steps:
 9. Wait for merge: `gh pr checks <number> --watch`; once all pass and the PR merges, proceed
 10. After merge: `git checkout main && git pull && git branch -d feat/description`
 11. Keep `README.md` up to date with any user-facing changes
-12. For any TODOs identified during work, create a GitHub issue assigned to JasonPuglisi and the appropriate milestone
+12. For any TODOs identified during work, create a GitHub issue assigned to JasonPuglisi with an appropriate milestone; reference the issue number in commit messages and PRs
 
 ## Release Strategy
 
