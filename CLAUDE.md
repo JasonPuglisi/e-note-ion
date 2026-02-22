@@ -19,6 +19,10 @@ entrypoint.sh               # Translates FLAGSHIP/PUBLIC env vars to CLI flags
   ci.yml                    # Runs checks on every push and pull request to main
   release.yml               # Builds + pushes multi-arch image to ghcr.io on release
 SECURITY.md                 # Vulnerability disclosure policy and API key guidance
+assets/
+  icon.png                  # App icon (256×256) for Unraid CA
+  social-preview.png        # GitHub repository social preview (1280×640)
+  README.md                 # AI generation prompts for both images
 unraid/
   e-note-ion.xml            # Unraid Community Applications template
 ```
@@ -114,7 +118,9 @@ Runtime configuration via environment variables (used by `entrypoint.sh`):
 | `FLAGSHIP`      | `true`/`false`| `false` | Targets Flagship (6×22) board     |
 | `PUBLIC`        | `true`/`false`| `false` | Restricts to public templates     |
 
-Content files are mounted at `/app/content`. Example Unraid path:
+Sample content is bundled in the image at `/app/content` and runs
+automatically. A host path can be mounted over `/app/content` to use custom
+templates instead (optional). Example Unraid path:
 `/mnt/user/appdata/e-note-ion/content`.
 
 The Unraid Community Applications template is at `unraid/e-note-ion.xml`.
@@ -145,6 +151,7 @@ Steps:
 7. `gh pr create --label <label>`
 8. After merge: `git checkout main && git pull && git branch -d feat/description`
 9. Keep `README.md` up to date with any user-facing changes
+10. For any TODOs identified during work, create a GitHub issue and assign to the appropriate milestone
 
 ## Release Strategy
 
@@ -186,34 +193,14 @@ both the SHA and comment when new releases are available.
 
 ## To Do
 
-### Misfire handling
+Open issues are tracked on GitHub: https://github.com/JasonPuglisi/e-note-ion/issues
 
-APScheduler supports a `misfire_grace_time` parameter on the scheduler that
-re-fires jobs missed during downtime (e.g. container restarts) if they fall
-within a configurable window. Add this to `BackgroundScheduler()` so brief
-restarts don't leave the display stale. No state persistence needed.
+Milestones:
+- **v1.0 — Public Release**: CA submission (#10), misfire handling (#11)
+- **Content & Integrations**: public/private content strategy (#12), default content and API integrations (#13)
 
-### Content strategy
-
-The current content model needs a more flexible approach to support both
-bundled defaults and user customisation without manual file editing or repo
-cloning. Key design goals:
-
-- **Public vs. private split**: public templates are safe to commit to the repo
-  (and may eventually accept community contributions); private templates contain
-  personal information and must never be committed
-- **Bundled defaults**: the image should ship with public sample content that
-  runs out of the box — no host mount required. Users who mount a host path
-  override this with their own files
-- **Easy customisation**: users (especially on Unraid) should be able to
-  configure their own content without cloning the repo or editing files
-  manually — possible approaches include environment-variable-driven templates,
-  a simple web UI, or a well-documented host-mount workflow
-- **Community contributions**: once public/private separation is clean, the
-  `content/` directory (or a `content/public/` subdirectory) could accept
-  contributed templates via PRs
-- Consider splitting `content/` into `content/public/` (committed, bundled in
-  image) and `content/private/` (gitignored, mounted from host)
+When identifying new TODOs during development, create a GitHub issue rather
+than adding prose here. Reference the issue number in commit messages and PRs.
 
 ## Code Conventions
 
