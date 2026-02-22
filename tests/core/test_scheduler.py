@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import time
 from pathlib import Path
 from queue import Empty
@@ -412,8 +413,11 @@ def test_watch_content_detects_modified_file(
     nonlocal sleep_count
     sleep_count += 1
     if sleep_count == 1:
-      # Rewrite the file to bump its mtime.
       existing.write_text(json.dumps(_make_content()))
+      # Explicitly advance mtime by 1s — on fast CI filesystems two writes
+      # within the same timestamp quantum produce identical mtimes.
+      st = existing.stat()
+      os.utime(existing, (st.st_atime + 1, st.st_mtime + 1))
     else:
       raise KeyboardInterrupt
 
