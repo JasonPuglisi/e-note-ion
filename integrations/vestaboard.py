@@ -24,9 +24,9 @@ import requests
 # --- API configuration ---
 
 try:
-  _API_KEY = os.environ['VESTABOARD_KEY']
+  _API_KEY = os.environ['VESTABOARD_API_KEY']
 except KeyError:
-  print('Vestaboard API key missing in environment variable `VESTABOARD_KEY`')
+  print('Vestaboard API key missing in environment variable `VESTABOARD_API_KEY`')
   sys.exit(1)
 
 _HOST = 'https://rw.vestaboard.com'

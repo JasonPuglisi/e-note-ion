@@ -25,7 +25,7 @@ it by name, or mount your own content directory:
 docker run -d \
   --name e-note-ion \
   --restart unless-stopped \
-  -e VESTABOARD_KEY=your_api_key_here \
+  -e VESTABOARD_API_KEY=your_api_key_here \
   -e CONTENT_ENABLED=bart \
   ghcr.io/jasonpuglisi/e-note-ion:latest
 ```
@@ -67,7 +67,7 @@ path for personal content.
 
 ```bash
 uv sync
-export VESTABOARD_KEY=your_api_key_here
+export VESTABOARD_API_KEY=your_api_key_here
 python e-note-ion.py
 ```
 
