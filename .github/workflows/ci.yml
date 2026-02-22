@@ -41,6 +41,9 @@ jobs:
       - name: pip-audit
         run: uv run pip-audit
 
+      - name: Pretty-format JSON
+        run: uv run pre-commit run pretty-format-json --all-files
+
       - name: Run tests
         run: uv run pytest
 
