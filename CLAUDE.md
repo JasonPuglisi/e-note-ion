@@ -58,7 +58,7 @@ on this project collaboratively with the user.
 ## Project Structure
 
 ```
-e-note-ion.py               # Entry point — scheduler, queue, worker
+scheduler.py                # Entry point — scheduler, queue, worker
 integrations/vestaboard.py  # Vestaboard API client (get_state, set_state)
 integrations/bart.py        # BART real-time departures integration
 content/

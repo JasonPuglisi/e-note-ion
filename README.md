@@ -94,15 +94,15 @@ path for personal content.
 ```bash
 uv sync
 export VESTABOARD_API_KEY=your_api_key_here
-python e-note-ion.py
+python scheduler.py
 ```
 
 ```bash
-python e-note-ion.py                          # Note (3×15), user content only
-python e-note-ion.py --content-enabled bart   # also enable contrib/bart.json
-python e-note-ion.py --content-enabled '*'    # enable all contrib content
-python e-note-ion.py --flagship               # Flagship (6×22)
-python e-note-ion.py --public                 # public templates only
+python scheduler.py                          # Note (3×15), user content only
+python scheduler.py --content-enabled bart   # also enable contrib/bart.json
+python scheduler.py --content-enabled '*'    # enable all contrib content
+python scheduler.py --flagship               # Flagship (6×22)
+python scheduler.py --public                 # public templates only
 ```
 
 Flags can be combined.
