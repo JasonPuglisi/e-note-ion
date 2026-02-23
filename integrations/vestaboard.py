@@ -247,7 +247,7 @@ class VestaboardState:
   ) -> None:
     current = state['currentMessage']
     self.id: str = current['id']
-    self.appeared: str = current['appeared']
+    self.appeared: int | str = current['appeared']  # int (virtual) or str (physical)
     self.layout: list[list[int]] = json.loads(current['layout'])
     self.color = color
 
