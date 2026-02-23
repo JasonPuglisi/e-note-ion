@@ -586,6 +586,7 @@ def test_main_note_startup_banner(monkeypatch: pytest.MonkeyPatch, capsys: pytes
   monkeypatch.setattr('sys.argv', ['e-note-ion.py'])
   mock_sched = _mock_sched()
   with (
+    patch.object(_mod, '_validate_startup'),
     patch('config.load_config'),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
@@ -605,6 +606,7 @@ def test_main_flagship_sets_model_and_banner(
   monkeypatch.setattr(vb, 'model', vb.VestaboardModel.NOTE)  # ensures restoration
   mock_sched = _mock_sched()
   with (
+    patch.object(_mod, '_validate_startup'),
     patch('config.load_config'),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
@@ -622,6 +624,7 @@ def test_main_public_mode_in_banner(monkeypatch: pytest.MonkeyPatch, capsys: pyt
   monkeypatch.setattr('sys.argv', ['e-note-ion.py', '--public'])
   mock_sched = _mock_sched()
   with (
+    patch.object(_mod, '_validate_startup'),
     patch('config.load_config'),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
@@ -638,6 +641,7 @@ def test_main_content_enabled_in_banner(monkeypatch: pytest.MonkeyPatch, capsys:
   monkeypatch.setattr('sys.argv', ['e-note-ion.py', '--content-enabled', 'bart'])
   mock_sched = _mock_sched()
   with (
+    patch.object(_mod, '_validate_startup'),
     patch('config.load_config'),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
@@ -654,6 +658,7 @@ def test_main_empty_board_on_startup(monkeypatch: pytest.MonkeyPatch, capsys: py
   monkeypatch.setattr('sys.argv', ['e-note-ion.py'])
   mock_sched = _mock_sched()
   with (
+    patch.object(_mod, '_validate_startup'),
     patch('config.load_config'),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', side_effect=vb.EmptyBoardError('no message')),
