@@ -29,7 +29,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["scheduler", "config"]
+py-modules = ["scheduler", "config", "exceptions"]
 
 [tool.setuptools.packages.find]
 include = ["integrations*"]
