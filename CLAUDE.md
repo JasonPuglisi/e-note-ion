@@ -421,6 +421,13 @@ destination names, API endpoint changes, etc.).
 After adding a new integration doc, add a row to the table in
 `content/README.md`.
 
+## Content Design
+
+When writing or reviewing content JSON, integration format strings, or
+template output, consult and follow `content/DESIGN.md`. This covers
+layout, color use, tone, character set, time formatting, and the
+pre-ship checklist.
+
 ## Code Conventions
 
 - 2-space indentation
