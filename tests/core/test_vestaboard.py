@@ -377,6 +377,24 @@ def test_set_state_propagates_http_error(monkeypatch: pytest.MonkeyPatch) -> Non
       vb.set_state([{'format': ['HELLO']}], {})
 
 
+def test_set_state_raises_duplicate_on_409(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setenv('VESTABOARD_API_KEY', 'test-key')
+  mock_resp = MagicMock()
+  mock_resp.status_code = 409
+  with patch('integrations.vestaboard.requests.post', return_value=mock_resp):
+    with pytest.raises(vb.DuplicateContentError):
+      vb.set_state([{'format': ['HELLO']}], {})
+
+
+def test_get_state_raises_empty_board_on_404(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setenv('VESTABOARD_API_KEY', 'test-key')
+  mock_resp = MagicMock()
+  mock_resp.status_code = 404
+  with patch('integrations.vestaboard.requests.get', return_value=mock_resp):
+    with pytest.raises(vb.EmptyBoardError):
+      vb.get_state()
+
+
 def test_set_state_passes_auth_header(monkeypatch: pytest.MonkeyPatch) -> None:
   monkeypatch.setenv('VESTABOARD_API_KEY', 'sentinel-key')
   mock_resp = MagicMock()

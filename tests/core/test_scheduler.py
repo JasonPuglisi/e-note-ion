@@ -634,6 +634,34 @@ def test_main_content_enabled_in_banner(monkeypatch: pytest.MonkeyPatch, capsys:
   assert 'contrib: bart' in out
 
 
+def test_main_empty_board_on_startup(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+  monkeypatch.setattr('sys.argv', ['e-note-ion.py'])
+  mock_sched = _mock_sched()
+  with (
+    patch.object(_mod, 'load_content'),
+    patch('integrations.vestaboard.get_state', side_effect=vb.EmptyBoardError('no message')),
+    patch('threading.Thread'),
+    patch('apscheduler.schedulers.background.BackgroundScheduler', return_value=mock_sched),
+    patch('time.sleep', side_effect=KeyboardInterrupt),
+  ):
+    _mod.main()
+  out = capsys.readouterr().out
+  assert '(no current message)' in out
+
+
+def test_worker_skips_on_duplicate_content() -> None:
+  msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch('integrations.vestaboard.set_state', side_effect=vb.DuplicateContentError('already shown')),
+    patch('time.sleep'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+  # Message is discarded — not re-enqueued and hold sleep not called
+  assert _mod._queue.empty()
+
+
 # --- _get_integration ---
 
 

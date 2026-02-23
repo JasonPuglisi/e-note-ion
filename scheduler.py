@@ -152,6 +152,9 @@ def worker() -> None:
         variables,
         message.data.get('truncation', 'hard'),
       )
+    except vestaboard.DuplicateContentError:
+      print('Duplicate content, skipping.')
+      continue
     except vestaboard.BoardLockedError as e:
       print(f'Board locked: {e}. Retrying in {_LOCK_RETRY_DELAY}s.')
       time.sleep(_LOCK_RETRY_DELAY)
@@ -396,7 +399,10 @@ def main() -> None:
   print(f'Starting e-note-ion — {board_desc}, {", ".join(extras)}')
 
   print('Current message:')
-  print(vestaboard.get_state())
+  try:
+    print(vestaboard.get_state())
+  except vestaboard.EmptyBoardError:
+    print('(no current message)')
   scheduler = BackgroundScheduler(misfire_grace_time=300)
   load_content(scheduler, public_mode=args.public, content_enabled=content_enabled)
   scheduler.start()
