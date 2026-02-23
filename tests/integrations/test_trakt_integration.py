@@ -15,7 +15,7 @@ import pytest
 
 import config as _cfg
 import integrations.trakt as trakt
-import scheduler as _sched
+from exceptions import IntegrationDataUnavailableError
 
 
 def _patch_config(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -43,7 +43,7 @@ def test_get_variables_calendar_live(require_env: None, monkeypatch: pytest.Monk
 
   try:
     result = trakt.get_variables_calendar()
-  except _sched.IntegrationDataUnavailableError:
+  except IntegrationDataUnavailableError:
     pytest.skip('Calendar is empty for the lookahead window — valid outcome')
 
   assert 'show_name' in result
@@ -70,5 +70,5 @@ def test_get_variables_watching_live(require_env: None, monkeypatch: pytest.Monk
     assert 'show_name' in result
     assert 'episode_ref' in result
     assert 'episode_title' in result
-  except _sched.IntegrationDataUnavailableError:
+  except IntegrationDataUnavailableError:
     pass  # nothing playing — valid outcome

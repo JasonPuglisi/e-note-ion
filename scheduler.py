@@ -31,6 +31,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 import config as _config_mod
 import integrations.vestaboard as vestaboard
+from exceptions import IntegrationDataUnavailableError
 
 # Allowlist of valid integration names. Must be extended when a new integration
 # is added to integrations/.
@@ -38,15 +39,6 @@ _KNOWN_INTEGRATIONS: frozenset[str] = frozenset({'bart', 'trakt'})
 
 # Cache of loaded integration modules, keyed by name.
 _integrations: dict[str, Any] = {}
-
-
-class IntegrationDataUnavailableError(Exception):
-  """Raised by an integration when it has no current data to display.
-
-  The worker skips the message silently rather than logging an error. Use
-  this for expected empty states (e.g. nothing currently playing, empty
-  calendar window, auth pending).
-  """
 
 
 def _get_integration(name: str) -> Any:

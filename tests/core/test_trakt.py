@@ -9,7 +9,7 @@ import requests
 
 import config as _cfg
 import integrations.trakt as trakt
-import scheduler as _sched
+from exceptions import IntegrationDataUnavailableError
 
 
 @pytest.fixture(autouse=True)
@@ -79,7 +79,7 @@ def test_get_token_returns_access_token(config_with_tokens: Path) -> None:
 
 def test_unauthenticated_raises_unavailable(config_without_tokens: Path) -> None:
   with patch.object(trakt, '_run_auth_flow'):  # prevent actual HTTP
-    with pytest.raises(_sched.IntegrationDataUnavailableError, match='auth pending'):
+    with pytest.raises(IntegrationDataUnavailableError, match='auth pending'):
       trakt._get_token()
 
 
@@ -354,7 +354,7 @@ def test_get_variables_calendar_empty_raises_unavailable(
   mock_response.json.return_value = []
 
   with patch('requests.get', return_value=mock_response):
-    with pytest.raises(_sched.IntegrationDataUnavailableError):
+    with pytest.raises(IntegrationDataUnavailableError):
       trakt.get_variables_calendar()
 
 
@@ -434,7 +434,7 @@ def test_get_variables_watching_204_raises_unavailable(
   mock_response.status_code = 204
 
   with patch('requests.get', return_value=mock_response):
-    with pytest.raises(_sched.IntegrationDataUnavailableError, match='Nothing currently playing'):
+    with pytest.raises(IntegrationDataUnavailableError, match='Nothing currently playing'):
       trakt.get_variables_watching()
 
 

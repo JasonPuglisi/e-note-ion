@@ -26,6 +26,8 @@ from datetime import datetime
 
 import requests
 
+from exceptions import IntegrationDataUnavailableError
+
 _TRAKT_API_BASE = 'https://api.trakt.tv'
 
 # Prevents multiple concurrent auth background threads.
@@ -88,9 +90,7 @@ def _get_token() -> str:
   access_token = _config_mod.get_optional('trakt', 'access_token')
   if not access_token:
     _ensure_authenticated()
-    import scheduler as _sched  # deferred — avoids circular import at module level
-
-    raise _sched.IntegrationDataUnavailableError('Trakt auth pending — check logs for instructions')
+    raise IntegrationDataUnavailableError('Trakt auth pending — check logs for instructions')
 
   expires_at_str = _config_mod.get_optional('trakt', 'expires_at')
   if expires_at_str:
@@ -218,7 +218,6 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
   Raises IntegrationDataUnavailableError if the calendar window is empty.
   """
   import config as _config_mod
-  import scheduler as _sched  # deferred — avoids circular import at module level
 
   token = _get_token()
   client_id = _config_mod.get('trakt', 'client_id')
@@ -242,7 +241,7 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
 
   entries = r.json()
   if not entries:
-    raise _sched.IntegrationDataUnavailableError('No upcoming episodes in calendar window')
+    raise IntegrationDataUnavailableError('No upcoming episodes in calendar window')
 
   entries.sort(key=lambda e: e['first_aired'])
   entry = entries[0]
@@ -286,7 +285,6 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
   Raises IntegrationDataUnavailableError if nothing is currently playing (204).
   """
   import config as _config_mod
-  import scheduler as _sched  # deferred — avoids circular import at module level
 
   token = _get_token()
   client_id = _config_mod.get('trakt', 'client_id')
@@ -298,7 +296,7 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
   )
 
   if r.status_code == 204:
-    raise _sched.IntegrationDataUnavailableError('Nothing currently playing')
+    raise IntegrationDataUnavailableError('Nothing currently playing')
 
   try:
     r.raise_for_status()
@@ -318,7 +316,7 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
     episode_ref = 'MOVIE'
     episode_title = ''
   else:
-    raise _sched.IntegrationDataUnavailableError(f'Unknown media type: {media_type!r}')
+    raise IntegrationDataUnavailableError(f'Unknown media type: {media_type!r}')
 
   return {
     'show_name': [[show_name]],
