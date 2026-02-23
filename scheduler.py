@@ -299,13 +299,9 @@ def _load_file(
     if job.id.startswith(f'{stem}.'):
       job.remove()
 
-  max_name = max((len(job_id[len(stem) + 1 :]) for job_id, *_ in new_jobs), default=0)
-  max_cron = max((len(schedule['cron']) for _, _, _, schedule in new_jobs), default=0)
-  max_priority = max((len(str(priority)) for _, priority, _, _ in new_jobs), default=0)
-  max_hold = max((len(str(schedule['hold'])) for _, _, _, schedule in new_jobs), default=0)
-  max_timeout = max((len(str(schedule['timeout'])) for _, _, _, schedule in new_jobs), default=0)
-  if new_jobs:
-    print(f'Loaded {content_file.parent.name}/{content_file.name}:')
+  # First pass: apply overrides and collect effective values so column widths
+  # are computed from the values actually shown (not the pre-override JSON).
+  effective_jobs: list[tuple[str, int, dict[str, Any], dict[str, Any]]] = []
   for job_id, priority, data, schedule in new_jobs:
     template_name = job_id[len(stem) + 1 :]
     # Merge any schedule overrides from config.toml (e.g. [bart.schedules.departures]).
@@ -325,6 +321,19 @@ def _load_file(
         priority = val
       else:
         print(f'Warning: ignoring invalid priority override for {job_id}: {val!r}')
+    effective_jobs.append((job_id, priority, data, effective))
+
+  max_name = max((len(job_id[len(stem) + 1 :]) for job_id, *_ in effective_jobs), default=0)
+  max_cron = max((len(effective['cron']) for _, _, _, effective in effective_jobs), default=0)
+  max_priority = max((len(str(priority)) for _, priority, _, _ in effective_jobs), default=0)
+  # +1 for the 's' suffix so the whole "180s" token is padded together
+  max_hold = max((len(str(effective['hold'])) + 1 for _, _, _, effective in effective_jobs), default=0)
+  max_timeout = max((len(str(effective['timeout'])) + 1 for _, _, _, effective in effective_jobs), default=0)
+
+  if effective_jobs:
+    print(f'Loaded {content_file.parent.name}/{content_file.name}:')
+  for job_id, priority, data, effective in effective_jobs:
+    template_name = job_id[len(stem) + 1 :]
     scheduler.add_job(
       enqueue,
       trigger='cron',
@@ -334,10 +343,10 @@ def _load_file(
     )
     print(
       f'  · {template_name.ljust(max_name)}'
-      f'  cron="{effective["cron"].ljust(max_cron)}"'
-      f'  priority={str(priority).ljust(max_priority)}'
-      f'  hold={str(effective["hold"]).ljust(max_hold)}s'
-      f'  timeout={str(effective["timeout"]).ljust(max_timeout)}s'
+      f'  {f"cron={chr(34)}{effective['cron']}{chr(34)}".ljust(max_cron + 7)}'
+      f'  {f"priority={priority}".ljust(max_priority + 9)}'
+      f'  {f"hold={effective['hold']}s".ljust(max_hold + 5)}'
+      f'  {f"timeout={effective['timeout']}s".ljust(max_timeout + 8)}'
     )
 
 

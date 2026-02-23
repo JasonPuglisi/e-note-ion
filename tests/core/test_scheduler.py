@@ -195,6 +195,85 @@ def test_load_file_prints_registration(
   assert 'priority=' in out
 
 
+def test_load_file_log_cron_padding_outside_quotes(
+  sched: BackgroundScheduler, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+  # Two templates with crons of different lengths — the shorter one should be
+  # padded with spaces OUTSIDE the quotes, not inside (bug #150).
+  content: dict[str, Any] = {
+    'templates': {
+      'short': {
+        'schedule': {'cron': '0 8 * * *', 'hold': 60, 'timeout': 60},
+        'priority': 5,
+        'templates': [{'format': ['HI']}],
+      },
+      'long': {
+        'schedule': {'cron': '0 20 * * 1-5', 'hold': 60, 'timeout': 60},
+        'priority': 5,
+        'templates': [{'format': ['BYE']}],
+      },
+    }
+  }
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(content))
+  _mod._load_file(sched, f, False)
+  out = capsys.readouterr().out
+  # Quotes must close immediately after the cron value — no trailing spaces inside
+  assert 'cron="0 8 * * *"' in out
+  assert 'cron="0 20 * * 1-5"' in out
+
+
+def test_load_file_log_hold_timeout_suffix_before_padding(
+  sched: BackgroundScheduler, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+  # Two templates where hold values differ in length — the 's' suffix must be
+  # attached to the value before padding, not after (bug #150).
+  content: dict[str, Any] = {
+    'templates': {
+      'short_hold': {
+        'schedule': {'cron': '0 8 * * *', 'hold': 180, 'timeout': 120},
+        'priority': 5,
+        'templates': [{'format': ['HI']}],
+      },
+      'long_hold': {
+        'schedule': {'cron': '0 8 * * *', 'hold': 3600, 'timeout': 3600},
+        'priority': 5,
+        'templates': [{'format': ['BYE']}],
+      },
+    }
+  }
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(content))
+  _mod._load_file(sched, f, False)
+  out = capsys.readouterr().out
+  # 's' must immediately follow the number — no space between number and 's'
+  assert 'hold=180s' in out
+  assert 'timeout=120s' in out
+
+
+def test_load_file_log_widths_from_effective_values(
+  sched: BackgroundScheduler,
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  capsys: pytest.CaptureFixture[str],
+) -> None:
+  # When a cron override is shorter than the JSON value, column widths must be
+  # computed from the effective (post-override) value, not the original (bug #150).
+  import config as _cfg
+
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {'test': {'schedules': {'tmpl': {'cron': '* * * * *'}}}},
+  )
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content()))  # JSON cron is '0 8 * * *' (same length)
+  _mod._load_file(sched, f, False)
+  out = capsys.readouterr().out
+  # Override cron is '* * * * *'; must appear without extra padding inside quotes
+  assert 'cron="* * * * *"' in out
+
+
 def test_load_file_registers_job(sched: BackgroundScheduler, tmp_path: Path) -> None:
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))
