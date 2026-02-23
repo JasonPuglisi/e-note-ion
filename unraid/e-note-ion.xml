@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>E-NOTE-ION</Name>
+  <Name>e-note-ion</Name>
   <Repository>ghcr.io/jasonpuglisi/e-note-ion</Repository>
   <Registry>https://github.com/JasonPuglisi/e-note-ion/pkgs/container/e-note-ion</Registry>
   <Network>bridge</Network>

@@ -273,7 +273,8 @@ prevention to the checklist or workflow — not just a one-off fix. Examples:
 All non-trivial work follows a plan-then-execute cycle:
 
 1. **Create or identify a GitHub issue** for the work. Assign to JasonPuglisi
-   with an appropriate milestone.
+   with an appropriate milestone. Read all existing comments on the issue before
+   proceeding — blockers, prior decisions, and context live there.
 2. **Post an in-depth implementation plan as a comment** on the issue. The plan
    should cover: specific files and functions to change, the approach with
    rationale, edge cases, any open questions, and a **## Tests** section listing
@@ -338,7 +339,10 @@ Dependencies and pinned versions should be kept current:
 
 - **Open issues**: `gh issue list --state open` — the GitHub issue tracker at
   https://github.com/JasonPuglisi/e-note-ion/issues is the source of truth for
-  all TODOs and planned work; check it at the start of each session
+  all TODOs and planned work; check it at the start of each session. When
+  reviewing an issue for planning or prioritisation, always read all comments
+  (`gh issue view <n>`) for full context — blockers, decisions, and status
+  updates often live there, not in the issue body
 - **Security alerts**: check open CodeQL and Dependabot alerts at the start of
   each session and address any before other work
   ```
