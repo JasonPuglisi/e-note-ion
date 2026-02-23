@@ -120,3 +120,98 @@ def test_get_timezone_invalid_raises_value_error(monkeypatch: pytest.MonkeyPatch
   monkeypatch.setattr(_mod, '_config', {'scheduler': {'timezone': 'Not/ATimezone'}})
   with pytest.raises(ValueError, match='Not/ATimezone'):
     _mod.get_timezone()
+
+
+# --- write_section_values ---
+
+
+def test_write_section_values_updates_existing_key(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  _write_config(tmp_path, '[myapp]\naccess_token = "old"\n')
+  monkeypatch.chdir(tmp_path)
+  monkeypatch.setattr(_mod, '_CONFIG_PATH', tmp_path / 'config.toml')
+  monkeypatch.setattr(_mod, '_config', {})
+  _mod.write_section_values('myapp', {'access_token': 'new'})
+  text = (tmp_path / 'config.toml').read_text()
+  assert 'access_token = "new"' in text
+  assert 'old' not in text
+
+
+def test_write_section_values_replaces_commented_key(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  _write_config(tmp_path, '[myapp]\n# access_token = "placeholder"\n')
+  monkeypatch.chdir(tmp_path)
+  monkeypatch.setattr(_mod, '_CONFIG_PATH', tmp_path / 'config.toml')
+  monkeypatch.setattr(_mod, '_config', {})
+  _mod.write_section_values('myapp', {'access_token': 'tok123'})
+  text = (tmp_path / 'config.toml').read_text()
+  assert 'access_token = "tok123"' in text
+  assert '# access_token' not in text
+
+
+def test_write_section_values_appends_new_key(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  _write_config(tmp_path, '[myapp]\nexisting = "val"\n')
+  monkeypatch.chdir(tmp_path)
+  monkeypatch.setattr(_mod, '_CONFIG_PATH', tmp_path / 'config.toml')
+  monkeypatch.setattr(_mod, '_config', {})
+  _mod.write_section_values('myapp', {'new_key': 'added'})
+  text = (tmp_path / 'config.toml').read_text()
+  assert 'new_key = "added"' in text
+  assert 'existing = "val"' in text
+
+
+def test_write_section_values_preserves_other_sections(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  _write_config(tmp_path, '[other]\nfoo = "bar"\n\n[myapp]\nkey = "old"\n')
+  monkeypatch.chdir(tmp_path)
+  monkeypatch.setattr(_mod, '_CONFIG_PATH', tmp_path / 'config.toml')
+  monkeypatch.setattr(_mod, '_config', {})
+  _mod.write_section_values('myapp', {'key': 'new'})
+  text = (tmp_path / 'config.toml').read_text()
+  assert 'foo = "bar"' in text
+  assert 'key = "new"' in text
+
+
+def test_write_section_values_section_not_found_raises(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  _write_config(tmp_path, '[other]\nfoo = "bar"\n')
+  monkeypatch.chdir(tmp_path)
+  monkeypatch.setattr(_mod, '_CONFIG_PATH', tmp_path / 'config.toml')
+  monkeypatch.setattr(_mod, '_config', {})
+  with pytest.raises(ValueError, match='missing'):
+    _mod.write_section_values('missing', {'key': 'val'})
+
+
+def test_write_section_values_missing_file_raises(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  monkeypatch.chdir(tmp_path)
+  monkeypatch.setattr(_mod, '_CONFIG_PATH', tmp_path / 'config.toml')
+  monkeypatch.setattr(_mod, '_config', {})
+  with pytest.raises(FileNotFoundError):
+    _mod.write_section_values('myapp', {'key': 'val'})
+
+
+def test_write_section_values_updates_memory_cache(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  _write_config(tmp_path, '[myapp]\ntoken = "old"\n')
+  monkeypatch.chdir(tmp_path)
+  monkeypatch.setattr(_mod, '_CONFIG_PATH', tmp_path / 'config.toml')
+  cache: dict = {}
+  monkeypatch.setattr(_mod, '_config', cache)
+  _mod.write_section_values('myapp', {'token': 'fresh'})
+  assert cache.get('myapp', {}).get('token') == 'fresh'
