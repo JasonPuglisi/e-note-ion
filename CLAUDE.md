@@ -207,6 +207,8 @@ showing which env vars are set or missing.
   prevents any PR branch from accessing them even if a workflow runs there
 - If any integration test is skipped, the pytest session exits with code 5
   (NO_TESTS_COLLECTED), making the advisory job visibly fail rather than silently pass
+- When adding a new integration, also add `tests/integrations/test_<name>_integration.py`
+  and add its env vars to the `_INTEGRATION_VARS` list in `tests/integrations/conftest.py`
 
 ### Periodic health review
 
@@ -288,6 +290,9 @@ step may be skipped — use judgement.
     with `gh run list --branch main --commit <sha>`, watch any in-progress runs to
     completion (`gh run watch <id>`), and verify all runs from the merge commit
     succeeded with no `startup_failure` or failures
+    - **Required jobs** (check, docker, CodeQL) must pass — any failure here is a blocker
+    - **Advisory integration job** may fail — note the result; a failure means tests
+      skipped (missing secrets) or an API issue, not a merge blocker
 11. Keep `README.md` and `CLAUDE.md` up to date as part of the same PR —
     new env vars, CLI flags, content format fields, project structure changes,
     and workflow changes should all be reflected before merge
