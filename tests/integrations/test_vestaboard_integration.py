@@ -16,8 +16,21 @@ import integrations.vestaboard as vb
 
 @pytest.mark.integration
 @pytest.mark.require_env('VESTABOARD_VIRTUAL_API_KEY')
+def test_set_state_real_api(require_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+  """set_state() successfully writes a message to the live virtual board."""
+  monkeypatch.setenv('VESTABOARD_API_KEY', os.environ['VESTABOARD_VIRTUAL_API_KEY'])
+
+  # Writes a fixed test message; no exception means success.
+  vb.set_state([{'format': ['INTEGRATION TEST']}], {})
+
+
+@pytest.mark.integration
+@pytest.mark.require_env('VESTABOARD_VIRTUAL_API_KEY')
 def test_get_state_real_api(require_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
-  """get_state() returns a valid VestaboardState from the live API."""
+  """get_state() returns a valid VestaboardState from the live API.
+
+  Relies on test_set_state_real_api having run first so the board has state.
+  """
   monkeypatch.setenv('VESTABOARD_API_KEY', os.environ['VESTABOARD_VIRTUAL_API_KEY'])
 
   state = vb.get_state()
@@ -29,13 +42,3 @@ def test_get_state_real_api(require_env: None, monkeypatch: pytest.MonkeyPatch) 
   for row in state.layout:
     assert len(row) == vb.model.cols, f'row has {len(row)} cols, expected {vb.model.cols}'
     assert all(isinstance(code, int) for code in row), 'non-int code in row'
-
-
-@pytest.mark.integration
-@pytest.mark.require_env('VESTABOARD_VIRTUAL_API_KEY')
-def test_set_state_real_api(require_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
-  """set_state() successfully writes a message to the live virtual board."""
-  monkeypatch.setenv('VESTABOARD_API_KEY', os.environ['VESTABOARD_VIRTUAL_API_KEY'])
-
-  # Writes a fixed test message; no exception means success.
-  vb.set_state([{'format': ['INTEGRATION TEST']}], {})
