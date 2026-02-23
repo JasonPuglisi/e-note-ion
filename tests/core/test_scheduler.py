@@ -660,6 +660,13 @@ def test_get_integration_known_loads_module() -> None:
   assert result is bart_mod
 
 
+def test_get_integration_missing_deps_raises_runtime_error() -> None:
+  _mod._integrations.pop('bart', None)
+  with patch('importlib.import_module', side_effect=ImportError('No module named requests')):
+    with pytest.raises(RuntimeError, match='missing dependencies'):
+      _mod._get_integration('bart')
+
+
 def test_get_integration_caches_module() -> None:
   import integrations.bart as bart_mod
 
