@@ -193,6 +193,22 @@ def _ensure_authenticated() -> None:
 # --- Integration functions ---
 
 
+_LEADING_ARTICLES = ('THE ', 'AN ', 'A ')
+
+
+def _format_episode_ref(season: int, number: int) -> str:
+  """Return a compact episode ref, e.g. S9E8 (no zero-padding)."""
+  return f'S{season}E{number}'
+
+
+def _strip_leading_article(title: str) -> str:
+  """Remove a leading article (A, An, The) from an uppercased title."""
+  for article in _LEADING_ARTICLES:
+    if title.startswith(article):
+      return title[len(article) :]
+  return title
+
+
 def get_variables_calendar() -> dict[str, list[list[str]]]:
   """Fetch the next upcoming episode from the user's Trakt calendar.
 
@@ -233,8 +249,8 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
 
   show_name = entry['show']['title'].upper()
   ep = entry['episode']
-  episode_ref = f'S{ep["season"]:02d}E{ep["number"]:02d}'
-  episode_title = (ep.get('title') or '').upper()
+  episode_ref = _format_episode_ref(ep['season'], ep['number'])
+  episode_title = _strip_leading_article((ep.get('title') or '').upper())
 
   # Convert UTC first_aired → local time for display
   aired_dt = datetime.fromisoformat(entry['first_aired'].replace('Z', '+00:00'))
@@ -294,8 +310,8 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
   if media_type == 'episode':
     show_name = data['show']['title'].upper()
     ep = data['episode']
-    episode_ref = f'S{ep["season"]:02d}E{ep["number"]:02d}'
-    episode_title = (ep.get('title') or '').upper()
+    episode_ref = _format_episode_ref(ep['season'], ep['number'])
+    episode_title = _strip_leading_article((ep.get('title') or '').upper())
   elif media_type == 'movie':
     show_name = data['movie']['title'].upper()
     episode_ref = 'MOVIE'

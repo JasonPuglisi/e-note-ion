@@ -265,6 +265,54 @@ def test_auth_thread_logs_error_on_denied(config_without_tokens: Path, capsys: p
   assert 'denied' in out.lower()
 
 
+# --- _format_episode_ref ---
+
+
+def test_format_episode_ref_no_padding() -> None:
+  assert trakt._format_episode_ref(9, 8) == 'S9E8'  # noqa: SLF001
+
+
+def test_format_episode_ref_double_digit() -> None:
+  assert trakt._format_episode_ref(12, 24) == 'S12E24'  # noqa: SLF001
+
+
+def test_format_episode_ref_single_digit_each() -> None:
+  assert trakt._format_episode_ref(1, 1) == 'S1E1'  # noqa: SLF001
+
+
+# --- _strip_leading_article ---
+
+
+def test_strip_leading_article_the() -> None:
+  assert trakt._strip_leading_article('THE FINAL SHOWDOWN') == 'FINAL SHOWDOWN'  # noqa: SLF001
+
+
+def test_strip_leading_article_a() -> None:
+  assert trakt._strip_leading_article('A QUIET MAN') == 'QUIET MAN'  # noqa: SLF001
+
+
+def test_strip_leading_article_an() -> None:
+  assert trakt._strip_leading_article('AN UNEXPECTED JOURNEY') == 'UNEXPECTED JOURNEY'  # noqa: SLF001
+
+
+def test_strip_leading_article_no_article() -> None:
+  assert trakt._strip_leading_article('PILOT') == 'PILOT'  # noqa: SLF001
+
+
+def test_strip_leading_article_word_starting_with_the() -> None:
+  # "THEORY" should not be stripped — must match full word boundary
+  assert trakt._strip_leading_article('THEORY OF EVERYTHING') == 'THEORY OF EVERYTHING'  # noqa: SLF001
+
+
+def test_strip_leading_article_word_starting_with_a() -> None:
+  # "AFTERMATH" should not be stripped
+  assert trakt._strip_leading_article('AFTERMATH') == 'AFTERMATH'  # noqa: SLF001
+
+
+def test_strip_leading_article_empty() -> None:
+  assert trakt._strip_leading_article('') == ''  # noqa: SLF001
+
+
 # --- get_variables_calendar ---
 
 
@@ -292,8 +340,8 @@ def test_get_variables_calendar_returns_expected_vars(
     result = trakt.get_variables_calendar()
 
   assert result['show_name'] == [['GREAT SHOW']]
-  assert result['episode_ref'] == [['S02E05']]
-  assert result['episode_title'] == [['THE ONE WITH THE TEST']]
+  assert result['episode_ref'] == [['S2E5']]
+  assert result['episode_title'] == [['ONE WITH THE TEST']]
   assert 'air_day' in result
   assert 'air_time' in result
 
@@ -357,7 +405,7 @@ def test_get_variables_watching_episode_returns_vars(
     result = trakt.get_variables_watching()
 
   assert result['show_name'] == [['MY SHOW']]
-  assert result['episode_ref'] == [['S01E03']]
+  assert result['episode_ref'] == [['S1E3']]
   assert result['episode_title'] == [['PILOT']]
 
 
