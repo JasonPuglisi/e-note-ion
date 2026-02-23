@@ -261,6 +261,8 @@ class VestaboardState:
 def get_state(color: VestaboardColor = VestaboardColor.BLACK) -> VestaboardState:
   """Fetch and return the current board state."""
   r = requests.get(_HOST, headers=_get_headers(), timeout=10)
+  if r.status_code == 404:
+    raise EmptyBoardError('board has no current message')
   r.raise_for_status()
   return VestaboardState(r.json(), color)
 
@@ -458,6 +460,14 @@ class BoardLockedError(Exception):
   """Raised when the Vestaboard returns 423 (rate-limited or quiet hours)."""
 
 
+class DuplicateContentError(Exception):
+  """Raised when set_state() POSTs the same content already on the board (HTTP 409)."""
+
+
+class EmptyBoardError(Exception):
+  """Raised when get_state() finds no message on a fresh board (HTTP 404)."""
+
+
 def set_state(
   templates: list[dict],
   variables: dict[str, list],
@@ -477,6 +487,8 @@ def set_state(
   grid = _build_grid(lines)
   print(render_grid(grid))
   r = requests.post(_HOST, json=grid, headers=_get_headers(), timeout=10)
+  if r.status_code == 409:
+    raise DuplicateContentError('board already shows this content')
   if r.status_code == 423:
     raise BoardLockedError('board is locked (rate-limited or quiet hours)')
   r.raise_for_status()
