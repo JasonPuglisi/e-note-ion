@@ -7,13 +7,13 @@
 # dynamically from the BART routes API on first call and cached for the
 # process lifetime.
 #
-# Required env vars:
-#   BART_API_KEY    — API key (free at https://api.bart.gov/api/register.aspx)
-#   BART_STATION    — Originating station code (e.g. MLPT for Milpitas)
+# Required config.toml keys ([bart]):
+#   api_key    — API key (free at https://api.bart.gov/api/register.aspx)
+#   station    — Originating station code (e.g. MLPT for Milpitas)
+#   line1_dest — Destination abbreviation code for line 1 (e.g. DALY for Daly City)
 #
-# Optional env vars (configure 1–2 lines to display):
-#   BART_LINE_1_DEST — Destination abbreviation code (e.g. DALY for Daly City)
-#   BART_LINE_2_DEST — Second destination code (optional)
+# Optional config.toml keys:
+#   line2_dest — Second destination abbreviation code (optional)
 
 from typing import Any
 
