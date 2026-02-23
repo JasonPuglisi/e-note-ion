@@ -261,7 +261,10 @@ def get_state(color: VestaboardColor = VestaboardColor.BLACK) -> VestaboardState
   r = requests.get(_HOST, headers=_get_headers(), timeout=10)
   if r.status_code == 404:
     raise EmptyBoardError('board has no current message')
-  r.raise_for_status()
+  try:
+    r.raise_for_status()
+  except requests.HTTPError as e:
+    raise requests.HTTPError(f'Vestaboard API error: {e.response.status_code} {e.response.reason}') from None
   return VestaboardState(r.json(), color)
 
 
@@ -489,4 +492,7 @@ def set_state(
     raise DuplicateContentError('board already shows this content')
   if r.status_code == 423:
     raise BoardLockedError('board is locked (rate-limited or quiet hours)')
-  r.raise_for_status()
+  try:
+    r.raise_for_status()
+  except requests.HTTPError as e:
+    raise requests.HTTPError(f'Vestaboard API error: {e.response.status_code} {e.response.reason}') from None

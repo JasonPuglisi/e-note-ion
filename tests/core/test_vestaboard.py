@@ -382,13 +382,28 @@ def test_set_state_raises_board_locked_on_423(monkeypatch: pytest.MonkeyPatch) -
 def test_set_state_propagates_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _cfg
 
-  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'sentinel-key'}})
   mock_resp = MagicMock()
   mock_resp.status_code = 500
-  mock_resp.raise_for_status.side_effect = requests.HTTPError('server error')
+  mock_resp.reason = 'Internal Server Error'
+  mock_resp.raise_for_status.side_effect = requests.HTTPError(response=mock_resp)
   with patch('integrations.vestaboard.requests.post', return_value=mock_resp):
-    with pytest.raises(requests.HTTPError):
+    with pytest.raises(requests.HTTPError, match='Vestaboard API error: 500'):
       vb.set_state([{'format': ['HELLO']}], {})
+
+
+def test_set_state_http_error_does_not_leak_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'sentinel-key'}})
+  mock_resp = MagicMock()
+  mock_resp.status_code = 500
+  mock_resp.reason = 'Internal Server Error'
+  mock_resp.raise_for_status.side_effect = requests.HTTPError(response=mock_resp)
+  with patch('integrations.vestaboard.requests.post', return_value=mock_resp):
+    with pytest.raises(requests.HTTPError) as exc_info:
+      vb.set_state([{'format': ['HELLO']}], {})
+  assert 'sentinel-key' not in str(exc_info.value)
 
 
 def test_set_state_raises_duplicate_on_409(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -411,6 +426,20 @@ def test_get_state_raises_empty_board_on_404(monkeypatch: pytest.MonkeyPatch) ->
   with patch('integrations.vestaboard.requests.get', return_value=mock_resp):
     with pytest.raises(vb.EmptyBoardError):
       vb.get_state()
+
+
+def test_get_state_http_error_does_not_leak_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'sentinel-key'}})
+  mock_resp = MagicMock()
+  mock_resp.status_code = 401
+  mock_resp.reason = 'Unauthorized'
+  mock_resp.raise_for_status.side_effect = requests.HTTPError(response=mock_resp)
+  with patch('integrations.vestaboard.requests.get', return_value=mock_resp):
+    with pytest.raises(requests.HTTPError, match='Vestaboard API error: 401') as exc_info:
+      vb.get_state()
+  assert 'sentinel-key' not in str(exc_info.value)
 
 
 def test_set_state_passes_auth_header(monkeypatch: pytest.MonkeyPatch) -> None:
