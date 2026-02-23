@@ -672,6 +672,30 @@ def test_main_empty_board_on_startup(monkeypatch: pytest.MonkeyPatch, capsys: py
   assert '(no current message)' in out
 
 
+def test_main_passes_timezone_to_scheduler(monkeypatch: pytest.MonkeyPatch) -> None:
+  from zoneinfo import ZoneInfo
+
+  import config as _cfg
+
+  monkeypatch.setattr('sys.argv', ['e-note-ion.py'])
+  monkeypatch.setattr(_cfg, '_config', {'scheduler': {'timezone': 'America/New_York'}})
+  mock_sched = _mock_sched()
+  with (
+    patch.object(_mod, '_validate_startup'),
+    patch('config.load_config'),
+    patch.object(_mod, 'load_content'),
+    patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
+    patch('threading.Thread'),
+    patch('scheduler.BackgroundScheduler', return_value=mock_sched) as mock_bs,
+    patch('time.sleep', side_effect=KeyboardInterrupt),
+  ):
+    _mod.main()
+  mock_bs.assert_called_once_with(
+    misfire_grace_time=300,
+    timezone=ZoneInfo('America/New_York'),
+  )
+
+
 def test_worker_calls_integration_get_variables() -> None:
   msg = _mod.QueuedMessage(
     priority=5,
