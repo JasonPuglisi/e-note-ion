@@ -10,6 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 import integrations.vestaboard as vb
 import scheduler as _mod
+from exceptions import IntegrationDataUnavailableError
 
 
 @pytest.fixture()
@@ -797,7 +798,7 @@ def test_worker_silently_skips_on_data_unavailable() -> None:
     timeout=3600,
   )
   mock_integration = MagicMock()
-  mock_integration.get_variables.side_effect = _mod.IntegrationDataUnavailableError('no data')
+  mock_integration.get_variables.side_effect = IntegrationDataUnavailableError('no data')
 
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
