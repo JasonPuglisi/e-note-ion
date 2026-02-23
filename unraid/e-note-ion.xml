@@ -15,35 +15,38 @@
   <Config
     Name="Config file"
     Target="/app/config.toml"
-    Default=""
+    Default="/mnt/user/appdata/e-note-ion/config.toml"
     Mode="rw"
     Description="Required. Path to your config.toml on the host. Copy config.example.toml from the repo, fill in your API keys and settings, and point this path at the result."
     Type="Path"
     Display="always"
     Required="true"
-    Mask="false"/>
+    Mask="false">
+  </Config>
 
   <Config
     Name="Enabled contrib content"
     Target="CONTENT_ENABLED"
-    Default=""
+    Default="*"
     Mode=""
     Description="Comma-separated list of bundled content file stems to enable (e.g. aria,bart), or * to enable all. Leave blank to disable all bundled content and use only your personal content directory."
     Type="Variable"
     Display="always"
     Required="false"
-    Mask="false"/>
+    Mask="false">
+  </Config>
 
   <Config
     Name="User content directory"
     Target="/app/content/user"
-    Default=""
+    Default="/mnt/user/appdata/e-note-ion/content"
     Mode="rw"
     Description="Optional. Path to a directory of personal content JSON files on the host. Files placed here are always loaded automatically. Leave blank if you only want to use bundled contrib content."
     Type="Path"
     Display="always"
     Required="false"
-    Mask="false"/>
+    Mask="false">
+  </Config>
 
   <Config
     Name="Flagship mode"
@@ -54,7 +57,8 @@
     Type="Variable"
     Display="always"
     Required="false"
-    Mask="false"/>
+    Mask="false">
+  </Config>
 
   <Config
     Name="Public mode"
@@ -65,5 +69,6 @@
     Type="Variable"
     Display="always"
     Required="false"
-    Mask="false"/>
+    Mask="false">
+  </Config>
 </Container>
