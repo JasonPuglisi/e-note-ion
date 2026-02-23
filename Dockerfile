@@ -19,8 +19,8 @@ ENV UV_COMPILE_BYTECODE=1 \
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
-# Copy source and bundled contrib content.
-COPY scheduler.py entrypoint.sh ./
+# Copy source, config example, and bundled contrib content.
+COPY scheduler.py entrypoint.sh config.py config.example.toml ./
 COPY integrations/ ./integrations/
 COPY content/contrib/ ./content/contrib/
 

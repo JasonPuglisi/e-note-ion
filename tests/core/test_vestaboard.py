@@ -294,24 +294,30 @@ def test_expand_format_escaped_brace_whole_line_not_expanded() -> None:
 # --- _get_headers ---
 
 
-def test_get_headers_raises_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.delenv('VESTABOARD_API_KEY', raising=False)
-  with pytest.raises(RuntimeError, match='VESTABOARD_API_KEY'):
-    vb._get_headers()  # noqa: SLF001
+def test_get_headers_uses_config_key(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
 
-
-def test_get_headers_returns_correct_headers(monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.setenv('VESTABOARD_API_KEY', 'my-test-key')
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'my-test-key'}})
   headers = vb._get_headers()  # noqa: SLF001
   assert headers['X-Vestaboard-Read-Write-Key'] == 'my-test-key'
   assert headers['Content-Type'] == 'application/json'
+
+
+def test_get_headers_missing_key_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {})
+  with pytest.raises(ValueError, match='vestaboard'):
+    vb._get_headers()  # noqa: SLF001
 
 
 # --- get_state ---
 
 
 def test_get_state_returns_state(monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.setenv('VESTABOARD_API_KEY', 'test-key')
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'test-key'}})
   layout = [[0] * vb.model.cols for _ in range(vb.model.rows)]
   mock_resp = MagicMock()
   mock_resp.json.return_value = {
@@ -330,7 +336,9 @@ def test_get_state_returns_state(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_state_passes_auth_header(monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.setenv('VESTABOARD_API_KEY', 'sentinel-key')
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'sentinel-key'}})
   layout = [[0] * vb.model.cols for _ in range(vb.model.rows)]
   mock_resp = MagicMock()
   mock_resp.json.return_value = {'currentMessage': {'id': 'x', 'appeared': 'y', 'layout': json.dumps(layout)}}
@@ -345,7 +353,9 @@ def test_get_state_passes_auth_header(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_set_state_posts_grid_to_api(monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.setenv('VESTABOARD_API_KEY', 'test-key')
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'test-key'}})
   mock_resp = MagicMock()
   mock_resp.status_code = 200
   mock_resp.raise_for_status.return_value = None
@@ -359,7 +369,9 @@ def test_set_state_posts_grid_to_api(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_set_state_raises_board_locked_on_423(monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.setenv('VESTABOARD_API_KEY', 'test-key')
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'test-key'}})
   mock_resp = MagicMock()
   mock_resp.status_code = 423
   with patch('integrations.vestaboard.requests.post', return_value=mock_resp):
@@ -368,7 +380,9 @@ def test_set_state_raises_board_locked_on_423(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_set_state_propagates_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.setenv('VESTABOARD_API_KEY', 'test-key')
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'test-key'}})
   mock_resp = MagicMock()
   mock_resp.status_code = 500
   mock_resp.raise_for_status.side_effect = requests.HTTPError('server error')
@@ -378,7 +392,9 @@ def test_set_state_propagates_http_error(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_set_state_raises_duplicate_on_409(monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.setenv('VESTABOARD_API_KEY', 'test-key')
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'test-key'}})
   mock_resp = MagicMock()
   mock_resp.status_code = 409
   with patch('integrations.vestaboard.requests.post', return_value=mock_resp):
@@ -387,7 +403,9 @@ def test_set_state_raises_duplicate_on_409(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_get_state_raises_empty_board_on_404(monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.setenv('VESTABOARD_API_KEY', 'test-key')
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'test-key'}})
   mock_resp = MagicMock()
   mock_resp.status_code = 404
   with patch('integrations.vestaboard.requests.get', return_value=mock_resp):
@@ -396,7 +414,9 @@ def test_get_state_raises_empty_board_on_404(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_set_state_passes_auth_header(monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.setenv('VESTABOARD_API_KEY', 'sentinel-key')
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'sentinel-key'}})
   mock_resp = MagicMock()
   mock_resp.status_code = 200
   mock_resp.raise_for_status.return_value = None

@@ -1,8 +1,7 @@
 # Content
 
 This directory contains the JSON files that define what gets displayed on the
-board. Files are watched at runtime — add, edit, or remove a file and it takes
-effect within ~5 seconds without restarting.
+board. Restart the scheduler to pick up changes.
 
 See the root [README](../README.md) for the full content file format.
 

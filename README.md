@@ -44,14 +44,14 @@ The Vestaboard community has built a lot of great tooling:
 Pre-built multi-arch images (`linux/amd64`, `linux/arm64`) are published to
 the GitHub Container Registry on each release.
 
-The image ships with bundled contrib content (disabled by default). Enable
-it by name, or mount your own content directory:
+First copy `config.example.toml` to `config.toml` and fill in your API keys
+and settings (see [Configuration](#configuration) below). Then run:
 
 ```bash
 docker run -d \
   --name e-note-ion \
   --restart unless-stopped \
-  -e VESTABOARD_API_KEY=your_api_key_here \
+  -v /path/to/config.toml:/app/config.toml:ro \
   -e CONTENT_ENABLED=bart \
   ghcr.io/jasonpuglisi/e-note-ion:latest
 ```
@@ -92,13 +92,24 @@ An Unraid Docker template is included at `unraid/e-note-ion.xml`. To install:
 The template exposes all environment variables as UI fields and an optional
 path for personal content.
 
+## Configuration
+
+Copy `config.example.toml` to `config.toml` and fill in your values:
+
+```bash
+cp config.example.toml config.toml
+# edit config.toml — add your Vestaboard API key and any integration settings
+```
+
+`config.toml` is git-ignored and contains secrets — never commit it.
+
 ## Running directly
 
 **Requirements:** Python 3.14+, [uv](https://github.com/astral-sh/uv)
 
 ```bash
 uv sync
-export VESTABOARD_API_KEY=your_api_key_here
+cp config.example.toml config.toml  # fill in your API key
 python scheduler.py
 ```
 

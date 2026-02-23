@@ -28,6 +28,7 @@ from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
+import config as _config_mod
 import integrations.vestaboard as vestaboard
 
 # Allowlist of valid integration names. Must be extended when a new integration
@@ -262,20 +263,31 @@ def _load_file(
   if new_jobs:
     print(f'Loaded {content_file.parent.name}/{content_file.name}:')
   for job_id, priority, data, schedule in new_jobs:
+    template_name = job_id[len(stem) + 1 :]
+    # Merge any schedule overrides from config.toml (e.g. [bart.schedules.departures]).
+    override = _config_mod.get_schedule_override(f'{content_file.stem}.{template_name}')
+    effective = dict(schedule)
+    for field in ('cron', 'hold', 'timeout'):
+      if field not in override:
+        continue
+      val = override[field]
+      if field == 'cron' and isinstance(val, str) and val.strip():
+        effective[field] = val
+      elif field in ('hold', 'timeout') and isinstance(val, int) and val >= 0:
+        effective[field] = val
     scheduler.add_job(
       enqueue,
       trigger='cron',
-      args=[priority, data, schedule['hold'], schedule['timeout'], job_id],
+      args=[priority, data, effective['hold'], effective['timeout'], job_id],
       id=job_id,
-      **parse_cron(schedule['cron']),  # type: ignore[arg-type]
+      **parse_cron(effective['cron']),  # type: ignore[arg-type]
     )
-    template_name = job_id[len(stem) + 1 :]
     print(
       f'  · {template_name.ljust(max_name)}'
-      f'  cron="{schedule["cron"].ljust(max_cron)}"'
+      f'  cron="{effective["cron"].ljust(max_cron)}"'
       f'  priority={str(priority).ljust(max_priority)}'
-      f'  hold={str(schedule["hold"]).ljust(max_hold)}s'
-      f'  timeout={str(schedule["timeout"]).ljust(max_timeout)}s'
+      f'  hold={str(effective["hold"]).ljust(max_hold)}s'
+      f'  timeout={str(effective["timeout"]).ljust(max_timeout)}s'
     )
 
 
@@ -301,67 +313,8 @@ def load_content(
         _load_file(scheduler, f, public_mode)
 
 
-def watch_content(
-  scheduler: BackgroundScheduler,
-  public_mode: bool,
-  content_enabled: set[str],
-  interval: int = 5,
-) -> None:
-  # Daemon thread that polls content directories every `interval` seconds and
-  # reloads jobs whenever files are added, removed, or modified.
-  def eligible_files() -> set[Path]:
-    files: set[Path] = set()
-    user_path = Path('content') / 'user'
-    if user_path.is_dir():
-      files |= set(user_path.glob('*.json'))
-    contrib_path = Path('content') / 'contrib'
-    if contrib_path.is_dir() and content_enabled:
-      for p in contrib_path.glob('*.json'):
-        if '*' in content_enabled or p.stem in content_enabled:
-          files.add(p)
-    return files
-
-  mtimes: dict[Path, float] = {p: p.stat().st_mtime for p in eligible_files()}
-
-  while True:
-    time.sleep(interval)
-    try:
-      current = eligible_files()
-      known = set(mtimes)
-
-      for path in current - known:
-        try:
-          _load_file(scheduler, path, public_mode)
-          mtimes[path] = path.stat().st_mtime
-          print(f'Content loaded: {path.parent.name}/{path.name}')
-        except Exception as e:
-          print(f'Error loading {path.parent.name}/{path.name}: {e}')
-
-      for path in known - current:
-        stem = f'{path.parent.name}.{path.stem}'
-        for job in scheduler.get_jobs():
-          if job.id.startswith(f'{stem}.'):
-            job.remove()
-        del mtimes[path]
-        print(f'Content removed: {path.parent.name}/{path.name}')
-
-      for path in current & known:
-        try:
-          mtime = path.stat().st_mtime
-        except FileNotFoundError:
-          continue
-        if mtime != mtimes[path]:
-          try:
-            _load_file(scheduler, path, public_mode)
-            mtimes[path] = mtime
-            print(f'Content reloaded: {path.parent.name}/{path.name}')
-          except Exception as e:
-            print(f'Error reloading {path.parent.name}/{path.name}: {e}')
-    except Exception as e:
-      print(f'Watcher error: {e}')
-
-
 def main() -> None:
+  _config_mod.load_config()
   parser = argparse.ArgumentParser()
   parser.add_argument('--public', action='store_true', help='Only show public messages')
   parser.add_argument(
@@ -409,11 +362,6 @@ def main() -> None:
   print(f'Scheduler started — {len(scheduler.get_jobs())} job(s) registered')
 
   threading.Thread(target=worker, daemon=True).start()
-  threading.Thread(
-    target=watch_content,
-    args=(scheduler, args.public, content_enabled),
-    daemon=True,
-  ).start()
 
   try:
     while True:

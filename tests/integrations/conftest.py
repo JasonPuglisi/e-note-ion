@@ -1,15 +1,38 @@
 import os
+from pathlib import Path
 
 import pytest
 
 _INTEGRATION_VARS: list[tuple[str, str]] = [
   ('BART_API_KEY', 'BART integration'),
-  ('BART_STATION', 'BART integration'),
-  ('BART_LINE_1_DEST', 'BART integration'),
   ('VESTABOARD_VIRTUAL_API_KEY', 'Vestaboard integration'),
 ]
 
 _skipped = 0
+
+
+def _load_dotenv() -> None:
+  """Load .env from the project root into os.environ if the file exists.
+
+  Only sets variables that are not already present in the environment, so
+  CI secrets (set as real env vars) always take precedence over .env values.
+  Simple key=value parser — no external dependency needed.
+  """
+  env_path = Path(__file__).parent.parent.parent / '.env'
+  if not env_path.exists():
+    return
+  for line in env_path.read_text().splitlines():
+    line = line.strip()
+    if not line or line.startswith('#') or '=' not in line:
+      continue
+    key, _, value = line.partition('=')
+    key = key.strip()
+    value = value.strip()
+    if key and key not in os.environ:
+      os.environ[key] = value
+
+
+_load_dotenv()
 
 
 @pytest.fixture(scope='session', autouse=True)

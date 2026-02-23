@@ -59,6 +59,9 @@ on this project collaboratively with the user.
 
 ```
 scheduler.py                # Entry point — scheduler, queue, worker
+config.py                   # TOML config loader (load_config, get, get_optional, get_schedule_override)
+config.toml                 # Runtime config with API keys (git-ignored; copy from config.example.toml)
+config.example.toml         # Config template committed to the repo
 integrations/vestaboard.py  # Vestaboard API client (get_state, set_state)
 integrations/bart.py        # BART real-time departures integration
 content/
@@ -66,6 +69,7 @@ content/
     bart.json               # BART real-time departure board
     bart.md                 # Sidecar doc: configuration and data sources
   user/                     # Personal content (always loaded, git-ignored)
+.env.example                # Template for local integration test secrets (copy to .env, fill in, git-ignored)
 Dockerfile                  # Single-stage image using ghcr.io/astral-sh/uv
 entrypoint.sh               # Translates env vars (FLAGSHIP/PUBLIC/CONTENT_ENABLED) to CLI flags
 .github/workflows/
@@ -145,9 +149,10 @@ corresponding Vestaboard color square code (63–70).
 
 ## Environment
 
-- `VESTABOARD_API_KEY` — Vestaboard Read/Write API key (required)
-- Integration-specific env vars are documented in each integration's sidecar
-  doc under `content/contrib/<name>.md`
+- Configuration lives in `config.toml` at the project root (git-ignored). Copy
+  `config.example.toml`, fill in API keys and settings, then run the scheduler.
+  Integration-specific keys are documented in each integration's sidecar doc
+  under `content/contrib/<name>.md` and in `config.example.toml`.
 - Python version managed via `.python-version` (uv)
 - Dependencies managed with `uv` / `pyproject.toml`
 - Dev tools: `ruff` (lint + format), `pyright` (type checking), `bandit`
@@ -161,7 +166,9 @@ corresponding Vestaboard color square code (63–70).
 ## Docker
 
 Image: `ghcr.io/jasonpuglisi/e-note-ion` (multi-arch, auto-published on release).
-Runtime env vars mirror CLI flags — see `entrypoint.sh` and `README.md`.
+Mount `config.toml` at `/app/config.toml` and optionally personal content at
+`/app/content/user`. Runtime CLI flags (`FLAGSHIP`, `PUBLIC`, `CONTENT_ENABLED`)
+are translated by `entrypoint.sh` — see `README.md`.
 
 ## Development Workflow
 
@@ -190,14 +197,20 @@ PR labels (apply one or more):
 #### Integration tests
 
 Integration tests live in `tests/integrations/` and are excluded from the
-default `uv run pytest` run. To run them locally, set the required env vars
-then: `uv run pytest -m integration -v`. A setup table prints at session start
-showing which env vars are set or missing.
+default `uv run pytest` run. To run them locally:
+
+1. Copy `.env.example` to `.env` and fill in your API keys
+2. Run `uv run pytest -m integration -v`
+
+A setup table prints at session start showing which env vars are set or missing.
+The `.env` file is git-ignored — never commit it. CI has no `.env` file; secrets
+come from GitHub secrets env vars directly.
 
 - Mark tests with `@pytest.mark.integration` and `@pytest.mark.require_env('VAR', ...)`
 - Tests skip automatically when required env vars are absent (no failures)
-- Required env vars per integration:
-  - BART: `BART_API_KEY`, `BART_STATION`, `BART_LINE_1_DEST`
+- Required env vars per integration (real API keys only; other settings are
+  hardcoded in the test via `config._config` patching):
+  - BART: `BART_API_KEY`
   - Vestaboard: `VESTABOARD_VIRTUAL_API_KEY` (use a virtual board, not physical)
 - CI runs the `integration` job on `main` pushes only; it is advisory
   (`continue-on-error: true`) and not required by the branch ruleset
@@ -362,9 +375,16 @@ One-sentence description. Schedule summary.
 
 ## Configuration
 
-| Variable | Required | Description |
+Add the following to your `config.toml`:
+
+\`\`\`toml
+[<name>]
+key_name = "value"
+\`\`\`
+
+| Key | Required | Description |
 |---|---|---|
-| `VAR_NAME` | Yes/No | What it does |
+| `key_name` | Yes/No | What it does |
 
 ## Keeping data current
 

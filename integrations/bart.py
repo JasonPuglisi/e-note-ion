@@ -15,7 +15,6 @@
 #   BART_LINE_1_DEST — Destination abbreviation code (e.g. DALY for Daly City)
 #   BART_LINE_2_DEST — Second destination code (optional)
 
-import os
 from typing import Any
 
 import requests
@@ -136,18 +135,13 @@ def get_variables() -> dict[str, list[list[str]]]:
   """
   global _dest_color_cache
 
-  api_key = os.environ.get('BART_API_KEY', '').strip()
-  if not api_key:
-    raise RuntimeError('BART_API_KEY environment variable is not set')
+  import config as _config_mod
 
-  station_raw = os.environ.get('BART_STATION', '').strip()
-  if not station_raw:
-    raise RuntimeError('BART_STATION environment variable is not set')
-  station = station_raw
-
-  dest_filters = [d for key in ('BART_LINE_1_DEST', 'BART_LINE_2_DEST') if (d := os.environ.get(key, '').strip())]
-  if not dest_filters:
-    raise RuntimeError('At least one of BART_LINE_1_DEST or BART_LINE_2_DEST must be set')
+  api_key = _config_mod.get('bart', 'api_key')
+  station = _config_mod.get('bart', 'station')
+  dest1 = _config_mod.get('bart', 'line1_dest')
+  dest2 = _config_mod.get_optional('bart', 'line2_dest')
+  dest_filters = [d for d in (dest1, dest2) if d]
 
   if _dest_color_cache is None:
     try:

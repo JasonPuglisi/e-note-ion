@@ -1,5 +1,4 @@
 import json
-import os
 import time
 from pathlib import Path
 from queue import Empty
@@ -272,6 +271,46 @@ def test_load_content_missing_dirs_dont_raise(
   assert len(sched.get_jobs()) == 0
 
 
+# --- _load_file schedule overrides ---
+
+
+def test_load_file_applies_schedule_override(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  import config as _cfg
+
+  # Override hold and timeout for the template in this file.
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {'test': {'schedules': {'tmpl': {'hold': 120, 'timeout': 30}}}},
+  )
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content()))
+  _mod._load_file(sched, f, False)
+  jobs = sched.get_jobs()
+  assert len(jobs) == 1
+  # job.args: [priority, data, hold, timeout, job_id]
+  assert jobs[0].args[2] == 120  # hold overridden
+  assert jobs[0].args[3] == 30  # timeout overridden
+
+
+def test_load_file_ignores_unknown_override_keys(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {'test': {'schedules': {'tmpl': {'hold': 90, 'unknown_field': 'ignored'}}}},
+  )
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content()))
+  _mod._load_file(sched, f, False)  # must not raise on unknown key
+  assert sched.get_jobs()[0].args[2] == 90  # hold applied
+
+
 # --- worker ---
 
 
@@ -327,131 +366,6 @@ def test_worker_log_includes_template_name(capsys: pytest.CaptureFixture[str]) -
       _mod.worker()
   out = capsys.readouterr().out
   assert 'user.test.my_template' in out
-
-
-# --- watch_content ---
-
-
-def test_watch_content_detects_new_file(
-  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-  user_dir = tmp_path / 'content' / 'user'
-  user_dir.mkdir(parents=True)
-  monkeypatch.chdir(tmp_path)
-  new_file = user_dir / 'new.json'
-  loaded: list[Path] = []
-
-  def fake_sleep(n: float) -> None:
-    # Write the file during sleep so eligible_files() sees it on the next scan.
-    if not new_file.exists():
-      new_file.write_text(json.dumps(_make_content()))
-
-  def fake_load(s: Any, path: Path, public: bool) -> None:
-    loaded.append(path)
-    raise KeyboardInterrupt  # stop after the first detection
-
-  with (
-    patch.object(_mod, '_load_file', side_effect=fake_load),
-    patch('time.sleep', side_effect=fake_sleep),
-  ):
-    with pytest.raises(KeyboardInterrupt):
-      _mod.watch_content(sched, False, set())
-
-  assert any(p.resolve() == new_file.resolve() for p in loaded)
-
-
-def test_watch_content_detects_removed_file(
-  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-  user_dir = tmp_path / 'content' / 'user'
-  user_dir.mkdir(parents=True)
-  existing = user_dir / 'existing.json'
-  existing.write_text(json.dumps(_make_content()))
-  monkeypatch.chdir(tmp_path)
-  # Seed the scheduler with the file's job so we can verify it gets removed.
-  _mod._load_file(sched, existing, False)
-  assert len(sched.get_jobs()) == 1
-
-  sleep_count = 0
-
-  def fake_sleep(n: float) -> None:
-    nonlocal sleep_count
-    sleep_count += 1
-    if sleep_count == 1:
-      existing.unlink()
-    else:
-      raise KeyboardInterrupt
-
-  with patch('time.sleep', side_effect=fake_sleep):
-    with pytest.raises(KeyboardInterrupt):
-      _mod.watch_content(sched, False, set())
-
-  assert len(sched.get_jobs()) == 0
-
-
-def test_watch_content_detects_modified_file(
-  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-  user_dir = tmp_path / 'content' / 'user'
-  user_dir.mkdir(parents=True)
-  existing = user_dir / 'existing.json'
-  existing.write_text(json.dumps(_make_content()))
-  monkeypatch.chdir(tmp_path)
-  reloaded: list[Path] = []
-
-  sleep_count = 0
-
-  def fake_sleep(n: float) -> None:
-    nonlocal sleep_count
-    sleep_count += 1
-    if sleep_count == 1:
-      existing.write_text(json.dumps(_make_content()))
-      # Explicitly advance mtime by 1s — on fast CI filesystems two writes
-      # within the same timestamp quantum produce identical mtimes.
-      st = existing.stat()
-      os.utime(existing, (st.st_atime + 1, st.st_mtime + 1))
-    else:
-      raise KeyboardInterrupt
-
-  def fake_load(s: Any, path: Path, public: bool) -> None:
-    reloaded.append(path)
-
-  with (
-    patch.object(_mod, '_load_file', side_effect=fake_load),
-    patch('time.sleep', side_effect=fake_sleep),
-  ):
-    with pytest.raises(KeyboardInterrupt):
-      _mod.watch_content(sched, False, set())
-
-  assert any(p.resolve() == existing.resolve() for p in reloaded)
-
-
-def test_watch_content_load_error_does_not_crash(
-  sched: BackgroundScheduler,
-  tmp_path: Path,
-  monkeypatch: pytest.MonkeyPatch,
-  capsys: pytest.CaptureFixture[str],
-) -> None:
-  user_dir = tmp_path / 'content' / 'user'
-  user_dir.mkdir(parents=True)
-  monkeypatch.chdir(tmp_path)
-
-  sleep_count = 0
-
-  def fake_sleep(n: float) -> None:
-    nonlocal sleep_count
-    sleep_count += 1
-    if sleep_count == 1:
-      (user_dir / 'bad.json').write_text('not valid json')
-    else:
-      raise KeyboardInterrupt
-
-  with patch('time.sleep', side_effect=fake_sleep):
-    with pytest.raises(KeyboardInterrupt):
-      _mod.watch_content(sched, False, set())
-
-  out = capsys.readouterr().out
-  assert 'Error' in out  # error printed; watcher did not crash
 
 
 # --- _load_file (public key missing) ---
@@ -574,6 +488,7 @@ def test_main_note_startup_banner(monkeypatch: pytest.MonkeyPatch, capsys: pytes
   monkeypatch.setattr('sys.argv', ['e-note-ion.py'])
   mock_sched = _mock_sched()
   with (
+    patch('config.load_config'),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
@@ -592,6 +507,7 @@ def test_main_flagship_sets_model_and_banner(
   monkeypatch.setattr(vb, 'model', vb.VestaboardModel.NOTE)  # ensures restoration
   mock_sched = _mock_sched()
   with (
+    patch('config.load_config'),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
@@ -608,6 +524,7 @@ def test_main_public_mode_in_banner(monkeypatch: pytest.MonkeyPatch, capsys: pyt
   monkeypatch.setattr('sys.argv', ['e-note-ion.py', '--public'])
   mock_sched = _mock_sched()
   with (
+    patch('config.load_config'),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
@@ -623,6 +540,7 @@ def test_main_content_enabled_in_banner(monkeypatch: pytest.MonkeyPatch, capsys:
   monkeypatch.setattr('sys.argv', ['e-note-ion.py', '--content-enabled', 'bart'])
   mock_sched = _mock_sched()
   with (
+    patch('config.load_config'),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
@@ -638,6 +556,7 @@ def test_main_empty_board_on_startup(monkeypatch: pytest.MonkeyPatch, capsys: py
   monkeypatch.setattr('sys.argv', ['e-note-ion.py'])
   mock_sched = _mock_sched()
   with (
+    patch('config.load_config'),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', side_effect=vb.EmptyBoardError('no message')),
     patch('threading.Thread'),
