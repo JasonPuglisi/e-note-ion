@@ -1,5 +1,6 @@
 """Unit tests for integrations/trakt.py (mocked — no real API calls)."""
 
+import re
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -343,7 +344,7 @@ def test_get_variables_calendar_returns_expected_vars(
   assert result['episode_ref'] == [['S2E5']]
   assert result['episode_title'] == [['ONE WITH THE TEST']]
   assert 'air_day' in result
-  assert 'air_time' in result
+  assert re.match(r'^\d+:\d{2}$', result['air_time'][0][0])
 
 
 def test_get_variables_calendar_empty_raises_unavailable(
