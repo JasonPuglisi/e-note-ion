@@ -275,6 +275,12 @@ def _load_file(
         effective[field] = val
       elif field in ('hold', 'timeout') and isinstance(val, int) and val >= 0:
         effective[field] = val
+    if 'priority' in override:
+      val = override['priority']
+      if isinstance(val, int) and 0 <= val <= 10:
+        priority = val
+      else:
+        print(f'Warning: ignoring invalid priority override for {job_id}: {val!r}')
     scheduler.add_job(
       enqueue,
       trigger='cron',

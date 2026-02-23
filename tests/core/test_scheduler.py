@@ -295,6 +295,63 @@ def test_load_file_applies_schedule_override(
   assert jobs[0].args[3] == 30  # timeout overridden
 
 
+def test_load_file_applies_priority_override(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {'test': {'schedules': {'tmpl': {'priority': 9}}}},
+  )
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content(priority=5)))
+  _mod._load_file(sched, f, False)
+  # job.args: [priority, data, hold, timeout, job_id]
+  assert sched.get_jobs()[0].args[0] == 9  # priority overridden from 5 to 9
+
+
+def test_load_file_ignores_invalid_type_priority_override(
+  sched: BackgroundScheduler,
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  capsys: pytest.CaptureFixture[str],
+) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {'test': {'schedules': {'tmpl': {'priority': 'high'}}}},
+  )
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content(priority=5)))
+  _mod._load_file(sched, f, False)
+  assert sched.get_jobs()[0].args[0] == 5  # original priority preserved
+  assert 'Warning' in capsys.readouterr().out
+
+
+def test_load_file_ignores_out_of_range_priority_override(
+  sched: BackgroundScheduler,
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  capsys: pytest.CaptureFixture[str],
+) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {'test': {'schedules': {'tmpl': {'priority': 11}}}},
+  )
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content(priority=5)))
+  _mod._load_file(sched, f, False)
+  assert sched.get_jobs()[0].args[0] == 5  # original priority preserved
+  assert 'Warning' in capsys.readouterr().out
+
+
 def test_load_file_ignores_unknown_override_keys(
   sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

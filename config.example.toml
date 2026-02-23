@@ -21,10 +21,12 @@ line1_dest = "DALY"
 # line2_dest = "BERY"
 
 # ── Schedule overrides (optional) ─────────────────────────────────────────────
-# Override cron, hold, or timeout for a named template without editing JSON.
-# All three fields are optional; unspecified fields use the template default.
+# Override cron, hold, timeout, or priority for a named template without
+# editing JSON. All fields are optional; unspecified fields use the template
+# default.
 
 # [bart.schedules.departures]
 # cron = "*/5 7-9 * * 1-5"
 # hold = 290
 # timeout = 60
+# priority = 8

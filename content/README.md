@@ -3,35 +3,148 @@
 This directory contains the JSON files that define what gets displayed on the
 board. Restart the scheduler to pick up changes.
 
-See the root [README](../README.md) for the full content file format.
+## Directories
 
-## `contrib/`
+- **`contrib/`** — bundled community-contributed content, disabled by default.
+  Enable files by stem using `--content-enabled` (or the `CONTENT_ENABLED` env var):
+  ```bash
+  python scheduler.py --content-enabled bart        # enable one file
+  python scheduler.py --content-enabled bart,other  # enable multiple
+  python scheduler.py --content-enabled '*'         # enable all
+  ```
+  To contribute content, open a pull request adding a `.json` file and a
+  companion `.md` doc (see template in `CLAUDE.md`).
 
-Bundled community-contributed content. These files ship with the project and
-are available to all users, but are **disabled by default**. Enable individual
-files by name using `--content-enabled` (or the `CONTENT_ENABLED` env var):
+- **`user/`** — your personal content. Files placed here are always loaded
+  automatically — no opt-in needed. This directory is git-ignored so personal
+  schedules are never committed to the project repo. To version your personal
+  content, create a private git repository and volume-mount it at
+  `/app/content/user` (Docker) or symlink it to this directory directly.
 
-```bash
-python e-note-ion.py --content-enabled bart        # enable one file
-python e-note-ion.py --content-enabled bart,other  # enable multiple
-python e-note-ion.py --content-enabled '*'         # enable all
+## Content file format
+
+Each JSON file can contain multiple named templates, each with its own
+schedule and display settings.
+
+```json
+{
+  "templates": {
+    "my_message": {
+      "schedule": {
+        "cron": "0 8 * * *",
+        "hold": 600,
+        "timeout": 600
+      },
+      "priority": 5,
+      "public": true,
+      "truncation": "word",
+      "templates": [
+        { "format": ["GOOD MORNING", "{quip}"] }
+      ]
+    }
+  },
+  "variables": {
+    "quip": [
+      ["HAVE A", "GREAT DAY"],
+      ["YOU GOT", "THIS"]
+    ]
+  }
+}
 ```
 
-To contribute content, open a pull request adding a `.json` file and a
-companion `.md` doc (see template in `CLAUDE.md`).
+| Field | Description |
+|---|---|
+| `cron` | Standard 5-field cron expression |
+| `hold` | Seconds the message stays on display before the next update |
+| `timeout` | Seconds the message can wait in the queue before being discarded |
+| `priority` | Integer 0–10; higher number runs first when multiple messages are queued simultaneously |
+| `public` | If `false`, excluded when running with `--public` |
+| `truncation` | `hard` cuts mid-word (default); `word` stops at a word boundary; `ellipsis` adds `...` |
 
-### Files
+### Variables
+
+`{variable}` placeholders are replaced with a randomly chosen option from the
+corresponding `variables` entry. A format entry that is exactly `{variable}`
+expands into all lines of the chosen option; an inline `{variable}` within
+other text is replaced by the first line of the option.
+
+When a template has multiple `{ "format": [...] }` entries, one is chosen at
+random each time the template fires.
+
+### Color squares
+
+Color squares can be embedded in format strings using short tags: `[R]` `[O]`
+`[Y]` `[G]` `[B]` `[V]` `[W]` `[K]` (red, orange, yellow, green, blue,
+violet, white, black). Each tag renders as a single colored square on the
+display.
+
+### Wrapping and truncation
+
+After variable expansion, lines are automatically word-wrapped to fit the
+board width. If the result has more rows than the board height, the excess is
+silently dropped. Content from dynamic sources (e.g. API responses) doesn't
+need to be pre-fitted to the board dimensions.
+
+### Integration templates
+
+Templates can pull live data from an integration by adding
+`"integration": "<name>"`. The worker calls the integration at job time to
+fetch current variable values:
+
+```json
+{
+  "templates": {
+    "my_integration_template": {
+      "schedule": { "cron": "*/5 * * * *", "hold": 60, "timeout": 60 },
+      "priority": 8,
+      "integration": "my_integration",
+      "templates": [
+        { "format": ["{line_1}", "{line_2}"] }
+      ]
+    }
+  }
+}
+```
+
+### Priority guidelines
+
+Priority determines which message is shown first when multiple jobs fire at
+or near the same time and the worker is busy. It does not affect *when* a job
+runs — only which queued message the display shows first.
+
+| Level | Range | Use case |
+|---|---|---|
+| Background | 0–2 | Ambient/decorative content. Pair with a short `timeout` so stale messages drop silently rather than showing late. |
+| Default | 3–5 | Normal scheduled content — daily quotes, weather, calendar items. Most templates should live here. |
+| Elevated | 6–7 | Time-sensitive but not urgent — transit departures, reminders. |
+| High | 8–9 | Alerts and time-critical events where the user should see it promptly — countdowns, imminent departures, notifications. |
+| Maximum | 10 | Reserved for a single "always wins" template. Avoid using broadly — once multiple templates share the same level, tie-breaking falls back to scheduling order. |
+
+Rules of thumb:
+- **Start at 5 and adjust.** Only raise priority when you observe or anticipate contention.
+- **Pair high priority with a short `timeout`.** A high-priority message that is stale is worse than none. Set `timeout` to roughly the window of relevance.
+- **Pair low priority with a short `timeout` too.** Background content with a long `timeout` will show up hours late. Either set `timeout` to match the display window, or accept that it may be discarded.
+- **Avoid priority inflation.** If everything is 8–10, nothing is. Reserve the top of the scale for the one or two templates where timing genuinely matters.
+- **Use `config.toml` overrides to tune without touching JSON.** See [Schedule overrides](#schedule-overrides) below.
+
+### Schedule overrides
+
+Override `cron`, `hold`, `timeout`, or `priority` for any named template
+directly in `config.toml`, without editing the content file:
+
+```toml
+[bart.schedules.departures]
+cron = "*/5 6-9 * * 1-5"  # extend window to start at 6am
+hold = 180
+timeout = 90
+priority = 9
+```
+
+The section name is `[<file-stem>.schedules.<template-name>]`. All four fields
+are optional; unspecified fields use the template's JSON default.
+
+## Contrib integrations
 
 | File | Description |
 |---|---|
 | [`bart.json`](contrib/bart.md) | BART real-time departure board |
-
-## `user/`
-
-Your personal content. Files placed here are always loaded automatically —
-no opt-in needed. This directory is git-ignored so personal schedules are
-never committed to the project repo.
-
-To version your personal content, create a private git repository containing
-your files, clone it on your server, and volume-mount it at
-`/app/content/user` (Docker) or point it at this directory directly.
