@@ -252,3 +252,23 @@ uv run pre-commit run pretty-format-json --all-files
 ```
 
 All checks are also enforced as pre-commit hooks.
+
+### Integration tests
+
+Integration tests hit the real APIs and are excluded from the default `pytest`
+run. To run them locally:
+
+```bash
+cp .env.example .env
+# fill in your API keys — bare values, no surrounding quotes
+uv run pytest -m integration -v
+```
+
+Required keys:
+
+| Key | Where to get it |
+|---|---|
+| `VESTABOARD_VIRTUAL_API_KEY` | [web.vestaboard.com](https://web.vestaboard.com) → Developer → Virtual Boards |
+| `BART_API_KEY` | [api.bart.gov/api/register.aspx](https://api.bart.gov/api/register.aspx) |
+
+`.env` is git-ignored — never commit it.
