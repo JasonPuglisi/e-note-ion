@@ -110,15 +110,15 @@ cp config.example.toml config.toml
 ```bash
 uv sync
 cp config.example.toml config.toml  # fill in your API key
-python scheduler.py
+uv run e-note-ion
 ```
 
 ```bash
-python scheduler.py                          # Note (3×15), user content only
-python scheduler.py --content-enabled bart   # also enable contrib/bart.json
-python scheduler.py --content-enabled '*'    # enable all contrib content
-python scheduler.py --flagship               # Flagship (6×22)
-python scheduler.py --public                 # public templates only
+uv run e-note-ion                          # Note (3×15), user content only
+uv run e-note-ion --content-enabled bart   # also enable contrib/bart.json
+uv run e-note-ion --content-enabled '*'    # enable all contrib content
+uv run e-note-ion --flagship               # Flagship (6×22)
+uv run e-note-ion --public                 # public templates only
 ```
 
 Flags can be combined.
