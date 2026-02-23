@@ -92,6 +92,44 @@ An Unraid Docker template is included at `unraid/e-note-ion.xml`. To install:
 The template exposes all environment variables as UI fields and an optional
 path for personal content.
 
+### Viewing container logs
+
+Some integrations print important messages to stdout during startup or
+operation — for example, an authentication code and URL you need to visit
+to complete an OAuth flow. Check the container logs to see these messages.
+
+**Docker:**
+```bash
+docker logs e-note-ion
+# or follow live:
+docker logs -f e-note-ion
+```
+
+**Unraid:** In the Unraid web UI, go to **Docker** → click the container
+icon next to **e-note-ion** → **Logs**.
+
+### Integrations that require interactive auth
+
+Some integrations (e.g. Trakt.tv) use an **OAuth device code flow**: the
+scheduler prints a short code and URL to the container logs, you visit
+the URL on any device and approve access, and tokens are automatically
+saved to `config.toml`. No browser on the scheduler host is required.
+
+**For this to work, `config.toml` must be mounted read-write** (not `:ro`)
+so the scheduler can persist the tokens:
+
+```bash
+# Correct — read-write (required when using auth-based integrations):
+-v /path/to/config.toml:/app/config.toml
+
+# Wrong — read-only prevents token persistence:
+-v /path/to/config.toml:/app/config.toml:ro
+```
+
+Until auth is complete, templates from that integration are silently skipped
+and the display shows other content normally. See each integration's sidecar
+doc under [`content/contrib/`](content/contrib/) for setup details.
+
 ## Configuration
 
 Copy `config.example.toml` to `config.toml` and fill in your values:

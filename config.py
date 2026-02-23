@@ -8,6 +8,7 @@
 # Integration modules import config inside their functions so they can be
 # imported in tests without a real config file present.
 
+import re
 import sys
 import tomllib
 from pathlib import Path
@@ -53,6 +54,58 @@ def get_optional(section: str, key: str, default: str = '') -> str:
   if value is None:
     return default
   return str(value)
+
+
+def write_section_values(section: str, values: dict[str, str | int]) -> None:
+  """Write key-value pairs into [section] in config.toml in-place.
+
+  Updates the in-memory config cache and persists to disk, preserving all
+  comments and other sections. Active and commented-out versions of a key are
+  both replaced. New keys are appended to the end of the section.
+
+  Raises FileNotFoundError if config.toml does not exist.
+  Raises ValueError if the section header is not found in the file.
+  """
+  if not _CONFIG_PATH.exists():
+    raise FileNotFoundError(f'config.toml not found at {_CONFIG_PATH.resolve()}')
+
+  lines = _CONFIG_PATH.read_text().splitlines(keepends=True)
+
+  section_start: int | None = None
+  section_end = len(lines)
+
+  for i, line in enumerate(lines):
+    stripped = line.strip()
+    if stripped == f'[{section}]':
+      section_start = i + 1
+    elif section_start is not None and stripped.startswith('[') and not stripped.startswith('#'):
+      section_end = i
+      break
+
+  if section_start is None:
+    raise ValueError(f'No [{section}] section found in config.toml')
+
+  section_lines = list(lines[section_start:section_end])
+
+  for key, value in values.items():
+    val_str = f'"{value}"' if isinstance(value, str) else str(value)
+    new_line = f'{key} = {val_str}\n'
+    found = False
+    for j, sl in enumerate(section_lines):
+      if re.match(rf'^{re.escape(key)}\s*=', sl):
+        section_lines[j] = new_line
+        found = True
+        break
+      if re.match(rf'^#\s*{re.escape(key)}\s*=', sl):
+        section_lines[j] = new_line
+        found = True
+        break
+    if not found:
+      section_lines.append(new_line)
+
+  lines[section_start:section_end] = section_lines
+  _CONFIG_PATH.write_text(''.join(lines))
+  _config.setdefault(section, {}).update(values)
 
 
 def get_schedule_override(template_id: str) -> dict:

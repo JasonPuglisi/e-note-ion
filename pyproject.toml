@@ -1,6 +1,6 @@
 [project]
 name = "e-note-ion"
-version = "0.8.1"
+version = "0.9.0"
 description = "Automation for Vestaboard displays — with emotion"
 keywords = ["vestaboard", "note", "flagship", "automation", "schedule", "scheduling"]
 authors = [
@@ -20,6 +20,19 @@ dependencies = [
 
 [project.scripts]
 e-note-ion = "scheduler:main"
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["scheduler", "config"]
+
+[tool.setuptools.packages.find]
+include = ["integrations*"]
 
 [project.urls]
 Repository = "https://github.com/JasonPuglisi/e-note-ion"

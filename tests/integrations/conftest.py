@@ -6,6 +6,9 @@ import pytest
 _INTEGRATION_VARS: list[tuple[str, str]] = [
   ('BART_API_KEY', 'BART integration'),
   ('VESTABOARD_VIRTUAL_API_KEY', 'Vestaboard integration'),
+  ('TRAKT_CLIENT_ID', 'Trakt integration'),
+  ('TRAKT_CLIENT_SECRET', 'Trakt integration'),
+  ('TRAKT_ACCESS_TOKEN', 'Trakt integration'),
 ]
 
 _skipped = 0

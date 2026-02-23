@@ -1,0 +1,46 @@
+{
+  "templates": {
+    "calendar": {
+      "schedule": {
+        "cron": "0 */4 * * *",
+        "hold": 3600,
+        "timeout": 600
+      },
+      "priority": 4,
+      "public": false,
+      "truncation": "ellipsis",
+      "integration": "trakt",
+      "integration_fn": "get_variables_calendar",
+      "templates": [
+        {
+          "format": [
+            "[P] NEXT AIRING",
+            "{show_name}",
+            "{episode_ref} {air_day} {air_time}"
+          ]
+        }
+      ]
+    },
+    "watching": {
+      "schedule": {
+        "cron": "*/3 * * * *",
+        "hold": 180,
+        "timeout": 120
+      },
+      "priority": 7,
+      "public": false,
+      "truncation": "ellipsis",
+      "integration": "trakt",
+      "integration_fn": "get_variables_watching",
+      "templates": [
+        {
+          "format": [
+            "[P] NOW PLAYING",
+            "{show_name}",
+            "{episode_ref} {episode_title}"
+          ]
+        }
+      ]
+    }
+  }
+}
