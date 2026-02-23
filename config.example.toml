@@ -30,3 +30,18 @@ line1_dest = "DALY"
 # hold = 290
 # timeout = 60
 # priority = 8
+
+[trakt]
+# OAuth credentials — create an application at https://trakt.tv/oauth/applications/new
+# Set Redirect URI to: urn:ietf:wg:oauth:2.0:oob
+client_id = "your-trakt-client-id"
+client_secret = "your-trakt-client-secret"
+
+# Written by the auth flow — do not edit manually.
+# Start the container, check logs for auth instructions, then approve in a browser.
+# access_token = "..."
+# refresh_token = "..."
+# expires_at = 1234567890
+
+# Optional: number of days ahead to show in the calendar (default 7, max 33)
+# calendar_days = 7

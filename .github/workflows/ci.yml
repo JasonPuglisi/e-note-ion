@@ -94,3 +94,6 @@ jobs:
         env:
           BART_API_KEY: ${{ secrets.BART_API_KEY }}
           VESTABOARD_VIRTUAL_API_KEY: ${{ secrets.VESTABOARD_VIRTUAL_API_KEY }}
+          TRAKT_CLIENT_ID: ${{ vars.TRAKT_CLIENT_ID }}
+          TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
+          TRAKT_ACCESS_TOKEN: ${{ secrets.TRAKT_ACCESS_TOKEN }}

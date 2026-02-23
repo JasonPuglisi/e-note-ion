@@ -586,6 +586,7 @@ def test_main_note_startup_banner(monkeypatch: pytest.MonkeyPatch, capsys: pytes
   monkeypatch.setattr('sys.argv', ['e-note-ion.py'])
   mock_sched = _mock_sched()
   with (
+    patch.object(_mod, '_validate_startup'),
     patch('config.load_config'),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
@@ -605,6 +606,7 @@ def test_main_flagship_sets_model_and_banner(
   monkeypatch.setattr(vb, 'model', vb.VestaboardModel.NOTE)  # ensures restoration
   mock_sched = _mock_sched()
   with (
+    patch.object(_mod, '_validate_startup'),
     patch('config.load_config'),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
@@ -622,6 +624,7 @@ def test_main_public_mode_in_banner(monkeypatch: pytest.MonkeyPatch, capsys: pyt
   monkeypatch.setattr('sys.argv', ['e-note-ion.py', '--public'])
   mock_sched = _mock_sched()
   with (
+    patch.object(_mod, '_validate_startup'),
     patch('config.load_config'),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
@@ -638,6 +641,7 @@ def test_main_content_enabled_in_banner(monkeypatch: pytest.MonkeyPatch, capsys:
   monkeypatch.setattr('sys.argv', ['e-note-ion.py', '--content-enabled', 'bart'])
   mock_sched = _mock_sched()
   with (
+    patch.object(_mod, '_validate_startup'),
     patch('config.load_config'),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
@@ -654,6 +658,7 @@ def test_main_empty_board_on_startup(monkeypatch: pytest.MonkeyPatch, capsys: py
   monkeypatch.setattr('sys.argv', ['e-note-ion.py'])
   mock_sched = _mock_sched()
   with (
+    patch.object(_mod, '_validate_startup'),
     patch('config.load_config'),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', side_effect=vb.EmptyBoardError('no message')),
@@ -771,3 +776,140 @@ def test_get_integration_caches_module() -> None:
     _mod._get_integration('bart')
     _mod._get_integration('bart')
   mock_import.assert_called_once()
+
+
+# --- worker: IntegrationDataUnavailableError ---
+
+
+def test_worker_silently_skips_on_data_unavailable() -> None:
+  msg = _mod.QueuedMessage(
+    priority=5,
+    seq=0,
+    name='test',
+    scheduled_at=time.monotonic(),
+    data={
+      'templates': [{'format': ['HELLO']}],
+      'variables': {},
+      'truncation': 'hard',
+      'integration': 'bart',
+    },
+    hold=0,
+    timeout=3600,
+  )
+  mock_integration = MagicMock()
+  mock_integration.get_variables.side_effect = _mod.IntegrationDataUnavailableError('no data')
+
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch.object(_mod, '_get_integration', return_value=mock_integration),
+    patch('integrations.vestaboard.set_state') as mock_set_state,
+    patch('time.sleep'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+
+  mock_set_state.assert_not_called()
+  assert _mod._queue.empty()
+
+
+# --- worker: integration_fn ---
+
+
+def test_worker_uses_integration_fn_when_specified() -> None:
+  msg = _mod.QueuedMessage(
+    priority=5,
+    seq=0,
+    name='test',
+    scheduled_at=time.monotonic(),
+    data={
+      'templates': [{'format': ['{val}']}],
+      'variables': {},
+      'truncation': 'hard',
+      'integration': 'bart',
+      'integration_fn': 'get_variables_custom',
+    },
+    hold=0,
+    timeout=3600,
+  )
+  mock_integration = MagicMock()
+  mock_integration.get_variables_custom.return_value = {'val': [['OK']]}
+
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch.object(_mod, '_get_integration', return_value=mock_integration),
+    patch('integrations.vestaboard.set_state'),
+    patch('time.sleep'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+
+  mock_integration.get_variables_custom.assert_called_once()
+  mock_integration.get_variables.assert_not_called()
+
+
+# --- _validate_template: integration_fn ---
+
+
+def test_validate_template_integration_fn_string_passes() -> None:
+  t = _base_template()
+  t['integration'] = 'bart'
+  t['integration_fn'] = 'get_variables_custom'
+  _mod._validate_template('ctx.tmpl', t)
+
+
+def test_validate_template_integration_fn_non_string_raises() -> None:
+  t = _base_template()
+  t['integration'] = 'bart'
+  t['integration_fn'] = 123
+  with pytest.raises(ValueError, match='integration_fn'):
+    _mod._validate_template('ctx.tmpl', t)
+
+
+# --- _validate_startup ---
+
+
+def test_validate_startup_errors_on_config_dir(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  config_dir = tmp_path / 'config.toml'
+  config_dir.mkdir()
+  monkeypatch.chdir(tmp_path)
+  with pytest.raises(SystemExit):
+    _mod._validate_startup()
+  assert 'directory' in capsys.readouterr().err.lower()
+
+
+def test_validate_startup_errors_on_missing_config(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  monkeypatch.chdir(tmp_path)
+  with pytest.raises(SystemExit):
+    _mod._validate_startup()
+  assert 'not found' in capsys.readouterr().err.lower()
+
+
+def test_validate_startup_errors_on_empty_config(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  (tmp_path / 'config.toml').write_text('')
+  monkeypatch.chdir(tmp_path)
+  with pytest.raises(SystemExit):
+    _mod._validate_startup()
+  assert 'empty' in capsys.readouterr().err.lower()
+
+
+def test_validate_startup_warns_on_empty_content_dir(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  (tmp_path / 'config.toml').write_text('[vestaboard]\napi_key = "x"\n')
+  user_dir = tmp_path / 'content' / 'user'
+  user_dir.mkdir(parents=True)
+  monkeypatch.chdir(tmp_path)
+  _mod._validate_startup()  # must not raise
+  assert 'warning' in capsys.readouterr().out.lower()
+
+
+def test_validate_startup_passes_with_valid_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  (tmp_path / 'config.toml').write_text('[vestaboard]\napi_key = "x"\n')
+  monkeypatch.chdir(tmp_path)
+  _mod._validate_startup()  # must not raise

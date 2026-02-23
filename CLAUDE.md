@@ -59,15 +59,18 @@ on this project collaboratively with the user.
 
 ```
 scheduler.py                # Entry point — scheduler, queue, worker
-config.py                   # TOML config loader (load_config, get, get_optional, get_schedule_override — returns overrides for cron, hold, timeout, priority)
+config.py                   # TOML config loader (load_config, get, get_optional, get_schedule_override, write_section_values — in-place token persistence)
 config.toml                 # Runtime config with API keys (git-ignored; copy from config.example.toml)
 config.example.toml         # Config template committed to the repo
 integrations/vestaboard.py  # Vestaboard API client (get_state, set_state)
 integrations/bart.py        # BART real-time departures integration
+integrations/trakt.py       # Trakt.tv calendar and now-playing (OAuth device flow)
 content/
   contrib/                  # Bundled community content (disabled by default)
     bart.json               # BART real-time departure board
     bart.md                 # Sidecar doc: configuration and data sources
+    trakt.json              # Trakt.tv calendar and now-playing
+    trakt.md                # Sidecar doc: OAuth setup and data sources
   user/                     # Personal content (always loaded, git-ignored)
 .env.example                # Template for local integration test secrets (copy to .env, fill in, git-ignored)
 Dockerfile                  # Single-stage image using ghcr.io/astral-sh/uv
@@ -376,6 +379,11 @@ Some integrations embed static lists (station codes, terminal destinations,
 etc.) that can go stale. Each contrib integration has a sidecar
 `content/contrib/<name>.md` with authoritative data sources and update
 instructions — check there when data may need refreshing.
+
+Some integrations also require monitoring external announcement channels for
+API changes (e.g. Trakt requires watching https://github.com/trakt/trakt-api/discussions).
+Check each sidecar's "Keeping data current" section for any such requirements
+and verify those channels during periodic health reviews.
 
 ### Contrib integration doc template
 

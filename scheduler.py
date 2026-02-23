@@ -18,6 +18,7 @@
 import argparse
 import importlib
 import json
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -33,10 +34,19 @@ import integrations.vestaboard as vestaboard
 
 # Allowlist of valid integration names. Must be extended when a new integration
 # is added to integrations/.
-_KNOWN_INTEGRATIONS: frozenset[str] = frozenset({'bart'})
+_KNOWN_INTEGRATIONS: frozenset[str] = frozenset({'bart', 'trakt'})
 
 # Cache of loaded integration modules, keyed by name.
 _integrations: dict[str, Any] = {}
+
+
+class IntegrationDataUnavailableError(Exception):
+  """Raised by an integration when it has no current data to display.
+
+  The worker skips the message silently rather than logging an error. Use
+  this for expected empty states (e.g. nothing currently playing, empty
+  calendar window, auth pending).
+  """
 
 
 def _get_integration(name: str) -> Any:
@@ -180,12 +190,15 @@ def worker() -> None:
     try:
       variables = message.data['variables']
       if 'integration' in message.data:
-        variables = _get_integration(message.data['integration']).get_variables()
+        fn_name = message.data.get('integration_fn', 'get_variables')
+        variables = getattr(_get_integration(message.data['integration']), fn_name)()
       vestaboard.set_state(
         message.data['templates'],
         variables,
         message.data.get('truncation', 'hard'),
       )
+    except IntegrationDataUnavailableError:
+      continue  # expected empty state — skip silently
     except vestaboard.DuplicateContentError:
       print('Duplicate content, skipping.')
       continue
@@ -246,6 +259,10 @@ def _validate_template(name: str, template: dict[str, Any]) -> None:
   if not has_templates and not has_integration:
     raise ValueError(f'{name}: must have "templates" and/or "integration"')
 
+  integration_fn = template.get('integration_fn')
+  if integration_fn is not None and not isinstance(integration_fn, str):
+    raise ValueError(f'{name}: integration_fn must be a string, got {integration_fn!r}')
+
 
 def _load_file(
   scheduler: BackgroundScheduler,
@@ -274,6 +291,8 @@ def _load_file(
     }
     if 'integration' in template:
       data['integration'] = template['integration']
+    if 'integration_fn' in template:
+      data['integration_fn'] = template['integration_fn']
     new_jobs.append(
       (
         f'{stem}.{template_name}',
@@ -352,7 +371,49 @@ def load_content(
         _load_file(scheduler, f, public_mode)
 
 
+def _validate_startup() -> None:
+  """Check for bad Docker mount states before loading config or content.
+
+  Exits with a clear, actionable message on fatal errors (config.toml is a
+  directory, missing, or empty). Warns non-fatally if the user content
+  directory is empty.
+  """
+  config_path = Path('config.toml')
+  if config_path.is_dir():
+    print(
+      f'Error: {config_path.resolve()} is a directory. '
+      'Docker created it automatically because the host path did not exist at container start. '
+      'Delete it on the host, create a proper config.toml file there, and restart the container.',
+      file=sys.stderr,
+    )
+    raise SystemExit(1)
+  if not config_path.exists():
+    print(
+      f'Error: config.toml not found at {config_path.resolve()}. '
+      'Copy config.example.toml, fill in your API keys, '
+      'and make sure the host path is mounted correctly before starting the container.',
+      file=sys.stderr,
+    )
+    raise SystemExit(1)
+  if config_path.stat().st_size == 0:
+    print(
+      'Error: config.toml is empty. Copy config.example.toml and fill in your API keys.',
+      file=sys.stderr,
+    )
+    raise SystemExit(1)
+
+  user_path = Path('content') / 'user'
+  if user_path.is_dir() and not any(user_path.iterdir()):
+    print(
+      'Warning: user content directory is empty. '
+      'If you intended to mount personal content, make sure the host path exists and '
+      'contains JSON files. If Docker created this directory automatically, delete it on '
+      'the host, create it with your content files, and restart the container.'
+    )
+
+
 def main() -> None:
+  _validate_startup()
   _config_mod.load_config()
   parser = argparse.ArgumentParser()
   parser.add_argument('--public', action='store_true', help='Only show public messages')
@@ -399,6 +460,19 @@ def main() -> None:
   load_content(scheduler, public_mode=args.public, content_enabled=content_enabled)
   scheduler.start()
   print(f'Scheduler started — {len(scheduler.get_jobs())} job(s) registered')
+
+  loaded_integrations: set[str] = set()
+  for job in scheduler.get_jobs():
+    data = job.args[1]
+    if 'integration' in data:
+      loaded_integrations.add(data['integration'])
+  for name in loaded_integrations:
+    try:
+      mod = _get_integration(name)
+      if hasattr(mod, 'preflight'):
+        mod.preflight()
+    except Exception as e:  # noqa: BLE001
+      print(f'Warning: preflight for {name!r} failed: {e}')
 
   threading.Thread(target=worker, daemon=True).start()
 
