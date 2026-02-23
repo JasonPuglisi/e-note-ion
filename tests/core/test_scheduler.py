@@ -625,6 +625,60 @@ def test_main_empty_board_on_startup(monkeypatch: pytest.MonkeyPatch, capsys: py
   assert '(no current message)' in out
 
 
+def test_worker_calls_integration_get_variables() -> None:
+  msg = _mod.QueuedMessage(
+    priority=5,
+    seq=0,
+    name='test',
+    scheduled_at=time.monotonic(),
+    data={
+      'templates': [{'format': ['{greeting}']}],
+      'variables': {},
+      'truncation': 'hard',
+      'integration': 'bart',
+    },
+    hold=0,
+    timeout=3600,
+  )
+  mock_integration = MagicMock()
+  mock_integration.get_variables.return_value = {'greeting': [['HELLO']]}
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch.object(_mod, '_get_integration', return_value=mock_integration),
+    patch('integrations.vestaboard.set_state'),
+    patch('time.sleep'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+  mock_integration.get_variables.assert_called_once()
+
+
+def test_worker_logs_and_skips_on_missing_integration_deps() -> None:
+  msg = _mod.QueuedMessage(
+    priority=5,
+    seq=0,
+    name='test',
+    scheduled_at=time.monotonic(),
+    data={
+      'templates': [{'format': ['HELLO']}],
+      'variables': {},
+      'truncation': 'hard',
+      'integration': 'bart',
+    },
+    hold=0,
+    timeout=3600,
+  )
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch.object(_mod, '_get_integration', side_effect=RuntimeError('missing dependencies')),
+    patch('integrations.vestaboard.set_state') as mock_set_state,
+    patch('time.sleep'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+  mock_set_state.assert_not_called()
+
+
 def test_worker_skips_on_duplicate_content() -> None:
   msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
   with (
