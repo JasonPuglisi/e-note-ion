@@ -2,6 +2,12 @@
 # Copy this file to config.toml and fill in your values.
 # config.toml is git-ignored — never commit it.
 
+[scheduler]
+# Optional: IANA timezone name for date/time display in all integrations.
+# Defaults to the system local timezone (TZ env var). Set this if you want
+# to display times in a specific timezone regardless of the host's TZ setting.
+# timezone = "America/Los_Angeles"
+
 [vestaboard]
 # Read/Write API key from https://store.vestaboard.com/pages/read-write-api
 api_key = "your-vestaboard-read-write-api-key"
