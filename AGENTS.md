@@ -240,65 +240,42 @@ come from GitHub secrets env vars directly.
 ### Periodic health review
 
 At natural breakpoints (before a minor/major release, after a sprint of feature
-work), do a lightweight review of: test coverage gaps, code pattern consistency
-across integrations, dependency health (`pip-audit`), security posture (timeouts,
-key handling, `# nosec` justifications), documentation drift (README / AGENTS.md
-/ sidecar docs accurate and not duplicating each other; auto-loaded files lean),
-stale TODO/FIXME comments, **CI/CD workflow hygiene** (job permissions scoped to
-minimum required, CI steps match the documented check suite, job/step names
-accurately describe what they do, post-merge workflows on `main` passing clean),
-**branch ruleset integrity** (verify via
-`gh api repos/JasonPuglisi/e-note-ion/rulesets/13082160 --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'`
-that required status check names match actual CI job names in `ci.yml`, ruleset
-enforcement is `active`, and allowed merge methods are correct),
-**integration test hygiene** (advisory CI job passing on `main`; GitHub secrets
-`BART_API_KEY` and `VESTABOARD_VIRTUAL_API_KEY` present; new integrations have
-corresponding `test_<name>_integration.py` and their env vars listed in
-`tests/integrations/conftest.py`),
-and **issue/milestone hygiene**:
-- Every open issue has an appropriate milestone (no orphans)
-- Milestone scope is right-sized — merge single-issue milestones into a broader
-  one; split a milestone if it's grown unfocused
-- Blocking relationships are explicit (e.g. "Blocked by #X" in issue body)
-- Tracking/parent issues have sub-issues linked via the GitHub sub-issues API
-  (`gh api repos/JasonPuglisi/e-note-ion/issues/<n>/sub_issues`)
-- Issues in the wrong milestone get reassigned (e.g. architectural work that
-  must land before v1.0 belongs in v1.0, not a feature milestone)
-- Stale or superseded issues are closed with a note
+work), run through this checklist. Open issues for gaps found; fix trivial things
+inline. When something slips through, ask why it wasn't caught and add a
+prevention here — not just a one-off fix. See #65 for extended notes.
 
-Open issues for any gaps found; fix trivial things inline. See #65 for the full
-checklist.
-
-When something slips through, ask **why it wasn't caught** and add a
-prevention to the checklist or workflow — not just a one-off fix. Examples:
-- Stale job name → added "job/step names accurately describe what they do"
-  to the health review above
-- Post-merge failure not noticed → added post-merge run check to step 10
-  of the Execution steps
-- CI job rename broke ruleset required check → added ruleset integrity to
-  health review; added inline comments in `ci.yml` linking to ruleset
-- Post-merge runs not waited on → tightened step 10 to require watching
-  in-progress runs to completion before declaring done
-- Post-merge check skipped after `git pull` → step 10 is non-negotiable;
-  run the SHA lookup and `gh run list` even when the PR checks looked clean
+1. **Test coverage** — gaps in unit tests; retroactive coverage for untested logic
+2. **Code patterns** — consistency across integrations (structure, naming, error handling)
+3. **Dependency health** — `uv run pip-audit`; flag any CVEs
+4. **Security posture** — timeouts on all HTTP calls; secrets not logged; `# nosec` justifications valid
+5. **Docs drift** — README / AGENTS.md / sidecar docs accurate and not duplicating each other
+6. **Stale comments** — no unresolved TODO/FIXME in source
+7. **CI/CD hygiene** — job permissions minimal; step names accurate; post-merge `main` runs passing clean
+8. **Branch ruleset integrity** — required status check names match actual CI job names in `ci.yml`:
+   ```
+   gh api repos/JasonPuglisi/e-note-ion/rulesets/13082160 --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'
+   ```
+9. **Integration test hygiene** — advisory CI job passing on `main`; GitHub secrets `BART_API_KEY` and `VESTABOARD_VIRTUAL_API_KEY` present; new integrations have `test_<name>_integration.py` and env vars in `tests/integrations/conftest.py`
+10. **Issue/milestone hygiene**:
+    - Every open issue has a milestone (no orphans); scope is right-sized
+    - Blocking relationships explicit ("Blocked by #X" in body)
+    - Tracking issues have sub-issues linked (`gh api repos/JasonPuglisi/e-note-ion/issues/<n>/sub_issues`)
+    - Issues in wrong milestone reassigned; stale/superseded issues closed with a note
 
 ### Planning before implementation
 
 All non-trivial work follows a plan-then-execute cycle:
 
-1. **Create or identify a GitHub issue** for the work. Assign to JasonPuglisi
-   with an appropriate milestone. Read all existing comments on the issue before
-   proceeding — blockers, prior decisions, and context live there.
-2. **Post an in-depth implementation plan as a comment** on the issue. The plan
-   should cover: specific files and functions to change, the approach with
-   rationale, edge cases, any open questions, and a **## Tests** section listing
-   what new tests will be added and which existing tests need updating. Do this
-   before writing any code.
-3. **Wait for a 👍 reaction from JasonPuglisi on the latest plan comment.**
-   A reaction from anyone else does not count. Do not begin implementation
-   until that reaction is present. Check via the GitHub API or by viewing the
-   issue before starting work.
-4. **Execute the approved plan.** Follow the steps below.
+1. **Create or identify a GitHub issue.** Assign to JasonPuglisi with a
+   milestone. Read all existing comments before proceeding — blockers, prior
+   decisions, and context live there.
+2. **Post an implementation plan as a comment.** Cover: files and functions to
+   change, approach with rationale, edge cases, open questions, and a
+   **## Tests** section listing new and updated tests. Do this before any code.
+3. **⛔ HARD STOP — wait for a 👍 reaction from JasonPuglisi** on the plan
+   comment. No reaction = no implementation. A reaction from anyone else does
+   not count. Verify via the GitHub API before proceeding.
+4. **Execute the approved plan** following the Execution steps below.
 
 For simple or clearly-scoped tasks (typo fixes, one-line changes), the plan
 step may be skipped — use judgement.
@@ -315,14 +292,12 @@ step may be skipped — use judgement.
 7. `gh pr create --label <label> --assignee JasonPuglisi`
 8. Enable auto-merge: `gh pr merge --squash --delete-branch --auto`
 9. Wait for merge: `gh pr checks <number> --watch`; once all pass and the PR merges, proceed
-10. After merge: `git checkout main && git pull && git branch -d feat/description`; then
-    run `git rev-parse HEAD` to get the merge commit SHA and check post-merge workflows
-    with `gh run list --branch main --commit <sha>`, watch any in-progress runs to
-    completion (`gh run watch <id>`), and verify all runs from the merge commit
-    succeeded with no `startup_failure` or failures
-    - **Required jobs** (check, docker, CodeQL) must pass — any failure here is a blocker
-    - **Advisory integration job** may fail — note the result; a failure means tests
-      skipped (missing secrets) or an API issue, not a merge blocker
+10. After merge: `git checkout main && git pull && git branch -d feat/description`;
+    get merge SHA via `git rev-parse HEAD`; run `gh run list --branch main --commit <sha>`
+    and watch all in-progress runs to completion (`gh run watch <id>`). This step is
+    non-negotiable — run it even when PR checks looked clean.
+    Required jobs (check, docker, CodeQL) must pass. Advisory integration job may fail
+    (missing secrets or API issue) — note but not a blocker.
 11. Keep `README.md` and `AGENTS.md` up to date as part of the same PR —
     new env vars, CLI flags, content format fields, project structure changes,
     and workflow changes should all be reflected before merge
@@ -388,39 +363,9 @@ and verify those channels during periodic health reviews.
 
 ### Contrib integration doc template
 
-Every `content/contrib/<name>.json` must have a companion
-`content/contrib/<name>.md` with the following sections:
-
-```markdown
-# <name>.json
-
-One-sentence description. Schedule summary.
-
-## Configuration
-
-Add the following to your `config.toml`:
-
-\`\`\`toml
-[<name>]
-key_name = "value"
-\`\`\`
-
-| Key | Required | Description |
-|---|---|---|
-| `key_name` | Yes/No | What it does |
-
-## Keeping data current
-
-### <Data type>
-
-Authoritative source: <URL>
-
-Instructions for verifying and updating any hardcoded lists (station codes,
-destination names, API endpoint changes, etc.).
-```
-
-After adding a new integration doc, add a row to the table in
-`content/README.md`.
+Every `content/contrib/<name>.json` must have a companion `content/contrib/<name>.md`.
+Use `content/contrib/TEMPLATE.md` as the starting point. After adding a new integration
+doc, add a row to the table in `content/README.md`.
 
 ## Content Design
 
