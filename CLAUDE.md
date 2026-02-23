@@ -60,6 +60,7 @@ on this project collaboratively with the user.
 ```
 scheduler.py                # Entry point — scheduler, queue, worker
 config.py                   # TOML config loader (load_config, get, get_optional, get_schedule_override, write_section_values — in-place token persistence)
+exceptions.py               # Custom exception types (IntegrationDataUnavailableError)
 config.toml                 # Runtime config with API keys (git-ignored; copy from config.example.toml)
 config.example.toml         # Config template committed to the repo
 integrations/vestaboard.py  # Vestaboard API client (get_state, set_state)

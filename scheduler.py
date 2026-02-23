@@ -448,7 +448,10 @@ def main() -> None:
     print(vestaboard.get_state())
   except vestaboard.EmptyBoardError:
     print('(no current message)')
-  scheduler = BackgroundScheduler(misfire_grace_time=300)
+  scheduler = BackgroundScheduler(
+    misfire_grace_time=300,
+    timezone=_config_mod.get_timezone(),
+  )
   load_content(scheduler, public_mode=args.public, content_enabled=content_enabled)
   scheduler.start()
   print(f'Scheduler started — {len(scheduler.get_jobs())} job(s) registered')

@@ -66,4 +66,15 @@
     Display="always"
     Required="false"
     Mask="false"/>
+
+  <Config
+    Name="Timezone"
+    Target="TZ"
+    Default="America/Los_Angeles"
+    Mode=""
+    Description="Container timezone (e.g. America/New_York, Europe/London). Controls when cron jobs fire. Should match the timezone set in config.toml under [scheduler].timezone, or be the only timezone setting if you omit that config key."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"/>
 </Container>
