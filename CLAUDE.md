@@ -187,6 +187,22 @@ PR labels (apply one or more):
 - When working on existing code that lacks tests, add retroactive coverage as
   part of the same PR where feasible
 
+#### Integration tests
+
+Integration tests live in `tests/integrations/` and are excluded from the
+default `uv run pytest` run. To run them locally, set the required env vars
+then: `uv run pytest -m integration -v`. A setup table prints at session start
+showing which env vars are set or missing.
+
+- Mark tests with `@pytest.mark.integration` and `@pytest.mark.require_env('VAR', ...)`
+- Tests skip automatically when required env vars are absent (no failures)
+- Required env vars per integration:
+  - BART: `BART_API_KEY`, `BART_STATION`, `BART_LINE_1_DEST`
+  - Vestaboard: `VESTABOARD_VIRTUAL_API_KEY` (use a virtual board, not physical)
+- CI runs the `integration` job on `main` pushes only; it is advisory
+  (`continue-on-error: true`) and not required by the branch ruleset
+- GitHub secrets needed: `BART_API_KEY`, `VESTABOARD_VIRTUAL_API_KEY`
+
 ### Periodic health review
 
 At natural breakpoints (before a minor/major release, after a sprint of feature
@@ -201,6 +217,10 @@ accurately describe what they do, post-merge workflows on `main` passing clean),
 `gh api repos/JasonPuglisi/e-note-ion/rulesets/13082160 --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'`
 that required status check names match actual CI job names in `ci.yml`, ruleset
 enforcement is `active`, and allowed merge methods are correct),
+**integration test hygiene** (advisory CI job passing on `main`; GitHub secrets
+`BART_API_KEY` and `VESTABOARD_VIRTUAL_API_KEY` present; new integrations have
+corresponding `test_<name>_integration.py` and their env vars listed in
+`tests/integrations/conftest.py`),
 and **issue/milestone hygiene**:
 - Every open issue has an appropriate milestone (no orphans)
 - Milestone scope is right-sized — merge single-issue milestones into a broader
