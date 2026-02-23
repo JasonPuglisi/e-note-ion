@@ -12,6 +12,7 @@ import re
 import sys
 import tomllib
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 _CONFIG_PATH = Path('config.toml')
 _EXAMPLE_PATH = Path('config.example.toml')
@@ -106,6 +107,27 @@ def write_section_values(section: str, values: dict[str, str | int]) -> None:
   lines[section_start:section_end] = section_lines
   _CONFIG_PATH.write_text(''.join(lines))
   _config.setdefault(section, {}).update(values)
+
+
+def get_timezone() -> ZoneInfo | None:
+  """Return the configured timezone, or None to use the system local timezone.
+
+  Reads [scheduler].timezone from config.toml. When absent or empty, returns
+  None, which causes datetime.astimezone(None) to fall back to the system
+  local timezone (i.e. whatever TZ is set to in the environment).
+
+  Raises ValueError with a clear message if the timezone name is invalid.
+  """
+  tz_name = get_optional('scheduler', 'timezone')
+  if not tz_name:
+    return None
+  try:
+    return ZoneInfo(tz_name)
+  except ZoneInfoNotFoundError:
+    raise ValueError(
+      f'Unknown timezone {tz_name!r} in [scheduler].timezone — '
+      'use an IANA name such as "America/Los_Angeles" or "Europe/London"'
+    ) from None
 
 
 def get_schedule_override(template_id: str) -> dict:

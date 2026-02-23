@@ -252,9 +252,10 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
   episode_ref = _format_episode_ref(ep['season'], ep['number'])
   episode_title = _strip_leading_article((ep.get('title') or '').upper())
 
-  # Convert UTC first_aired → local time for display
+  # Convert UTC first_aired → display timezone (config [scheduler].timezone,
+  # or system local if unset).
   aired_dt = datetime.fromisoformat(entry['first_aired'].replace('Z', '+00:00'))
-  local_dt = aired_dt.astimezone()
+  local_dt = aired_dt.astimezone(_config_mod.get_timezone())
   air_day = local_dt.strftime('%a').upper()[:3]
   hour = local_dt.hour
   if hour == 0:

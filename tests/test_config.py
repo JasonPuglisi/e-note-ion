@@ -1,5 +1,6 @@
 import tomllib
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -99,3 +100,23 @@ def test_get_schedule_override_absent(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_get_schedule_override_malformed_template_id(monkeypatch: pytest.MonkeyPatch) -> None:
   monkeypatch.setattr(_mod, '_config', {})
   assert _mod.get_schedule_override('no_dot_here') == {}
+
+
+# --- get_timezone ---
+
+
+def test_get_timezone_absent_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {})
+  assert _mod.get_timezone() is None
+
+
+def test_get_timezone_valid_returns_zone_info(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'timezone': 'America/Los_Angeles'}})
+  result = _mod.get_timezone()
+  assert result == ZoneInfo('America/Los_Angeles')
+
+
+def test_get_timezone_invalid_raises_value_error(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'timezone': 'Not/ATimezone'}})
+  with pytest.raises(ValueError, match='Not/ATimezone'):
+    _mod.get_timezone()
