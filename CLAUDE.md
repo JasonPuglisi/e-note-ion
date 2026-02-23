@@ -252,6 +252,8 @@ prevention to the checklist or workflow — not just a one-off fix. Examples:
   health review; added inline comments in `ci.yml` linking to ruleset
 - Post-merge runs not waited on → tightened step 10 to require watching
   in-progress runs to completion before declaring done
+- Post-merge check skipped after `git pull` → step 10 is non-negotiable;
+  run the SHA lookup and `gh run list` even when the PR checks looked clean
 
 ### Planning before implementation
 
