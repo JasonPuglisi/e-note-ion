@@ -113,24 +113,51 @@ def enqueue(
 
 
 def pop_valid_message() -> QueuedMessage | None:
-  """Return the next non-expired message, or None if the queue is empty."""
+  """Return the highest-priority non-expired message, or None if the queue is empty.
+
+  After the first message arrives, waits _COALESCE_WINDOW seconds so that any
+  co-scheduled jobs (fired by APScheduler within milliseconds of each other) have
+  time to enqueue before we commit to a winner. All candidates are collected, expired
+  ones discarded, and the highest-priority valid message is returned; the rest are
+  re-enqueued for the next cycle.
+  """
+  try:
+    first = _queue.get(timeout=1)
+  except Empty:
+    return None
+
+  time.sleep(_COALESCE_WINDOW)
+
+  candidates = [first]
   while True:
     try:
-      message = _queue.get(timeout=1)
+      candidates.append(_queue.get_nowait())
     except Empty:
-      return None
+      break
 
-    waited = time.monotonic() - message.scheduled_at
-    if waited <= message.timeout:
-      return message
-    # Message sat in the queue too long (e.g. blocked behind a higher-priority
-    # message with a long hold time) — discard so stale content never shows.
-    print(f'Discarding {message.name} (waited {waited:.1f}s, timeout={message.timeout}s)')
+  now = time.monotonic()
+  valid: list[QueuedMessage] = []
+  for m in candidates:
+    waited = now - m.scheduled_at
+    if waited <= m.timeout:
+      valid.append(m)
+    else:
+      print(f'Discarding {m.name} (waited {waited:.1f}s, timeout={m.timeout}s)')
+
+  if not valid:
+    return None
+
+  best = min(valid)
+  for m in valid:
+    if m is not best:
+      _queue.put(m)
+  return best
 
 
 # --- Display Worker ---
 
 _LOCK_RETRY_DELAY = 60  # seconds to wait before retrying a 423-locked send
+_COALESCE_WINDOW = 0.1  # seconds to wait after first message arrives so co-scheduled jobs can enqueue
 
 
 def worker() -> None:

@@ -84,7 +84,8 @@ def test_pop_valid_message_returns_message() -> None:
     timeout=60,
   )
   _mod._queue.put(msg)
-  result = _mod.pop_valid_message()
+  with patch('time.sleep'):
+    result = _mod.pop_valid_message()
   assert result is msg
 
 
@@ -109,7 +110,8 @@ def test_pop_valid_message_discards_expired_returns_next() -> None:
   )
   _mod._queue.put(expired)
   _mod._queue.put(valid)
-  result = _mod.pop_valid_message()
+  with patch('time.sleep'):
+    result = _mod.pop_valid_message()
   assert result is not None
   assert result.name == 'valid'
 
@@ -118,6 +120,45 @@ def test_pop_valid_message_returns_none_when_empty() -> None:
   # Queue is empty (drained by autouse fixture); waits up to 1s then returns None
   result = _mod.pop_valid_message()
   assert result is None
+
+
+def test_pop_valid_message_prefers_higher_priority_coscheduled() -> None:
+  low = _mod.QueuedMessage(priority=0, seq=0, name='low', scheduled_at=time.monotonic(), data={}, hold=60, timeout=60)
+  high = _mod.QueuedMessage(priority=9, seq=1, name='high', scheduled_at=time.monotonic(), data={}, hold=60, timeout=60)
+  _mod._queue.put(low)
+  _mod._queue.put(high)
+  with patch('time.sleep'):
+    result = _mod.pop_valid_message()
+  assert result is not None
+  assert result.name == 'high'
+
+
+def test_pop_valid_message_requeues_lower_priority() -> None:
+  low = _mod.QueuedMessage(priority=0, seq=0, name='low', scheduled_at=time.monotonic(), data={}, hold=60, timeout=60)
+  high = _mod.QueuedMessage(priority=9, seq=1, name='high', scheduled_at=time.monotonic(), data={}, hold=60, timeout=60)
+  _mod._queue.put(low)
+  _mod._queue.put(high)
+  with patch('time.sleep'):
+    _mod.pop_valid_message()
+  assert not _mod._queue.empty()
+  requeued = _mod._queue.get_nowait()
+  assert requeued.name == 'low'
+
+
+def test_pop_valid_message_discards_expired_in_batch() -> None:
+  expired = _mod.QueuedMessage(
+    priority=9, seq=0, name='expired', scheduled_at=time.monotonic() - 100, data={}, hold=60, timeout=10
+  )
+  valid = _mod.QueuedMessage(
+    priority=0, seq=1, name='valid', scheduled_at=time.monotonic(), data={}, hold=60, timeout=60
+  )
+  _mod._queue.put(expired)
+  _mod._queue.put(valid)
+  with patch('time.sleep'):
+    result = _mod.pop_valid_message()
+  assert result is not None
+  assert result.name == 'valid'
+  assert _mod._queue.empty()
 
 
 # --- _load_file ---
