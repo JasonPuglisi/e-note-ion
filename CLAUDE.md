@@ -199,7 +199,7 @@ PR labels (apply one or more):
 Integration tests live in `tests/integrations/` and are excluded from the
 default `uv run pytest` run. To run them locally:
 
-1. Copy `.env.example` to `.env` and fill in your API keys
+1. Copy `.env.example` to `.env` and fill in your API keys (bare values, no quotes)
 2. Run `uv run pytest -m integration -v`
 
 A setup table prints at session start showing which env vars are set or missing.
