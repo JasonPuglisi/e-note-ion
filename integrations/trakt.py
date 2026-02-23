@@ -213,7 +213,7 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
   """Fetch the next upcoming episode from the user's Trakt calendar.
 
   Returns variables: show_name, episode_ref (e.g. S01E02), air_day (e.g. MON),
-  air_time (e.g. 8PM), episode_title. All values are uppercased.
+  air_time (e.g. 20:00), episode_title. All values are uppercased.
 
   Raises IntegrationDataUnavailableError if the calendar window is empty.
   """
@@ -256,15 +256,7 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
   aired_dt = datetime.fromisoformat(entry['first_aired'].replace('Z', '+00:00'))
   local_dt = aired_dt.astimezone(_config_mod.get_timezone())
   air_day = local_dt.strftime('%a').upper()[:3]
-  hour = local_dt.hour
-  if hour == 0:
-    air_time = '12AM'
-  elif hour < 12:
-    air_time = f'{hour}AM'
-  elif hour == 12:
-    air_time = '12PM'
-  else:
-    air_time = f'{hour - 12}PM'
+  air_time = f'{local_dt.hour}:{local_dt.minute:02d}'
 
   return {
     'show_name': [[show_name]],
