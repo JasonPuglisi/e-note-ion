@@ -147,6 +147,16 @@ short tags: `[R]` `[O]` `[Y]` `[G]` `[B]` `[V]` `[W]` `[K]` (red, orange,
 yellow, green, blue, violet, white, black). Each tag encodes to the
 corresponding Vestaboard color square code (63–70).
 
+### Integration dependencies
+
+Add any packages required by a new integration to `pyproject.toml`
+`dependencies` (the base list). All deps are installed unconditionally —
+this keeps the Docker image simple, and Docker is the primary deployment
+target. If an integration is loaded and its deps are missing (e.g. a
+source-install user skipped them), `_get_integration()` will catch the
+`ImportError` and raise a `RuntimeError` with an install hint; the worker
+logs it and skips that message rather than crashing.
+
 ## Environment
 
 - Configuration lives in `config.toml` at the project root (git-ignored). Copy

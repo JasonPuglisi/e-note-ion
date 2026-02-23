@@ -43,7 +43,13 @@ def _get_integration(name: str) -> Any:
   if name not in _KNOWN_INTEGRATIONS:
     raise ValueError(f'Unknown integration: {name!r}')
   if name not in _integrations:
-    _integrations[name] = importlib.import_module(f'integrations.{name}')
+    try:
+      _integrations[name] = importlib.import_module(f'integrations.{name}')
+    except ImportError as e:
+      raise RuntimeError(
+        f'Integration {name!r} is missing dependencies. '
+        f'Install them with: pip install -r integrations/{name}.requirements.txt'
+      ) from e
   return _integrations[name]
 
 
