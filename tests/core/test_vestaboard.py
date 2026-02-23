@@ -463,3 +463,24 @@ def test_expand_format_picks_from_multiple_options() -> None:
   with patch('integrations.vestaboard.random.choice', return_value=opts[1]):
     result = vb._expand_format(['{v}'], {'v': opts})  # noqa: SLF001
   assert result == ['SECOND']
+
+
+# --- render_grid ---
+
+
+def test_render_grid_note_dimensions() -> None:
+  grid = [[0] * vb.VestaboardModel.NOTE.cols for _ in range(vb.VestaboardModel.NOTE.rows)]
+  output = vb.render_grid(grid)
+  lines = output.splitlines()
+  # top border + rows + bottom border
+  assert len(lines) == vb.VestaboardModel.NOTE.rows + 2
+  assert lines[0].startswith('┌')
+  assert lines[-1].startswith('└')
+
+
+def test_render_grid_flagship_dimensions(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(vb, 'model', vb.VestaboardModel.FLAGSHIP)
+  grid = [[0] * vb.VestaboardModel.FLAGSHIP.cols for _ in range(vb.VestaboardModel.FLAGSHIP.rows)]
+  output = vb.render_grid(grid)
+  lines = output.splitlines()
+  assert len(lines) == vb.VestaboardModel.FLAGSHIP.rows + 2
