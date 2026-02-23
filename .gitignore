@@ -12,6 +12,12 @@ wheels/
 # macOS
 .DS_Store
 
+# Runtime config (contains secrets — never commit)
+config.toml
+
+# Local integration test secrets (never commit)
+.env
+
 # User content (personal, not committed to the project repo)
 content/user/*
 !content/user/.gitkeep

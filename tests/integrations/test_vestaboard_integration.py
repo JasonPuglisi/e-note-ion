@@ -12,6 +12,7 @@ import time
 
 import pytest
 
+import config as _cfg
 import integrations.vestaboard as vb
 
 
@@ -19,7 +20,7 @@ import integrations.vestaboard as vb
 @pytest.mark.require_env('VESTABOARD_VIRTUAL_API_KEY')
 def test_set_state_real_api(require_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
   """set_state() successfully writes a message to the live virtual board."""
-  monkeypatch.setenv('VESTABOARD_API_KEY', os.environ['VESTABOARD_VIRTUAL_API_KEY'])
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': os.environ['VESTABOARD_VIRTUAL_API_KEY']}})
 
   # Use the last 4 digits of the epoch to make each run unique — the virtual
   # board returns 409 if you POST the same content as the current message.
@@ -34,7 +35,7 @@ def test_get_state_real_api(require_env: None, monkeypatch: pytest.MonkeyPatch) 
 
   Relies on test_set_state_real_api having run first so the board has state.
   """
-  monkeypatch.setenv('VESTABOARD_API_KEY', os.environ['VESTABOARD_VIRTUAL_API_KEY'])
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': os.environ['VESTABOARD_VIRTUAL_API_KEY']}})
 
   state = vb.get_state()
 

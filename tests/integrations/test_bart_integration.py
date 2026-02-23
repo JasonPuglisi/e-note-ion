@@ -3,21 +3,33 @@
 Run with: uv run pytest -m integration
 
 Required env vars:
-  BART_API_KEY      — free BART API key
-  BART_STATION      — originating station code (e.g. MLPT)
-  BART_LINE_1_DEST  — destination abbreviation (e.g. DALY)
+  BART_API_KEY  — free BART API key
 """
+
+import os
 
 import pytest
 
+import config as _cfg
 import integrations.bart as bart
 import integrations.vestaboard as vb
 
 
 @pytest.mark.integration
-@pytest.mark.require_env('BART_API_KEY', 'BART_STATION', 'BART_LINE_1_DEST')
-def test_get_variables_real_api(require_env: None) -> None:
+@pytest.mark.require_env('BART_API_KEY')
+def test_get_variables_real_api(require_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
   """get_variables() returns a valid variables dict from the live BART API."""
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {
+      'bart': {
+        'api_key': os.environ['BART_API_KEY'],
+        'station': 'MLPT',
+        'line1_dest': 'DALY',
+      }
+    },
+  )
   # Reset the color cache so each run fetches fresh data.
   bart._dest_color_cache = None
 

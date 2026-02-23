@@ -12,7 +12,6 @@
 # is a raw JSON array-of-arrays of integer character codes with no wrapper key.
 
 import json
-import os
 import random
 import re
 from enum import Enum
@@ -28,13 +27,12 @@ _HOST = 'https://rw.vestaboard.com'
 def _get_headers() -> dict[str, str]:
   """Return the auth headers for the Vestaboard API.
 
-  Reads VESTABOARD_API_KEY from the environment on each call so that the
-  module can be imported without the key being present (e.g. in tests that
-  don't exercise the API).
+  Imports config inside the function so the module can be imported without a
+  config file present (e.g. in tests that don't exercise the API).
   """
-  api_key = os.environ.get('VESTABOARD_API_KEY', '')
-  if not api_key:
-    raise RuntimeError('VESTABOARD_API_KEY environment variable is not set')
+  import config as _config_mod
+
+  api_key = _config_mod.get('vestaboard', 'api_key')
   return {
     'X-Vestaboard-Read-Write-Key': api_key,
     'Content-Type': 'application/json',

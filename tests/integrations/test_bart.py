@@ -265,10 +265,13 @@ def test_fetch_dest_colors_raises_on_http_error() -> None:
 
 @pytest.fixture()
 def bart_env(monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.setenv('BART_API_KEY', 'testkey')
-  monkeypatch.setenv('BART_STATION', 'MLPT')
-  monkeypatch.setenv('BART_LINE_1_DEST', 'DALY')
-  monkeypatch.delenv('BART_LINE_2_DEST', raising=False)
+  import config as _cfg
+
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {'bart': {'api_key': 'testkey', 'station': 'MLPT', 'line1_dest': 'DALY'}},
+  )
 
 
 def test_get_variables_happy_path(bart_env: None) -> None:
@@ -295,15 +298,18 @@ def test_get_variables_no_service_when_dest_absent(bart_env: None) -> None:
 
 
 def test_get_variables_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.delenv('BART_API_KEY', raising=False)
-  with pytest.raises(RuntimeError, match='BART_API_KEY'):
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {})
+  with pytest.raises(ValueError, match='api_key'):
     bart.get_variables()
 
 
 def test_get_variables_missing_station(monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.setenv('BART_API_KEY', 'testkey')
-  monkeypatch.delenv('BART_STATION', raising=False)
-  with pytest.raises(RuntimeError, match='BART_STATION'):
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'bart': {'api_key': 'testkey'}})
+  with pytest.raises(ValueError, match='station'):
     bart.get_variables()
 
 
@@ -319,10 +325,9 @@ def test_get_variables_matches_by_abbreviation_code(bart_env: None) -> None:
 
 
 def test_get_variables_code_matching_is_case_insensitive(monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.setenv('BART_API_KEY', 'testkey')
-  monkeypatch.setenv('BART_STATION', 'MLPT')
-  monkeypatch.setenv('BART_LINE_1_DEST', 'daly')  # lowercase
-  monkeypatch.delenv('BART_LINE_2_DEST', raising=False)
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'bart': {'api_key': 'testkey', 'station': 'MLPT', 'line1_dest': 'daly'}})
   mock_resp = MagicMock()
   mock_resp.json.return_value = _FAKE_ETD
   mock_resp.raise_for_status.return_value = None
@@ -332,10 +337,9 @@ def test_get_variables_code_matching_is_case_insensitive(monkeypatch: pytest.Mon
 
 
 def test_get_variables_unknown_code_shows_no_service(monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.setenv('BART_API_KEY', 'testkey')
-  monkeypatch.setenv('BART_STATION', 'MLPT')
-  monkeypatch.setenv('BART_LINE_1_DEST', 'ZZZZ')
-  monkeypatch.delenv('BART_LINE_2_DEST', raising=False)
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'bart': {'api_key': 'testkey', 'station': 'MLPT', 'line1_dest': 'ZZZZ'}})
   mock_resp = MagicMock()
   mock_resp.json.return_value = _FAKE_ETD
   mock_resp.raise_for_status.return_value = None
@@ -406,10 +410,13 @@ _FAKE_ETD_TWO_DESTS: dict[str, Any] = {
 
 
 def test_get_variables_two_lines(monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.setenv('BART_API_KEY', 'testkey')
-  monkeypatch.setenv('BART_STATION', 'MLPT')
-  monkeypatch.setenv('BART_LINE_1_DEST', 'DALY')
-  monkeypatch.setenv('BART_LINE_2_DEST', 'BERY')
+  import config as _cfg
+
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {'bart': {'api_key': 'testkey', 'station': 'MLPT', 'line1_dest': 'DALY', 'line2_dest': 'BERY'}},
+  )
   mock_resp = MagicMock()
   mock_resp.json.return_value = _FAKE_ETD_TWO_DESTS
   mock_resp.raise_for_status.return_value = None
@@ -422,10 +429,10 @@ def test_get_variables_two_lines(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_variables_http_error_does_not_leak_key(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
   api_key = 'supersecretkey99'
-  monkeypatch.setenv('BART_API_KEY', api_key)
-  monkeypatch.setenv('BART_STATION', 'MLPT')
-  monkeypatch.setenv('BART_LINE_1_DEST', 'DALY')
+  monkeypatch.setattr(_cfg, '_config', {'bart': {'api_key': api_key, 'station': 'MLPT', 'line1_dest': 'DALY'}})
   mock_resp = MagicMock()
   mock_resp.status_code = 401
   mock_resp.reason = 'Unauthorized'
