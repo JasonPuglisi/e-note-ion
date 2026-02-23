@@ -201,7 +201,12 @@ showing which env vars are set or missing.
   - Vestaboard: `VESTABOARD_VIRTUAL_API_KEY` (use a virtual board, not physical)
 - CI runs the `integration` job on `main` pushes only; it is advisory
   (`continue-on-error: true`) and not required by the branch ruleset
-- GitHub secrets needed: `BART_API_KEY`, `VESTABOARD_VIRTUAL_API_KEY`
+- GitHub secrets needed: `BART_API_KEY`, `VESTABOARD_VIRTUAL_API_KEY` — store as
+  **environment secrets** on the `integration` environment (Settings → Environments),
+  restricted to the `main` branch; this scopes them tighter than repo secrets and
+  prevents any PR branch from accessing them even if a workflow runs there
+- If any integration test is skipped, the pytest session exits with code 5
+  (NO_TESTS_COLLECTED), making the advisory job visibly fail rather than silently pass
 
 ### Periodic health review
 

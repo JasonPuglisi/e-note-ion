@@ -75,6 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     continue-on-error: true
+    environment: integration  # secrets scoped to this env; restrict env to main in repo settings
 
     steps:
       - name: Checkout
