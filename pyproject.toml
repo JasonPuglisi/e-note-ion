@@ -49,6 +49,11 @@ select = ["E", "F", "I"]  # pycodestyle errors, pyflakes, isort
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "-m 'not integration'"
+markers = [
+  "integration: marks tests that call real external APIs (deselected by default)",
+  "require_env: list env var names required for the test to run",
+]
 
 [tool.bandit]
 exclude_dirs = [".venv", "tests"]
