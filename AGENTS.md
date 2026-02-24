@@ -261,6 +261,7 @@ prevention here — not just a one-off fix. See #65 for extended notes.
     - Blocking relationships explicit ("Blocked by #X" in body)
     - Tracking issues have sub-issues linked (`gh api repos/JasonPuglisi/e-note-ion/issues/<n>/sub_issues`)
     - Issues in wrong milestone reassigned; stale/superseded issues closed with a note
+    - Untriaged issues (missing label, milestone, or assignee) caught and resolved
 
 ### Planning before implementation
 
