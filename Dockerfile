@@ -37,4 +37,8 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 VOLUME ["/app/content/user"]
 
+# Uncomment and adjust if using the webhook listener with bind = "0.0.0.0".
+# Map the same port with -p 8080:8080 (or equivalent) in your docker run / compose.
+# EXPOSE 8080
+
 ENTRYPOINT ["/app/entrypoint.sh"]
