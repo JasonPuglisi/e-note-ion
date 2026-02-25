@@ -4,18 +4,16 @@
 # Supports both the Note (3×15) and Flagship (6×22); defaults to Note.
 #
 # Content is defined in JSON files under content/contrib/ (bundled, opt-in
-# via --content-enabled) and content/user/ (personal, always loaded). Each
-# file describes one or more named templates, each with its own cron schedule,
-# priority, and timing constraints. At runtime, scheduled messages are pushed
-# into a priority queue and consumed by a single worker thread that sends them
-# to the display one at a time, ensuring the physical flaps are never driven
-# concurrently.
+# via [scheduler].content_enabled in config.toml) and content/user/ (personal,
+# always loaded). Each file describes one or more named templates, each with
+# its own cron schedule, priority, and timing constraints. At runtime,
+# scheduled messages are pushed into a priority queue and consumed by a single
+# worker thread that sends them to the display one at a time, ensuring the
+# physical flaps are never driven concurrently.
 #
-# Run with --flagship to target a Flagship board, --public to restrict output
-# to templates marked as public (useful when the display is in a shared
-# space), and --content-enabled to opt into bundled contrib content.
+# Display model, public mode, and content selection are configured in
+# config.toml under [scheduler].
 
-import argparse
 import importlib
 import json
 import secrets
@@ -561,37 +559,22 @@ def _validate_startup() -> None:
 def main() -> None:
   _validate_startup()
   _config_mod.load_config()
-  parser = argparse.ArgumentParser()
-  parser.add_argument('--public', action='store_true', help='Only show public messages')
-  parser.add_argument(
-    '--flagship',
-    action='store_true',
-    help='Target a Vestaboard Flagship (6×22) instead of a Note (3×15)',
-  )
-  parser.add_argument(
-    '--content-enabled',
-    default='',
-    help=(
-      'Comma-separated list of contrib content file stems to enable '
-      '(e.g. aria,bart), or * to enable all bundled contrib content. '
-      'Contrib content is disabled by default.'
-    ),
-  )
-  args = parser.parse_args()
 
-  if args.flagship:
+  model = _config_mod.get_model()
+  if model == 'flagship':
     vestaboard.model = vestaboard.VestaboardModel.FLAGSHIP
 
-  content_enabled = set(filter(None, args.content_enabled.split(',')))
+  public_mode = _config_mod.get_public_mode()
+  content_enabled = _config_mod.get_content_enabled()
 
-  board_desc = 'Flagship (6×22)' if args.flagship else 'Note (3×15)'
+  board_desc = 'Flagship (6×22)' if model == 'flagship' else 'Note (3×15)'
   extras: list[str] = []
   if content_enabled:
     if '*' in content_enabled:
       extras.append('all contrib content')
     else:
       extras.append(f'contrib: {", ".join(sorted(content_enabled))}')
-  if args.public:
+  if public_mode:
     extras.append('public mode')
   if not extras:
     extras.append('user content only')
@@ -606,7 +589,7 @@ def main() -> None:
     misfire_grace_time=300,
     timezone=_config_mod.get_timezone(),
   )
-  load_content(scheduler, public_mode=args.public, content_enabled=content_enabled)
+  load_content(scheduler, public_mode=public_mode, content_enabled=content_enabled)
   scheduler.start()
   print(f'Scheduler started — {len(scheduler.get_jobs())} job(s) registered')
 

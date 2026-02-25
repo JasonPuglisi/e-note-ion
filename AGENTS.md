@@ -75,7 +75,6 @@ content/
   user/                     # Personal content (always loaded, git-ignored)
 .env.example                # Template for local integration test secrets (copy to .env, fill in, git-ignored)
 Dockerfile                  # Single-stage image using ghcr.io/astral-sh/uv
-entrypoint.sh               # Translates env vars (FLAGSHIP/PUBLIC/CONTENT_ENABLED) to CLI flags
 .github/workflows/
   ci.yml                    # Runs checks on every push and pull request to main
   auto-release.yml          # Creates a release on version bump; calls release.yml
@@ -221,8 +220,8 @@ logs it and skips that message rather than crashing.
 
 Image: `ghcr.io/jasonpuglisi/e-note-ion` (multi-arch, auto-published on release).
 Mount `config.toml` at `/app/config.toml` and optionally personal content at
-`/app/content/user`. Runtime CLI flags (`FLAGSHIP`, `PUBLIC`, `CONTENT_ENABLED`)
-are translated by `entrypoint.sh` — see `README.md`.
+`/app/content/user`. Display model, public mode, and enabled contrib content are
+configured in `config.toml` under `[scheduler]` — see `README.md`.
 
 ## Development Workflow
 
@@ -355,7 +354,7 @@ PR contains **release-worthy** changes:
 |---|---|
 | Source code changes (`.py` files) | CI/CD workflow changes |
 | Runtime dependency changes | Dev-only dependency changes |
-| `Dockerfile` or `entrypoint.sh` changes | Docs-only changes |
+| `Dockerfile` changes | Docs-only changes |
 | Security fixes | Repo config / tooling changes |
 
 Semver rules when bumping:

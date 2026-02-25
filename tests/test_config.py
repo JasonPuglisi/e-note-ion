@@ -79,6 +79,89 @@ def test_get_optional_absent_returns_default(monkeypatch: pytest.MonkeyPatch) ->
   assert _mod.get_optional('sec', 'key') == ''
 
 
+# --- get_optional_bool ---
+
+
+def test_get_optional_bool_absent_returns_false(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {})
+  assert _mod.get_optional_bool('scheduler', 'public') is False
+
+
+def test_get_optional_bool_absent_custom_default(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {})
+  assert _mod.get_optional_bool('scheduler', 'public', default=True) is True
+
+
+def test_get_optional_bool_true(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'public': True}})
+  assert _mod.get_optional_bool('scheduler', 'public') is True
+
+
+def test_get_optional_bool_false(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'public': False}})
+  assert _mod.get_optional_bool('scheduler', 'public') is False
+
+
+# --- get_model ---
+
+
+def test_get_model_absent_returns_note(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {})
+  assert _mod.get_model() == 'note'
+
+
+def test_get_model_flagship(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'model': 'flagship'}})
+  assert _mod.get_model() == 'flagship'
+
+
+def test_get_model_note_explicit(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'model': 'note'}})
+  assert _mod.get_model() == 'note'
+
+
+def test_get_model_invalid_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'model': 'banana'}})
+  with pytest.raises(ValueError, match='banana'):
+    _mod.get_model()
+
+
+# --- get_public_mode ---
+
+
+def test_get_public_mode_absent_returns_false(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {})
+  assert _mod.get_public_mode() is False
+
+
+def test_get_public_mode_true(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'public': True}})
+  assert _mod.get_public_mode() is True
+
+
+# --- get_content_enabled ---
+
+
+def test_get_content_enabled_absent_returns_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {})
+  assert _mod.get_content_enabled() == set()
+
+
+def test_get_content_enabled_empty_list(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'content_enabled': []}})
+  assert _mod.get_content_enabled() == set()
+
+
+def test_get_content_enabled_all(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'content_enabled': ['*']}})
+  assert _mod.get_content_enabled() == {'*'}
+
+
+def test_get_content_enabled_stems(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'content_enabled': ['bart', 'trakt']}})
+  assert _mod.get_content_enabled() == {'bart', 'trakt'}
+
+
 # --- get_schedule_override ---
 
 

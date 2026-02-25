@@ -20,14 +20,12 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 # Copy source, config example, and bundled contrib content.
-COPY scheduler.py entrypoint.sh config.py exceptions.py config.example.toml ./
+COPY scheduler.py config.py exceptions.py config.example.toml ./
 COPY integrations/ ./integrations/
 COPY content/contrib/ ./content/contrib/
 
-# Create user content directory, ensure entrypoint is executable, drop to
-# a non-root user.
+# Create user content directory and drop to a non-root user.
 RUN mkdir -p content/user \
-    && chmod +x entrypoint.sh \
     && chown -R nobody:nogroup /app
 
 USER nobody
@@ -41,4 +39,4 @@ VOLUME ["/app/content/user"]
 # Map the same port with -p 8080:8080 (or equivalent) in your docker run / compose.
 # EXPOSE 8080
 
-ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["python", "scheduler.py"]

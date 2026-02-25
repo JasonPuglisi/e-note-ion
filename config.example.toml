@@ -8,6 +8,17 @@
 # to display times in a specific timezone regardless of the host's TZ setting.
 # timezone = "America/Los_Angeles"
 
+# Display model: "note" (3×15, default) or "flagship" (6×22)
+# model = "flagship"
+
+# Public mode: skip templates marked public = false. Useful when the display
+# is in a shared or guest-visible space.
+# public = true
+
+# Bundled contrib content to enable. Use ["*"] to enable all, or list specific
+# stems: ["bart", "trakt"]. Omit or leave empty to disable all contrib content.
+# content_enabled = ["*"]
+
 [vestaboard]
 # Read/Write API key from https://store.vestaboard.com/pages/read-write-api
 api_key = "your-vestaboard-read-write-api-key"
