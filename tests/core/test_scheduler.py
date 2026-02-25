@@ -1030,3 +1030,82 @@ def test_validate_startup_passes_with_valid_config(tmp_path: Path, monkeypatch: 
   (tmp_path / 'config.toml').write_text('[vestaboard]\napi_key = "x"\n')
   monkeypatch.chdir(tmp_path)
   _mod._validate_startup()  # must not raise
+
+
+# --- _do_hold tests ---
+
+
+def _make_message(priority: int, hold: int = 120) -> _mod.QueuedMessage:
+  return _mod.QueuedMessage(
+    priority=priority,
+    seq=0,
+    name='test',
+    scheduled_at=time.monotonic(),
+    data={},
+    hold=hold,
+    timeout=300,
+  )
+
+
+def _enqueue_priority(priority: int) -> None:
+  """Put a bare message with the given priority directly onto the shared queue."""
+  _mod._queue.put(_make_message(priority))
+
+
+def test_do_hold_runs_full_duration_no_queue(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Hold runs to completion when queue is empty."""
+  message = _make_message(priority=4, hold=2)
+  _mod._hold_interrupt.clear()
+  start = time.monotonic()
+  _mod._do_hold(message, min_hold=1)
+  assert time.monotonic() - start >= 1.9
+
+
+def test_do_hold_webhook_interrupt_exits_immediately(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Webhook interrupt (_hold_interrupt set) exits before full hold."""
+  message = _make_message(priority=4, hold=30)
+  _mod._hold_interrupt.set()
+  start = time.monotonic()
+  _mod._do_hold(message, min_hold=1)
+  assert time.monotonic() - start < 5
+
+
+def test_do_hold_interrupts_after_min_hold(monkeypatch: pytest.MonkeyPatch) -> None:
+  """After min_hold, a High-priority queued item interrupts a low-priority hold."""
+  message = _make_message(priority=4, hold=30)
+  _mod._hold_interrupt.clear()
+  _enqueue_priority(8)
+  start = time.monotonic()
+  _mod._do_hold(message, min_hold=1)
+  elapsed = time.monotonic() - start
+  assert elapsed < 10  # exited early, not the full 30s
+
+
+def test_do_hold_not_interrupted_before_min_hold(monkeypatch: pytest.MonkeyPatch) -> None:
+  """High-priority item in queue but min_hold not elapsed — hold runs to completion."""
+  message = _make_message(priority=4, hold=2)
+  _mod._hold_interrupt.clear()
+  _enqueue_priority(8)
+  start = time.monotonic()
+  _mod._do_hold(message, min_hold=60)  # min_hold longer than hold
+  assert time.monotonic() - start >= 1.9  # ran the full hold
+
+
+def test_do_hold_no_interrupt_when_current_is_high_priority(monkeypatch: pytest.MonkeyPatch) -> None:
+  """High-priority current message is never interrupted even with a high-priority waiter."""
+  message = _make_message(priority=8, hold=2)
+  _mod._hold_interrupt.clear()
+  _enqueue_priority(9)
+  start = time.monotonic()
+  _mod._do_hold(message, min_hold=0)
+  assert time.monotonic() - start >= 1.9  # ran the full hold
+
+
+def test_do_hold_no_interrupt_when_queued_item_below_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Queued item at priority 7 (Elevated) does not interrupt a low-priority hold."""
+  message = _make_message(priority=4, hold=2)
+  _mod._hold_interrupt.clear()
+  _enqueue_priority(7)
+  start = time.monotonic()
+  _mod._do_hold(message, min_hold=0)
+  assert time.monotonic() - start >= 1.9  # ran the full hold
