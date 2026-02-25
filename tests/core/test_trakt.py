@@ -356,7 +356,7 @@ def test_get_variables_calendar_returns_expected_vars(
   assert result['episode_ref'] == [['S2E5']]
   assert result['episode_title'] == [['ONE WITH THE TEST']]
   assert 'air_day' in result
-  assert re.match(r'^\d+:\d{2}$', result['air_time'][0][0])
+  assert re.match(r'^\d{2}:\d{2}$', result['air_time'][0][0])
 
 
 def test_get_variables_calendar_empty_raises_unavailable(
