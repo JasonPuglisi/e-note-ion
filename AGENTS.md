@@ -111,7 +111,8 @@ for a physical split-flap device whose flaps need time to settle.
       "schedule": {
         "cron": "0 8 * * *",  // standard 5-field cron expression
         "hold": 600,  // seconds to show before pulling next
-        "timeout": 600  // seconds message can wait before discarding
+        "timeout": 600,  // seconds message can wait before discarding
+        "refresh_interval": 60  // optional: re-fetch integration data every N seconds during hold (min 30; integration templates only)
       },
       "priority": 5,           // integer 0–10; higher number = higher priority
       "public": true,          // if false, skipped when running with --public

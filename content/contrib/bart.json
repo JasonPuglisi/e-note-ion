@@ -4,7 +4,8 @@
       "schedule": {
         "cron": "*/5 7-9 * * 1-5",
         "hold": 290,
-        "timeout": 60
+        "timeout": 60,
+        "refresh_interval": 60
       },
       "priority": 8,
       "public": true,

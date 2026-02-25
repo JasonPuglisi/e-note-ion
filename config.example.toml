@@ -53,6 +53,7 @@ line1_dest = "DALY"
 # hold = 290
 # timeout = 60
 # priority = 8
+# refresh_interval = 60  # re-fetch departure times every 60s during the hold (min 30)
 
 [webhook]
 # Optional: enable the HTTP webhook listener so external systems (Plex,
