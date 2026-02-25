@@ -341,7 +341,7 @@ def _start_webhook_server() -> None:
   if not secret:
     secret = secrets.token_urlsafe(32)
     _config_mod.write_section_values('webhook', {'secret': secret})
-    print(
+    print(  # lgtm[py/clear-text-logging-sensitive-data]
       f'Webhook secret generated and saved to config.toml:\n'
       f'  {secret}\n'
       f'Copy this into your webhook sender (Plex, Shortcuts, etc.).'
