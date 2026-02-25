@@ -664,11 +664,13 @@ def _mock_sched() -> MagicMock:
 
 
 def test_main_note_startup_banner(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-  monkeypatch.setattr('sys.argv', ['e-note-ion.py'])
   mock_sched = _mock_sched()
   with (
     patch.object(_mod, '_validate_startup'),
     patch('config.load_config'),
+    patch('config.get_model', return_value='note'),
+    patch('config.get_public_mode', return_value=False),
+    patch('config.get_content_enabled', return_value=set()),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
@@ -683,12 +685,14 @@ def test_main_note_startup_banner(monkeypatch: pytest.MonkeyPatch, capsys: pytes
 def test_main_flagship_sets_model_and_banner(
   monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-  monkeypatch.setattr('sys.argv', ['e-note-ion.py', '--flagship'])
   monkeypatch.setattr(vb, 'model', vb.VestaboardModel.NOTE)  # ensures restoration
   mock_sched = _mock_sched()
   with (
     patch.object(_mod, '_validate_startup'),
     patch('config.load_config'),
+    patch('config.get_model', return_value='flagship'),
+    patch('config.get_public_mode', return_value=False),
+    patch('config.get_content_enabled', return_value=set()),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
@@ -702,11 +706,13 @@ def test_main_flagship_sets_model_and_banner(
 
 
 def test_main_public_mode_in_banner(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-  monkeypatch.setattr('sys.argv', ['e-note-ion.py', '--public'])
   mock_sched = _mock_sched()
   with (
     patch.object(_mod, '_validate_startup'),
     patch('config.load_config'),
+    patch('config.get_model', return_value='note'),
+    patch('config.get_public_mode', return_value=True),
+    patch('config.get_content_enabled', return_value=set()),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
@@ -719,11 +725,13 @@ def test_main_public_mode_in_banner(monkeypatch: pytest.MonkeyPatch, capsys: pyt
 
 
 def test_main_content_enabled_in_banner(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-  monkeypatch.setattr('sys.argv', ['e-note-ion.py', '--content-enabled', 'bart'])
   mock_sched = _mock_sched()
   with (
     patch.object(_mod, '_validate_startup'),
     patch('config.load_config'),
+    patch('config.get_model', return_value='note'),
+    patch('config.get_public_mode', return_value=False),
+    patch('config.get_content_enabled', return_value={'bart'}),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
@@ -736,11 +744,13 @@ def test_main_content_enabled_in_banner(monkeypatch: pytest.MonkeyPatch, capsys:
 
 
 def test_main_empty_board_on_startup(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-  monkeypatch.setattr('sys.argv', ['e-note-ion.py'])
   mock_sched = _mock_sched()
   with (
     patch.object(_mod, '_validate_startup'),
     patch('config.load_config'),
+    patch('config.get_model', return_value='note'),
+    patch('config.get_public_mode', return_value=False),
+    patch('config.get_content_enabled', return_value=set()),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', side_effect=vb.EmptyBoardError('no message')),
     patch('threading.Thread'),
@@ -757,12 +767,14 @@ def test_main_passes_timezone_to_scheduler(monkeypatch: pytest.MonkeyPatch) -> N
 
   import config as _cfg
 
-  monkeypatch.setattr('sys.argv', ['e-note-ion.py'])
   monkeypatch.setattr(_cfg, '_config', {'scheduler': {'timezone': 'America/New_York'}})
   mock_sched = _mock_sched()
   with (
     patch.object(_mod, '_validate_startup'),
     patch('config.load_config'),
+    patch('config.get_model', return_value='note'),
+    patch('config.get_public_mode', return_value=False),
+    patch('config.get_content_enabled', return_value=set()),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),

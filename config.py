@@ -135,6 +135,53 @@ def get_timezone() -> ZoneInfo | None:
     ) from None
 
 
+def get_optional_bool(section: str, key: str, default: bool = False) -> bool:
+  """Return an optional boolean config value, or default if absent.
+
+  Uses the raw TOML value rather than casting through str, so TOML booleans
+  (e.g. `public = true`) are returned as Python bools correctly.
+  """
+  value = _config.get(section, {}).get(key)
+  if value is None:
+    return default
+  return bool(value)
+
+
+def get_model() -> str:
+  """Return the configured display model: 'note' (default) or 'flagship'.
+
+  Reads [scheduler].model from config.toml. Raises ValueError if the value
+  is present but not a recognised model name.
+  """
+  value = get_optional('scheduler', 'model', 'note')
+  if value not in ('note', 'flagship'):
+    raise ValueError(
+      f"Unknown model {value!r} in [scheduler].model — use 'note' (3\u00d715, default) or 'flagship' (6\u00d722)"
+    )
+  return value
+
+
+def get_public_mode() -> bool:
+  """Return True if public mode is enabled in config.toml.
+
+  Reads [scheduler].public. Defaults to False when absent.
+  """
+  return get_optional_bool('scheduler', 'public', default=False)
+
+
+def get_content_enabled() -> set[str]:
+  """Return the set of enabled contrib content stems.
+
+  Reads [scheduler].content_enabled (a TOML array of strings).
+  Returns {"*"} to enable all, a set of stems for specific files,
+  or an empty set when the key is absent or the list is empty.
+  """
+  value = _config.get('scheduler', {}).get('content_enabled')
+  if not value:
+    return set()
+  return set(value)
+
+
 def get_schedule_override(template_id: str) -> dict:
   """Return schedule overrides for a named template, or {} if not configured.
 

@@ -52,7 +52,6 @@ docker run -d \
   --name e-note-ion \
   --restart unless-stopped \
   -v /path/to/config.toml:/app/config.toml:ro \
-  -e CONTENT_ENABLED=bart \
   ghcr.io/jasonpuglisi/e-note-ion:latest
 ```
 
@@ -62,14 +61,9 @@ To mount personal content, add a volume pointing at `/app/content/user`:
   -v /path/to/your/content:/app/content/user \
 ```
 
-Other environment variables:
-
-```bash
-  -e CONTENT_ENABLED=bart       # enable specific contrib files by stem
-  -e CONTENT_ENABLED='*'        # enable all bundled contrib content
-  -e FLAGSHIP=true              # target a Flagship (6×22) instead of a Note (3×15)
-  -e PUBLIC=true                # only show templates marked public: true
-```
+Display model, public mode, and enabled contrib content are all configured in
+`config.toml` under `[scheduler]` — no environment variables needed for these
+settings. See [Configuration](#configuration) for details.
 
 Contrib integrations require their own API keys and configuration — see
 [`content/README.md`](content/README.md) for details.
@@ -141,6 +135,15 @@ cp config.example.toml config.toml
 
 `config.toml` is git-ignored and contains secrets — never commit it.
 
+Key `[scheduler]` settings:
+
+| Key | Default | Description |
+|---|---|---|
+| `model` | `"note"` | Display model: `"note"` (3×15) or `"flagship"` (6×22) |
+| `public` | `false` | Skip templates marked `public = false` (for shared spaces) |
+| `content_enabled` | _(absent)_ | Contrib content to enable: `["*"]` for all, or `["bart", "trakt"]` for specific stems |
+| `timezone` | system TZ | IANA timezone for cron job scheduling (e.g. `"America/Los_Angeles"`) |
+
 ## Running directly
 
 **Requirements:** Python 3.14+, [uv](https://github.com/astral-sh/uv)
@@ -151,22 +154,15 @@ cp config.example.toml config.toml  # fill in your API key
 uv run e-note-ion
 ```
 
-```bash
-uv run e-note-ion                          # Note (3×15), user content only
-uv run e-note-ion --content-enabled bart   # also enable contrib/bart.json
-uv run e-note-ion --content-enabled '*'    # enable all contrib content
-uv run e-note-ion --flagship               # Flagship (6×22)
-uv run e-note-ion --public                 # public templates only
-```
-
-Flags can be combined.
+Display model, public mode, and enabled contrib content are set in `config.toml`
+under `[scheduler]`. See [Configuration](#configuration) for details.
 
 ## Content files
 
 Content is defined as JSON files in two directories:
 
 - **`content/contrib/`** — bundled community-contributed content, disabled by
-  default. Enable files by stem using `--content-enabled` / `CONTENT_ENABLED`.
+  default. Enable files via `[scheduler].content_enabled` in `config.toml`.
 - **`content/user/`** — personal content, always loaded. Git-ignored; mount
   your own directory here or symlink to a private repo for versioning.
 
