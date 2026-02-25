@@ -116,8 +116,8 @@ runs — only which queued message the display shows first.
 |---|---|---|
 | Background | 0–2 | Ambient/decorative content. Pair with a short `timeout` so stale messages drop silently rather than showing late. |
 | Default | 3–5 | Normal scheduled content — daily quotes, weather, calendar items. Most templates should live here. |
-| Elevated | 6–7 | Time-sensitive but not urgent — transit departures, reminders. |
-| High | 8–9 | Alerts and time-critical events where the user should see it promptly — countdowns, imminent departures, notifications. |
+| Elevated | 6–7 | Time-sensitive but not urgent — transit departures, reminders. Gets priority position in the queue but does not interrupt an active hold. |
+| High | 8–9 | Alerts and time-critical events where the user should see it promptly — countdowns, imminent departures, notifications. **After the global `min_hold` floor, a High message waiting in the queue will interrupt the current display if it has a lower-priority hold in progress.** |
 | Maximum | 10 | Reserved for a single "always wins" template. Avoid using broadly — once multiple templates share the same level, tie-breaking falls back to scheduling order. |
 
 Rules of thumb:

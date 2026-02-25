@@ -173,10 +173,51 @@ def pop_valid_message() -> QueuedMessage | None:
 
 _LOCK_RETRY_DELAY = 60  # seconds to wait before retrying a 423-locked send
 _COALESCE_WINDOW = 0.1  # seconds to wait after first message arrives so co-scheduled jobs can enqueue
+_HOLD_POLL_INTERVAL = 1.0  # seconds between priority-peek checks during hold
+_INTERRUPT_PRIORITY_THRESHOLD = 8  # queued items at or above this can interrupt a hold early
 
 # Set by the webhook server when a high-priority incoming message should cut
 # the current hold short. Cleared by the worker after each hold completes.
 _hold_interrupt = threading.Event()
+
+
+def _get_min_hold() -> int:
+  """Return the global minimum hold in seconds from config (default 60)."""
+  raw = _config_mod.get_optional('scheduler', 'min_hold', '60')
+  try:
+    return max(0, int(raw))
+  except ValueError:
+    return 60
+
+
+def _do_hold(message: 'QueuedMessage', min_hold: int) -> None:
+  """Sleep for message.hold seconds, subject to two early-exit conditions:
+
+  1. Webhook interrupt (_hold_interrupt event set) — exits immediately at
+     any point, regardless of min_hold.
+  2. Priority-based interruption — after min_hold seconds, if the current
+     message's priority is below _INTERRUPT_PRIORITY_THRESHOLD and the
+     highest-priority queued item is at or above it, exits early.
+
+  High-priority messages (priority >= _INTERRUPT_PRIORITY_THRESHOLD) always
+  run their full hold and are never interrupted.
+  """
+  hold_start = time.monotonic()
+  while True:
+    elapsed = time.monotonic() - hold_start
+    remaining = message.hold - elapsed
+    if remaining <= 0:
+      break
+
+    interrupted = _hold_interrupt.wait(timeout=min(_HOLD_POLL_INTERVAL, remaining))
+    _hold_interrupt.clear()
+    if interrupted:
+      break
+
+    if message.priority < _INTERRUPT_PRIORITY_THRESHOLD and elapsed >= min_hold:
+      with _queue.mutex:
+        if _queue.queue and _queue.queue[0].priority >= _INTERRUPT_PRIORITY_THRESHOLD:
+          break
 
 
 def worker() -> None:
@@ -222,8 +263,7 @@ def worker() -> None:
       print(f'Error sending to board: {e}')
       continue
 
-    _hold_interrupt.wait(timeout=message.hold)
-    _hold_interrupt.clear()
+    _do_hold(message, _get_min_hold())
 
 
 # --- Webhook Server ---

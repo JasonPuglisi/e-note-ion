@@ -19,6 +19,12 @@
 # stems: ["bart", "trakt"]. Omit or leave empty to disable all contrib content.
 # content_enabled = ["*"]
 
+# Global minimum hold (seconds). Every message is guaranteed to display for at
+# least this long before a queued high-priority message (priority >= 8) can
+# interrupt it. Set to 0 to disable the floor (not recommended for physical
+# displays — flaps need time to settle). Default: 60.
+# min_hold = 60
+
 [vestaboard]
 # Read/Write API key from https://store.vestaboard.com/pages/read-write-api
 api_key = "your-vestaboard-read-write-api-key"
