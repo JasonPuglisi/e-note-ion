@@ -410,9 +410,13 @@ doc, add a row to the table in `content/README.md`.
 ## Content Design
 
 When writing or reviewing content JSON, integration format strings, or
-template output, consult and follow `content/DESIGN.md`. This covers
-layout, color use, tone, character set, time formatting, and the
-pre-ship checklist.
+template output, consult and follow both content docs:
+
+- `content/README.md` — content author reference: JSON format, priority
+  guidelines (0–10 scale with tier definitions), `timeout` pairing rules,
+  schedule overrides, and the contrib integrations table
+- `content/DESIGN.md` — visual/design conventions: layout, color use,
+  tone, character set, time formatting, and the pre-ship checklist
 
 ## Code Conventions
 

@@ -263,7 +263,7 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
   aired_dt = datetime.fromisoformat(entry['first_aired'].replace('Z', '+00:00'))
   local_dt = aired_dt.astimezone(_config_mod.get_timezone())
   air_day = local_dt.strftime('%a').upper()[:3]
-  air_time = f'{local_dt.hour}:{local_dt.minute:02d}'
+  air_time = f'{local_dt.hour:02d}:{local_dt.minute:02d}'
 
   return {
     'show_name': [[show_name]],
