@@ -151,6 +151,46 @@ short tags: `[R]` `[O]` `[Y]` `[G]` `[B]` `[V]` `[W]` `[K]` (red, orange,
 yellow, green, blue, violet, white, black). Each tag encodes to the
 corresponding Vestaboard color square code (63–70).
 
+### Webhook integrations
+
+Integrations can also receive real-time push events from external systems
+(Plex, iOS Shortcuts, etc.) via the optional HTTP webhook listener. To support
+webhooks, an integration implements:
+
+```python
+def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
+    ...
+```
+
+`payload` is the parsed JSON body of the POST request. Return `None` to discard
+the event (e.g. wrong event type). Return a `WebhookMessage` to enqueue a
+display message:
+
+```python
+from scheduler import WebhookMessage
+
+WebhookMessage(
+    data={...},       # same shape as cron-enqueued data (templates, variables, truncation)
+    priority=8,       # 0–10
+    hold=60,          # seconds to show
+    timeout=120,      # seconds before discarding if not yet shown
+    name='',          # optional: appears in logs (defaults to webhook.<integration>)
+    interrupt=False,  # True to cut the current hold short and show this immediately
+)
+```
+
+Set `interrupt=True` for time-sensitive state changes (e.g. Plex pause/resume)
+that should preempt whatever is currently on the display.
+
+The webhook listener is activated by adding a `[webhook]` section to
+`config.toml` (see `config.example.toml`). It binds to `127.0.0.1:8080` by
+default. A shared secret is auto-generated on first startup if not configured;
+check the startup log to copy it into your webhook sender. Endpoint:
+`POST /webhook/<integration>` with `X-Webhook-Secret: <secret>` header.
+
+When adding a new webhook-capable integration, also add its name to
+`_KNOWN_INTEGRATIONS` in `scheduler.py`.
+
 ### Integration dependencies
 
 Add any packages required by a new integration to `pyproject.toml`

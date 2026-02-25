@@ -37,6 +37,24 @@ line1_dest = "DALY"
 # timeout = 60
 # priority = 8
 
+[webhook]
+# Optional: enable the HTTP webhook listener so external systems (Plex,
+# iOS Shortcuts, etc.) can push display messages to the board in real time.
+# Remove the comment from this entire section to activate the listener.
+#
+# ⚠  Security: when bind = "0.0.0.0", place a TLS-terminating reverse proxy
+# (Caddy, nginx, NPM) in front of the listener before exposing it externally.
+# Never send the shared secret over plaintext HTTP across the internet.
+# See: https://github.com/JasonPuglisi/e-note-ion/issues/175
+#
+# port = 8080
+# secret is auto-generated on first startup if omitted — check logs for the
+# value and copy it into your webhook sender.
+# secret = "..."
+# Bind to 0.0.0.0 to accept connections from outside localhost (e.g. Docker).
+# Requires a TLS-terminating reverse proxy for external webhook sources.
+# bind = "0.0.0.0"
+
 [trakt]
 # OAuth credentials — create an application at https://trakt.tv/oauth/applications/new
 # Set Redirect URI to: urn:ietf:wg:oauth:2.0:oob

@@ -49,6 +49,11 @@ def get(section: str, key: str) -> str:
   return str(value)
 
 
+def has_section(section: str) -> bool:
+  """Return True if the given top-level section exists in the loaded config."""
+  return section in _config
+
+
 def get_optional(section: str, key: str, default: str = '') -> str:
   """Return an optional string config value, or default if absent."""
   value = _config.get(section, {}).get(key)

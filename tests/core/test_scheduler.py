@@ -539,6 +539,7 @@ def test_worker_log_includes_template_name(capsys: pytest.CaptureFixture[str]) -
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
     patch('integrations.vestaboard.set_state'),
     patch('time.sleep'),
+    patch.object(_mod, '_hold_interrupt'),
   ):
     with pytest.raises(KeyboardInterrupt):
       _mod.worker()

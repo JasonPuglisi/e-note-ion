@@ -18,11 +18,13 @@
 import argparse
 import importlib
 import json
+import secrets
 import sys
 import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from queue import Empty, PriorityQueue
 from typing import Any
@@ -80,6 +82,19 @@ class QueuedMessage:
     if self.priority != other.priority:
       return self.priority > other.priority  # higher priority = first
     return self.seq < other.seq  # earlier scheduled = first
+
+
+@dataclass
+class WebhookMessage:
+  # Returned by an integration's handle_webhook() to enqueue a display message
+  # triggered by an external HTTP POST. Set interrupt=True to cut the current
+  # hold short so this message is shown immediately.
+  data: dict[str, Any]
+  priority: int
+  hold: int
+  timeout: int
+  name: str = ''
+  interrupt: bool = False
 
 
 # --- Priority Queue ---
@@ -161,6 +176,10 @@ def pop_valid_message() -> QueuedMessage | None:
 _LOCK_RETRY_DELAY = 60  # seconds to wait before retrying a 423-locked send
 _COALESCE_WINDOW = 0.1  # seconds to wait after first message arrives so co-scheduled jobs can enqueue
 
+# Set by the webhook server when a high-priority incoming message should cut
+# the current hold short. Cleared by the worker after each hold completes.
+_hold_interrupt = threading.Event()
+
 
 def worker() -> None:
   # Single worker thread — ensures messages are sent to the Vestaboard
@@ -205,7 +224,133 @@ def worker() -> None:
       print(f'Error sending to board: {e}')
       continue
 
-    time.sleep(message.hold)
+    _hold_interrupt.wait(timeout=message.hold)
+    _hold_interrupt.clear()
+
+
+# --- Webhook Server ---
+
+_MAX_WEBHOOK_BODY = 64 * 1024  # 64 KB — generous limit for any webhook payload
+
+
+def _make_webhook_handler(secret: str) -> type:
+  """Return a BaseHTTPRequestHandler subclass bound to the given shared secret."""
+
+  class _WebhookHandler(BaseHTTPRequestHandler):
+    _secret: str = secret
+
+    def do_POST(self) -> None:  # noqa: N802
+      # Validate path: must be /webhook/<integration>
+      parts = self.path.strip('/').split('/')
+      if len(parts) != 2 or parts[0] != 'webhook':
+        self._respond(404, 'Not found')
+        return
+
+      integration_name = parts[1]
+
+      # Constant-time secret comparison to prevent timing attacks.
+      provided = self.headers.get('X-Webhook-Secret', '')
+      if not secrets.compare_digest(provided, self._secret):
+        print(f'Webhook: rejected request for {integration_name!r} — invalid or missing secret')
+        self._respond(401, 'Unauthorized')
+        return
+
+      # Validate against allowlist before any importlib call.
+      if integration_name not in _KNOWN_INTEGRATIONS:
+        self._respond(404, f'Unknown integration: {integration_name!r}')
+        return
+
+      # Parse body.
+      try:
+        content_length = min(int(self.headers.get('Content-Length') or 0), _MAX_WEBHOOK_BODY)
+      except ValueError:
+        content_length = 0
+      body = self.rfile.read(content_length)
+      try:
+        payload: dict[str, Any] = json.loads(body) if body else {}
+      except json.JSONDecodeError:
+        self._respond(400, 'Invalid JSON')
+        return
+
+      # Load integration and check for webhook support.
+      try:
+        mod = _get_integration(integration_name)
+      except (ValueError, RuntimeError) as e:
+        self._respond(404, str(e))
+        return
+      if not hasattr(mod, 'handle_webhook'):
+        self._respond(404, f'Integration {integration_name!r} does not support webhooks')
+        return
+
+      # Dispatch to the integration handler.
+      try:
+        result: WebhookMessage | None = mod.handle_webhook(payload)
+      except Exception as e:  # noqa: BLE001
+        print(f'Webhook error in {integration_name!r}: {e}')
+        self._respond(500, 'Internal error')
+        return
+
+      if result is None:
+        self._respond(200, 'Discarded')
+        return
+
+      enqueue(
+        priority=result.priority,
+        data=result.data,
+        hold=result.hold,
+        timeout=result.timeout,
+        name=result.name or f'webhook.{integration_name}',
+      )
+      if result.interrupt:
+        _hold_interrupt.set()
+
+      self._respond(200, 'Enqueued')
+
+    def _respond(self, code: int, message: str) -> None:
+      body = message.encode()
+      self.send_response(code)
+      self.send_header('Content-Type', 'text/plain')
+      self.send_header('Content-Length', str(len(body)))
+      self.end_headers()
+      self.wfile.write(body)
+
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+      pass  # suppress default per-request access log lines
+
+  return _WebhookHandler
+
+
+def _start_webhook_server() -> None:
+  """Start the HTTP webhook listener in a background daemon thread.
+
+  Reads [webhook] config for port (default 8080) and bind address (default
+  127.0.0.1). Auto-generates a shared secret if none is configured, persists
+  it to config.toml, and logs it once so the user can copy it into their
+  webhook sender. Raises OSError if the port is already in use.
+  """
+  try:
+    port = int(_config_mod.get_optional('webhook', 'port', '8080'))
+  except ValueError:
+    port_raw = _config_mod.get_optional('webhook', 'port', '8080')
+    print(f'Warning: invalid webhook port {port_raw!r}, defaulting to 8080')
+    port = 8080
+
+  bind = _config_mod.get_optional('webhook', 'bind', '127.0.0.1')
+
+  secret = _config_mod.get_optional('webhook', 'secret')
+  if not secret:
+    secret = secrets.token_urlsafe(32)
+    _config_mod.write_section_values('webhook', {'secret': secret})
+    print(
+      f'Webhook secret generated and saved to config.toml:\n'
+      f'  {secret}\n'
+      f'Copy this into your webhook sender (Plex, Shortcuts, etc.).'
+    )
+
+  handler = _make_webhook_handler(secret)
+  server = HTTPServer((bind, port), handler)
+  threading.Thread(target=server.serve_forever, daemon=True).start()
+  print(f'Webhook listener started on {bind}:{port}')
 
 
 # --- Scheduler ---
@@ -479,6 +624,9 @@ def main() -> None:
       print(f'Warning: preflight for {name!r} failed: {e}')
 
   threading.Thread(target=worker, daemon=True).start()
+
+  if _config_mod.has_section('webhook'):
+    _start_webhook_server()
 
   try:
     while True:
