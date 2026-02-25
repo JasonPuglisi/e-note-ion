@@ -319,13 +319,25 @@ def test_strip_leading_article_empty() -> None:
 
 _CALENDAR_RESPONSE = [
   {
-    'first_aired': '2024-09-16T01:00:00.000Z',
+    'first_aired': '2099-09-16T01:00:00.000Z',
     'episode': {
       'season': 2,
       'number': 5,
       'title': 'The One With The Test',
     },
     'show': {'title': 'Great Show'},
+  }
+]
+
+_CALENDAR_RESPONSE_ALL_PAST = [
+  {
+    'first_aired': '2000-01-01T01:00:00.000Z',
+    'episode': {
+      'season': 1,
+      'number': 1,
+      'title': 'Pilot',
+    },
+    'show': {'title': 'Old Show'},
   }
 ]
 
@@ -357,6 +369,33 @@ def test_get_variables_calendar_empty_raises_unavailable(
   with patch('requests.get', return_value=mock_response):
     with pytest.raises(IntegrationDataUnavailableError):
       trakt.get_variables_calendar()
+
+
+def test_get_variables_calendar_all_past_raises_unavailable(
+  config_with_tokens: Path,
+) -> None:
+  mock_response = MagicMock()
+  mock_response.status_code = 200
+  mock_response.json.return_value = _CALENDAR_RESPONSE_ALL_PAST
+
+  with patch('requests.get', return_value=mock_response):
+    with pytest.raises(IntegrationDataUnavailableError):
+      trakt.get_variables_calendar()
+
+
+def test_get_variables_calendar_skips_past_entries(
+  config_with_tokens: Path,
+) -> None:
+  """Past entries are skipped; the next future entry is returned."""
+  mock_response = MagicMock()
+  mock_response.status_code = 200
+  mock_response.json.return_value = _CALENDAR_RESPONSE_ALL_PAST + _CALENDAR_RESPONSE
+
+  with patch('requests.get', return_value=mock_response):
+    result = trakt.get_variables_calendar()
+
+  assert result['show_name'] == [['GREAT SHOW']]
+  assert result['episode_ref'] == [['S2E5']]
 
 
 def test_get_variables_calendar_http_error_raised(

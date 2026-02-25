@@ -22,7 +22,7 @@
 
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 
@@ -243,8 +243,15 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
   if not entries:
     raise IntegrationDataUnavailableError('No upcoming episodes in calendar window')
 
-  entries.sort(key=lambda e: e['first_aired'])
-  entry = entries[0]
+  now = datetime.now(timezone.utc)
+  future_entries = [
+    e for e in entries if e.get('first_aired') and datetime.fromisoformat(e['first_aired'].replace('Z', '+00:00')) > now
+  ]
+  if not future_entries:
+    raise IntegrationDataUnavailableError('No upcoming episodes in calendar window')
+
+  future_entries.sort(key=lambda e: e['first_aired'])
+  entry = future_entries[0]
 
   show_name = entry['show']['title'].upper()
   ep = entry['episode']
