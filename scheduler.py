@@ -20,6 +20,7 @@ import secrets
 import sys
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -175,6 +176,7 @@ _LOCK_RETRY_DELAY = 60  # seconds to wait before retrying a 423-locked send
 _COALESCE_WINDOW = 0.1  # seconds to wait after first message arrives so co-scheduled jobs can enqueue
 _HOLD_POLL_INTERVAL = 1.0  # seconds between priority-peek checks during hold
 _INTERRUPT_PRIORITY_THRESHOLD = 8  # queued items at or above this can interrupt a hold early
+_REFRESH_MIN_INTERVAL = 30  # minimum allowed refresh_interval (seconds); prevents API hammering
 
 # Set by the webhook server when a high-priority incoming message should cut
 # the current hold short. Cleared by the worker after each hold completes.
@@ -190,7 +192,12 @@ def _get_min_hold() -> int:
     return 60
 
 
-def _do_hold(message: 'QueuedMessage', min_hold: int) -> None:
+def _do_hold(
+  message: 'QueuedMessage',
+  min_hold: int,
+  refresh_fn: Callable[[], None] | None = None,
+  refresh_interval: int | None = None,
+) -> None:
   """Sleep for message.hold seconds, subject to two early-exit conditions:
 
   1. Webhook interrupt (_hold_interrupt event set) — exits immediately at
@@ -201,15 +208,25 @@ def _do_hold(message: 'QueuedMessage', min_hold: int) -> None:
 
   High-priority messages (priority >= _INTERRUPT_PRIORITY_THRESHOLD) always
   run their full hold and are never interrupted.
+
+  If refresh_fn and refresh_interval are provided, refresh_fn() is called
+  every refresh_interval seconds during the hold. Errors from refresh_fn are
+  logged and the hold continues; the display keeps showing the last good content.
   """
   hold_start = time.monotonic()
+  last_refresh = hold_start
   while True:
     elapsed = time.monotonic() - hold_start
     remaining = message.hold - elapsed
     if remaining <= 0:
       break
 
-    interrupted = _hold_interrupt.wait(timeout=min(_HOLD_POLL_INTERVAL, remaining))
+    next_wake = min(_HOLD_POLL_INTERVAL, remaining)
+    if refresh_fn and refresh_interval:
+      time_until_refresh = refresh_interval - (time.monotonic() - last_refresh)
+      next_wake = min(next_wake, max(0.0, time_until_refresh))
+
+    interrupted = _hold_interrupt.wait(timeout=next_wake)
     _hold_interrupt.clear()
     if interrupted:
       break
@@ -218,6 +235,15 @@ def _do_hold(message: 'QueuedMessage', min_hold: int) -> None:
       with _queue.mutex:
         if _queue.queue and _queue.queue[0].priority >= _INTERRUPT_PRIORITY_THRESHOLD:
           break
+
+    if refresh_fn and refresh_interval:
+      now = time.monotonic()
+      if now - last_refresh >= refresh_interval:
+        last_refresh = now
+        try:
+          refresh_fn()
+        except Exception as e:  # noqa: BLE001
+          print(f'Refresh error for {message.name}: {e}')
 
 
 def worker() -> None:
@@ -263,7 +289,29 @@ def worker() -> None:
       print(f'Error sending to board: {e}')
       continue
 
-    _do_hold(message, _get_min_hold())
+    _refresh_fn: Callable[[], None] | None = None
+    refresh_interval = message.data.get('refresh_interval')
+    if refresh_interval and 'integration' in message.data:
+      _integration = _get_integration(message.data['integration'])
+      _fn_name = message.data.get('integration_fn', 'get_variables')
+      _templates = message.data['templates']
+      _truncation = message.data.get('truncation', 'hard')
+
+      def _do_refresh(
+        _i: Any = _integration,
+        _f: Any = _fn_name,
+        _t: Any = _templates,
+        _tr: Any = _truncation,
+      ) -> None:
+        new_vars = getattr(_i, _f)()
+        try:
+          vestaboard.set_state(_t, new_vars, _tr)
+        except vestaboard.DuplicateContentError, IntegrationDataUnavailableError:
+          pass  # content unchanged or no data — keep showing current
+
+      _refresh_fn = _do_refresh
+
+    _do_hold(message, _get_min_hold(), refresh_fn=_refresh_fn, refresh_interval=refresh_interval)
 
 
 # --- Webhook Server ---
@@ -429,6 +477,13 @@ def _validate_template(name: str, template: dict[str, Any]) -> None:
     valid = ', '.join(sorted(_VALID_TRUNCATION))
     raise ValueError(f'{name}: truncation must be one of {valid}, got {truncation!r}')
 
+  refresh_interval = schedule.get('refresh_interval')
+  if refresh_interval is not None:
+    if not isinstance(refresh_interval, int) or refresh_interval < _REFRESH_MIN_INTERVAL:
+      raise ValueError(
+        f'{name}: schedule.refresh_interval must be an integer >= {_REFRESH_MIN_INTERVAL}, got {refresh_interval!r}'
+      )
+
   has_templates = 'templates' in template
   has_integration = 'integration' in template
   if not has_templates and not has_integration:
@@ -490,7 +545,7 @@ def _load_file(
     # Merge any schedule overrides from config.toml (e.g. [bart.schedules.departures]).
     override = _config_mod.get_schedule_override(f'{content_file.stem}.{template_name}')
     effective = dict(schedule)
-    for field in ('cron', 'hold', 'timeout'):
+    for field in ('cron', 'hold', 'timeout', 'refresh_interval'):
       if field not in override:
         continue
       val = override[field]
@@ -498,6 +553,11 @@ def _load_file(
         effective[field] = val
       elif field in ('hold', 'timeout') and isinstance(val, int) and val >= 0:
         effective[field] = val
+      elif field == 'refresh_interval':
+        if isinstance(val, int) and val >= _REFRESH_MIN_INTERVAL:
+          effective[field] = val
+        else:
+          print(f'Warning: ignoring invalid refresh_interval override for {job_id}: {val!r}')
     if 'priority' in override:
       val = override['priority']
       if isinstance(val, int) and 0 <= val <= 10:
@@ -517,6 +577,12 @@ def _load_file(
     print(f'Loaded {content_file.parent.name}/{content_file.name}:')
   for job_id, priority, data, effective in effective_jobs:
     template_name = job_id[len(stem) + 1 :]
+    # Propagate effective refresh_interval (may have been set or overridden) into data.
+    ri = effective.get('refresh_interval')
+    if ri is not None:
+      data['refresh_interval'] = ri
+    elif 'refresh_interval' in data:
+      del data['refresh_interval']
     scheduler.add_job(
       enqueue,
       trigger='cron',

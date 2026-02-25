@@ -964,6 +964,35 @@ def test_worker_uses_integration_fn_when_specified() -> None:
   mock_integration.get_variables.assert_not_called()
 
 
+# --- _validate_template: refresh_interval ---
+
+
+def test_validate_template_valid_refresh_interval_passes() -> None:
+  t = _base_template()
+  t['integration'] = 'bart'
+  t['schedule']['refresh_interval'] = 60
+  _mod._validate_template('ctx.tmpl', t)
+
+
+def test_validate_template_refresh_interval_absent_passes() -> None:
+  # Templates without refresh_interval should continue to pass unchanged.
+  _mod._validate_template('ctx.tmpl', _base_template())
+
+
+def test_validate_template_refresh_interval_too_small_raises() -> None:
+  t = _base_template()
+  t['schedule']['refresh_interval'] = 10
+  with pytest.raises(ValueError, match='refresh_interval'):
+    _mod._validate_template('ctx.tmpl', t)
+
+
+def test_validate_template_refresh_interval_non_int_raises() -> None:
+  t = _base_template()
+  t['schedule']['refresh_interval'] = '60'
+  with pytest.raises(ValueError, match='refresh_interval'):
+    _mod._validate_template('ctx.tmpl', t)
+
+
 # --- _validate_template: integration_fn ---
 
 
@@ -1109,3 +1138,206 @@ def test_do_hold_no_interrupt_when_queued_item_below_threshold(monkeypatch: pyte
   start = time.monotonic()
   _mod._do_hold(message, min_hold=0)
   assert time.monotonic() - start >= 1.9  # ran the full hold
+
+
+def test_do_hold_calls_refresh_fn_at_interval() -> None:
+  """refresh_fn is called at least once when refresh_interval elapses during hold."""
+  calls: list[None] = []
+  message = _make_message(priority=4, hold=2)
+  _mod._hold_interrupt.clear()
+  _mod._do_hold(message, min_hold=0, refresh_fn=lambda: calls.append(None), refresh_interval=1)
+  assert len(calls) >= 1
+
+
+def test_do_hold_refresh_fn_exception_does_not_abort_hold() -> None:
+  """Errors from refresh_fn are logged but the hold still runs to completion."""
+
+  def _bad_refresh() -> None:
+    raise RuntimeError('api down')
+
+  message = _make_message(priority=4, hold=2)
+  _mod._hold_interrupt.clear()
+  start = time.monotonic()
+  _mod._do_hold(message, min_hold=0, refresh_fn=_bad_refresh, refresh_interval=1)
+  assert time.monotonic() - start >= 1.9  # hold completed despite the error
+
+
+def test_do_hold_no_refresh_fn_is_noop() -> None:
+  """Passing no refresh_fn behaves identically to the old signature."""
+  message = _make_message(priority=4, hold=2)
+  _mod._hold_interrupt.clear()
+  start = time.monotonic()
+  _mod._do_hold(message, min_hold=0)
+  assert time.monotonic() - start >= 1.9
+
+
+# --- _load_file: refresh_interval ---
+
+
+def _make_content_with_refresh(refresh_interval: int) -> dict[str, Any]:
+  return {
+    'templates': {
+      'tmpl': {
+        'schedule': {'cron': '0 8 * * *', 'hold': 290, 'timeout': 60, 'refresh_interval': refresh_interval},
+        'priority': 5,
+        'integration': 'bart',
+        'templates': [{'format': ['HELLO']}],
+      }
+    }
+  }
+
+
+def test_load_file_passes_refresh_interval_in_data(sched: BackgroundScheduler, tmp_path: Path) -> None:
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content_with_refresh(60)))
+  _mod._load_file(sched, f, False)
+  jobs = sched.get_jobs()
+  assert len(jobs) == 1
+  assert jobs[0].args[1].get('refresh_interval') == 60
+
+
+def test_load_file_refresh_interval_absent_not_in_data(sched: BackgroundScheduler, tmp_path: Path) -> None:
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content()))
+  _mod._load_file(sched, f, False)
+  jobs = sched.get_jobs()
+  assert 'refresh_interval' not in jobs[0].args[1]
+
+
+def test_load_file_applies_refresh_interval_override(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {'test': {'schedules': {'tmpl': {'refresh_interval': 90}}}},
+  )
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content_with_refresh(60)))
+  _mod._load_file(sched, f, False)
+  assert sched.get_jobs()[0].args[1].get('refresh_interval') == 90
+
+
+def test_load_file_ignores_invalid_refresh_interval_override(
+  sched: BackgroundScheduler,
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  capsys: pytest.CaptureFixture[str],
+) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {'test': {'schedules': {'tmpl': {'refresh_interval': 10}}}},
+  )
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content_with_refresh(60)))
+  _mod._load_file(sched, f, False)
+  # Override is below minimum — original value should be preserved
+  assert sched.get_jobs()[0].args[1].get('refresh_interval') == 60
+  assert 'Warning' in capsys.readouterr().out
+
+
+# --- worker: refresh_fn setup ---
+
+
+def _make_integration_msg_with_refresh(refresh_interval: int) -> _mod.QueuedMessage:
+  return _mod.QueuedMessage(
+    priority=5,
+    seq=0,
+    name='test',
+    scheduled_at=time.monotonic(),
+    data={
+      'templates': [{'format': ['HELLO']}],
+      'variables': {},
+      'truncation': 'hard',
+      'integration': 'bart',
+      'refresh_interval': refresh_interval,
+    },
+    hold=0,
+    timeout=3600,
+  )
+
+
+def test_worker_passes_refresh_fn_to_do_hold_for_integration_with_refresh_interval() -> None:
+  msg = _make_integration_msg_with_refresh(60)
+  mock_integration = MagicMock()
+  mock_integration.get_variables.return_value = {'greeting': [['HELLO']]}
+  captured: dict[str, Any] = {}
+
+  def _fake_do_hold(
+    message: Any,
+    min_hold: int,
+    refresh_fn: Any = None,
+    refresh_interval: Any = None,
+  ) -> None:
+    captured['refresh_fn'] = refresh_fn
+    captured['refresh_interval'] = refresh_interval
+
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch.object(_mod, '_get_integration', return_value=mock_integration),
+    patch('integrations.vestaboard.set_state'),
+    patch.object(_mod, '_do_hold', side_effect=_fake_do_hold),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+
+  assert captured.get('refresh_fn') is not None
+  assert captured.get('refresh_interval') == 60
+
+
+def test_worker_no_refresh_fn_when_no_refresh_interval() -> None:
+  msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  captured: dict[str, Any] = {}
+
+  def _fake_do_hold(
+    message: Any,
+    min_hold: int,
+    refresh_fn: Any = None,
+    refresh_interval: Any = None,
+  ) -> None:
+    captured['refresh_fn'] = refresh_fn
+
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch('integrations.vestaboard.set_state'),
+    patch.object(_mod, '_do_hold', side_effect=_fake_do_hold),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+
+  assert captured.get('refresh_fn') is None
+
+
+def test_worker_refresh_fn_skips_duplicate_content() -> None:
+  msg = _make_integration_msg_with_refresh(60)
+  mock_integration = MagicMock()
+  mock_integration.get_variables.return_value = {'greeting': [['HELLO']]}
+
+  refresh_fn_ref: list[Any] = []
+
+  def _fake_do_hold(
+    message: Any,
+    min_hold: int,
+    refresh_fn: Any = None,
+    refresh_interval: Any = None,
+  ) -> None:
+    if refresh_fn:
+      refresh_fn_ref.append(refresh_fn)
+
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch.object(_mod, '_get_integration', return_value=mock_integration),
+    patch('integrations.vestaboard.set_state'),
+    patch.object(_mod, '_do_hold', side_effect=_fake_do_hold),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+
+  assert refresh_fn_ref, 'refresh_fn was not captured'
+  with patch('integrations.vestaboard.set_state', side_effect=vb.DuplicateContentError('dup')):
+    refresh_fn_ref[0]()  # must not raise
