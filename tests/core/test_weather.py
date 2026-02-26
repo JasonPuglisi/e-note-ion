@@ -192,8 +192,8 @@ def test_geocoding_http_error_raises_unavailable(monkeypatch: pytest.MonkeyPatch
 # --- error safety ---
 
 
-def test_forecast_http_error_does_not_leak_city(weather_config_imperial: None) -> None:
-  """HTTPError re-raise must not include the city name in the error message."""
+def test_forecast_http_error_raises_unavailable(weather_config_imperial: None) -> None:
+  """Forecast HTTP error must raise IntegrationDataUnavailableError (not leak requests.HTTPError)."""
   err_resp = MagicMock()
   err_resp.status_code = 503
   err_resp.reason = 'Service Unavailable'
@@ -201,10 +201,25 @@ def test_forecast_http_error_does_not_leak_city(weather_config_imperial: None) -
   mock_forecast.raise_for_status.side_effect = requests.HTTPError(response=err_resp)
 
   with patch('integrations.weather.requests.get', side_effect=[_mock_geocode(), mock_forecast]):
-    with pytest.raises(requests.HTTPError) as exc_info:
+    with pytest.raises(IntegrationDataUnavailableError) as exc_info:
       weather.get_variables()
   assert 'san francisco' not in str(exc_info.value).lower()
   assert 'San Francisco' not in str(exc_info.value)
+
+
+def test_geocoding_timeout_raises_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'weather': {'city': 'San Francisco'}})
+  with patch('integrations.weather.requests.get', side_effect=requests.Timeout):
+    with pytest.raises(IntegrationDataUnavailableError):
+      weather.get_variables()
+
+
+def test_forecast_timeout_raises_unavailable(weather_config_imperial: None) -> None:
+  with patch('integrations.weather.requests.get', side_effect=[_mock_geocode(), requests.Timeout]):
+    with pytest.raises(IntegrationDataUnavailableError):
+      weather.get_variables()
 
 
 # --- WMO condition mapping ---
