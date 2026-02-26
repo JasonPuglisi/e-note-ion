@@ -27,6 +27,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from queue import Empty, PriorityQueue
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -336,15 +337,21 @@ def _make_webhook_handler(secret: str) -> type:
 
     def do_POST(self) -> None:  # noqa: N802
       # Validate path: must be /webhook/<integration>
-      parts = self.path.strip('/').split('/')
+      # Parse separately from query string so ?secret= is handled cleanly.
+      parsed = urlparse(self.path)
+      parts = parsed.path.strip('/').split('/')
       if len(parts) != 2 or parts[0] != 'webhook':
         self._respond(404, 'Not found')
         return
 
       integration_name = parts[1]
 
-      # Constant-time secret comparison to prevent timing attacks.
-      provided = self.headers.get('X-Webhook-Secret', '')
+      # Accept secret from X-Webhook-Secret header (preferred) or ?secret=
+      # query parameter (fallback for senders that cannot set custom headers,
+      # e.g. Plex Media Server). Constant-time comparison prevents timing attacks.
+      header_secret = self.headers.get('X-Webhook-Secret', '')
+      query_secret = parse_qs(parsed.query).get('secret', [''])[0]
+      provided = header_secret or query_secret
       if not secrets.compare_digest(provided, self._secret):
         print(f'Webhook: rejected request for {integration_name!r} — invalid or missing secret')
         self._respond(401, 'Unauthorized')

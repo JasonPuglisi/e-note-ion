@@ -53,18 +53,26 @@ hold = 3600
 
 ## Webhook setup
 
-### 1. Find your webhook URL
+### 1. Expose the webhook port
 
-The scheduler binds on `127.0.0.1:8080` by default. For Plex to reach it,
-the URL must be accessible from your Plex Media Server host.
+In `config.toml`, enable the webhook listener and set the bind address so
+Plex (which may be in a separate container) can reach it:
 
-- **Same machine:** `http://localhost:8080/webhook/plex`
-- **Docker on same host:** use the host's LAN IP (e.g. `http://192.168.1.x:8080/webhook/plex`)
-- **Separate host:** use the scheduler host's LAN IP or a reverse proxy
+```toml
+[webhook]
+bind = "0.0.0.0"
+# port defaults to 8080 — the container-internal port
+```
 
-### 2. Add the shared secret
+**Unraid:** the Unraid template includes a pre-configured webhook port mapping
+(container `8080` → host `32800`). In the e-note-ion Docker settings, confirm
+the **Webhook port** mapping is active. Port `32800` avoids conflicts with
+common services that use `8080`. You can change the host port to any free port.
 
-Check the scheduler startup log for the auto-generated secret:
+### 2. Get the shared secret
+
+Start (or restart) the scheduler. The first run auto-generates a secret and
+prints it once:
 
 ```
 Webhook secret generated and saved to config.toml:
@@ -72,54 +80,48 @@ Webhook secret generated and saved to config.toml:
 Copy this into your webhook sender (Plex, Shortcuts, etc.).
 ```
 
-Plex does not support custom HTTP headers, so the secret cannot be sent
-via `X-Webhook-Secret`. To work around this, embed the secret as a query
-parameter and use a reverse proxy or local forwarder that injects it as a
-header — or use an iOS Shortcut or home automation rule to forward Plex
-events with the header added.
+The secret is also saved to `config.toml` under `[webhook]` so it persists
+across restarts.
 
-See [Webhook forwarding](#webhook-forwarding) below for practical options.
+### 3. Build the webhook URL
 
-### 3. Configure Plex
+Plex cannot send custom HTTP headers, so pass the secret as a query parameter
+instead:
 
-1. Open Plex Web or the Plex desktop app
-2. Go to **Settings → Webhooks** (requires Plex Pass)
-3. Click **Add Webhook**
-4. Enter the webhook URL from step 1
-5. Save
+```
+http://<unraid-ip>:32800/webhook/plex?secret=<your-secret-here>
+```
 
-Plex will immediately start sending events for any media played from your
-server.
+Both forms are accepted — the query parameter is equivalent to the
+`X-Webhook-Secret` header. If both are present, the header takes precedence.
 
-## Webhook forwarding
+**Unraid example** (replace with your server's LAN IP and generated secret):
+```
+http://192.168.1.100:32800/webhook/plex?secret=abc123xyz
+```
 
-Because Plex cannot send a custom `X-Webhook-Secret` header, you need a
-layer between Plex and the scheduler that injects the secret. Options:
+### 4. Configure Plex
 
-### nginx reverse proxy
+1. Open Plex Web → **Settings → Webhooks** (requires Plex Pass)
+2. Click **Add Webhook**
+3. Enter the full URL including `?secret=...` from the previous step
+4. Save
 
-Add a location block that injects the header:
+Plex begins sending events immediately for any media played from your server.
+
+### Using a reverse proxy (optional)
+
+If you have nginx Proxy Manager, SWAG, or another reverse proxy, you can
+inject the secret as a header instead and keep it out of the URL:
 
 ```nginx
 location /webhook/plex {
-    proxy_pass http://127.0.0.1:8080/webhook/plex;
+    proxy_pass http://127.0.0.1:32800/webhook/plex;
     proxy_set_header X-Webhook-Secret "your-secret-here";
 }
 ```
 
-Point Plex at the nginx URL instead of the scheduler directly.
-
-### iOS Shortcuts
-
-Create a shortcut that:
-1. Receives a URL scheme trigger (or is called by an automation)
-2. Gets the Plex webhook payload from a variable
-3. Makes a POST request to the scheduler URL with the `X-Webhook-Secret` header
-
-### Home Assistant
-
-Use a REST command or a Node-RED flow to receive the Plex event and
-forward it to the scheduler with the secret header added.
+Point Plex at the proxy URL (no `?secret=` needed).
 
 ## Supported events
 

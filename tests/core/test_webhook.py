@@ -152,6 +152,72 @@ def test_missing_secret_returns_401() -> None:
     server.shutdown()
 
 
+def test_query_param_secret_accepted() -> None:
+  mock_mod = MagicMock()
+  mock_mod.handle_webhook.return_value = None
+
+  with patch.object(_mod, '_get_integration', return_value=mock_mod):
+    server, port = _start_test_server()
+    try:
+      # Pass secret as ?secret= query param with no header
+      encoded = b'{}'
+      conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+      conn.request(
+        'POST',
+        f'/webhook/bart?secret={_SECRET}',
+        body=encoded,
+        headers={'Content-Type': 'application/json', 'Content-Length': str(len(encoded))},
+      )
+      resp = conn.getresponse()
+      assert resp.status == 200
+    finally:
+      server.shutdown()
+
+
+def test_query_param_wrong_secret_returns_401() -> None:
+  server, port = _start_test_server()
+  try:
+    encoded = b'{}'
+    conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+    conn.request(
+      'POST',
+      '/webhook/bart?secret=wrong-secret',
+      body=encoded,
+      headers={'Content-Type': 'application/json', 'Content-Length': str(len(encoded))},
+    )
+    resp = conn.getresponse()
+    assert resp.status == 401
+  finally:
+    server.shutdown()
+
+
+def test_header_takes_precedence_over_query_param() -> None:
+  """When both are present, the header is used (and must be correct)."""
+  mock_mod = MagicMock()
+  mock_mod.handle_webhook.return_value = None
+
+  with patch.object(_mod, '_get_integration', return_value=mock_mod):
+    server, port = _start_test_server()
+    try:
+      encoded = b'{}'
+      conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+      # Correct header + wrong query param → should pass (header wins)
+      conn.request(
+        'POST',
+        '/webhook/bart?secret=wrong-secret',
+        body=encoded,
+        headers={
+          'Content-Type': 'application/json',
+          'Content-Length': str(len(encoded)),
+          'X-Webhook-Secret': _SECRET,
+        },
+      )
+      resp = conn.getresponse()
+      assert resp.status == 200
+    finally:
+      server.shutdown()
+
+
 # ---------------------------------------------------------------------------
 # Routing
 # ---------------------------------------------------------------------------

@@ -67,9 +67,11 @@ line1_dest = "DALY"
 #
 # port = 8080
 # secret is auto-generated on first startup if omitted — check logs for the
-# value and copy it into your webhook sender.
+# value and copy it into your webhook sender (as ?secret= in the URL, or via
+# X-Webhook-Secret header if your sender supports custom headers).
 # secret = "..."
-# Bind to 0.0.0.0 to accept connections from outside localhost (e.g. Docker).
+# Bind to 0.0.0.0 to accept connections from outside localhost (e.g. Docker/Unraid).
+# Unraid: the template maps container port 8080 → host port 32800 by default.
 # Requires a TLS-terminating reverse proxy for external webhook sources.
 # bind = "0.0.0.0"
 
