@@ -6,7 +6,7 @@
 # This integration translates those events into display messages:
 #   - media.play / media.resume → "NOW PLAYING" with show/movie title
 #   - media.pause               → "PAUSED" with show/movie title
-#   - media.stop                → interrupt-only (clears now-playing hold)
+#   - media.stop                → short "stopped" card ([R] NOW PLAYING, hold=60s)
 #
 # Requires Plex Pass and a webhook configured in Plex Media Server settings
 # to POST to the scheduler's webhook endpoint. See content/contrib/plex.md
@@ -90,12 +90,18 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
       return None
 
     if event in _STOP_EVENTS:
+      cfg = _load_template_config('stopped')
       return WebhookMessage(
-        data={},
-        priority=0,
-        hold=0,
-        timeout=0,
-        interrupt_only=True,
+        data={
+          'templates': cfg['templates'],
+          'variables': {},
+          'truncation': cfg['truncation'],
+        },
+        priority=cfg['priority'],
+        hold=cfg['hold'],
+        timeout=cfg['timeout'],
+        interrupt=True,
+        supersede_tag='plex',
       )
 
     metadata = payload.get('Metadata')
