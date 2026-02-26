@@ -1,0 +1,24 @@
+{
+  "templates": {
+    "conditions": {
+      "schedule": {
+        "cron": "0 * * * *",
+        "hold": 600,
+        "timeout": 1800
+      },
+      "priority": 5,
+      "public": true,
+      "truncation": "ellipsis",
+      "integration": "weather",
+      "templates": [
+        {
+          "format": [
+            "{city}",
+            "{condition}",
+            "{temp}  H:{high} L:{low}"
+          ]
+        }
+      ]
+    }
+  }
+}

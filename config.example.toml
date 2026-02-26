@@ -55,6 +55,21 @@ line1_dest = "DALY"
 # priority = 8
 # refresh_interval = 60  # re-fetch departure times every 60s during the hold (min 30)
 
+[weather]
+# City to display weather for. Geocoded via Open-Meteo on first call; no API
+# key required.
+city = "San Francisco"
+
+# Unit system: "imperial" (°F, mph, default) or "metric" (°C, km/h).
+# units = "imperial"
+
+# ── Schedule overrides (optional) ─────────────────────────────────────────────
+# [weather.schedules.conditions]
+# cron = "0 * * * *"
+# hold = 600
+# timeout = 1800
+# priority = 5
+
 [webhook]
 # Optional: enable the HTTP webhook listener so external systems (Plex,
 # iOS Shortcuts, etc.) can push display messages to the board in real time.
