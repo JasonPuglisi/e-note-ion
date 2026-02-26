@@ -14,23 +14,23 @@ must have an active Plex Pass subscription to send webhooks.
 
 ## Configuration
 
-No `[plex]` section is needed in `config.toml`. The webhook listener must
-be enabled:
-
-```toml
-[webhook]
-# port and bind are optional; defaults shown
-port = 8080
-bind = "127.0.0.1"
-# secret is auto-generated on first start; copy it from the startup log
-```
-
-Enable the plex integration in `[scheduler]`:
+No `[plex]` section is needed in `config.toml`. Enable the webhook listener
+and the plex content:
 
 ```toml
 [scheduler]
 content_enabled = ["plex"]
+
+[webhook]
+# Bind to 0.0.0.0 so Plex (which may run in a separate container) can reach it.
+# port defaults to 8080 (container-internal); map it to a host port in Docker/Unraid.
+bind = "0.0.0.0"
+# secret is auto-generated on first start and saved to config.toml — check the log.
 ```
+
+**Unraid:** the Unraid template pre-configures the port mapping (container
+`8080` → host `32800`). In the e-note-ion Docker settings, confirm the
+**Webhook port** mapping is active.
 
 To override hold, timeout, or priority for a template, add a section to
 `config.toml`:
@@ -53,26 +53,11 @@ hold = 3600
 
 ## Webhook setup
 
-### 1. Expose the webhook port
+### 1. Enable and expose the webhook listener
 
-In `config.toml`, enable the webhook listener and set the bind address so
-Plex (which may be in a separate container) can reach it:
-
-```toml
-[webhook]
-bind = "0.0.0.0"
-# port defaults to 8080 — the container-internal port
-```
-
-**Unraid:** the Unraid template includes a pre-configured webhook port mapping
-(container `8080` → host `32800`). In the e-note-ion Docker settings, confirm
-the **Webhook port** mapping is active. Port `32800` avoids conflicts with
-common services that use `8080`. You can change the host port to any free port.
-
-### 2. Get the shared secret
-
-Start (or restart) the scheduler. The first run auto-generates a secret and
-prints it once:
+Add the `[webhook]` block shown in Configuration above. On first start, a
+shared secret is auto-generated, printed to the log, and saved to
+`config.toml` — it persists across restarts:
 
 ```
 Webhook secret generated and saved to config.toml:
@@ -80,27 +65,23 @@ Webhook secret generated and saved to config.toml:
 Copy this into your webhook sender (Plex, Shortcuts, etc.).
 ```
 
-The secret is also saved to `config.toml` under `[webhook]` so it persists
-across restarts.
+### 2. Build the webhook URL
 
-### 3. Build the webhook URL
-
-Plex cannot send custom HTTP headers, so pass the secret as a query parameter
-instead:
+Plex cannot send custom HTTP headers, so pass the secret as a query parameter:
 
 ```
-http://<unraid-ip>:32800/webhook/plex?secret=<your-secret-here>
+http://<host-ip>:<host-port>/webhook/plex?secret=<your-secret-here>
 ```
 
-Both forms are accepted — the query parameter is equivalent to the
-`X-Webhook-Secret` header. If both are present, the header takes precedence.
-
-**Unraid example** (replace with your server's LAN IP and generated secret):
+**Unraid example** (replace with your server's LAN IP, chosen host port, and generated secret):
 ```
 http://192.168.1.100:32800/webhook/plex?secret=abc123xyz
 ```
 
-### 4. Configure Plex
+Both `?secret=` and the `X-Webhook-Secret` header are accepted. If both are
+present, the header takes precedence.
+
+### 3. Configure Plex
 
 1. Open Plex Web → **Settings → Webhooks** (requires Plex Pass)
 2. Click **Add Webhook**
@@ -111,8 +92,8 @@ Plex begins sending events immediately for any media played from your server.
 
 ### Using a reverse proxy (optional)
 
-If you have nginx Proxy Manager, SWAG, or another reverse proxy, you can
-inject the secret as a header instead and keep it out of the URL:
+If you have nginx Proxy Manager, SWAG, or another reverse proxy running on
+the same host, you can inject the secret as a header and keep it out of the URL:
 
 ```nginx
 location /webhook/plex {
