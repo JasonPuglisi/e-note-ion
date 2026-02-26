@@ -361,7 +361,7 @@ step may be skipped — use judgement.
 2. Make changes; run the full check suite
 3. If release-worthy (see below), bump `version` in `pyproject.toml` **in the
    same commit as the source change** — never a follow-up PR. Rule of thumb:
-   if any `.py` file is staged, check whether a bump is needed. Always stage
+   if any `.py` or `.json` file is staged, check whether a bump is needed. Always stage
    `uv.lock` alongside `pyproject.toml` to avoid pre-commit stash conflicts.
 4. Commit with `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
    (commits are auto-signed via `commit.gpgsign = true` in global git config)
@@ -393,6 +393,7 @@ PR contains **release-worthy** changes:
 | Release-worthy | Not release-worthy |
 |---|---|
 | Source code changes (`.py` files) | CI/CD workflow changes |
+| Content JSON changes (`content/`) | Tooling config JSON changes |
 | Runtime dependency changes | Dev-only dependency changes |
 | `Dockerfile` changes | Docs-only changes |
 | Security fixes | Repo config / tooling changes |
