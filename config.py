@@ -107,7 +107,12 @@ def write_section_values(section: str, values: dict[str, str | int]) -> None:
         found = True
         break
     if not found:
-      section_lines.append(new_line)
+      # Insert before any trailing blank lines so section separators
+      # stay between sections rather than before the new key.
+      insert_at = len(section_lines)
+      while insert_at > 0 and section_lines[insert_at - 1].strip() == '':
+        insert_at -= 1
+      section_lines.insert(insert_at, new_line)
 
   lines[section_start:section_end] = section_lines
   _CONFIG_PATH.write_text(''.join(lines))

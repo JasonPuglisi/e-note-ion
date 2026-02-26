@@ -250,6 +250,40 @@ def test_write_section_values_appends_new_key(
   assert 'existing = "val"' in text
 
 
+def test_write_section_values_appends_before_trailing_blank_lines(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  """New key must land before the inter-section blank line, not after it.
+
+  Reproduces the bug where auto-generating a webhook secret produced:
+
+    [webhook]
+    bind = "0.0.0.0"
+
+    secret = "..."
+    [vestaboard]
+
+  instead of:
+
+    [webhook]
+    bind = "0.0.0.0"
+    secret = "..."
+
+    [vestaboard]
+  """
+  _write_config(tmp_path, '[webhook]\nbind = "0.0.0.0"\n\n[vestaboard]\napi_key = "x"\n')
+  monkeypatch.chdir(tmp_path)
+  monkeypatch.setattr(_mod, '_CONFIG_PATH', tmp_path / 'config.toml')
+  monkeypatch.setattr(_mod, '_config', {})
+  _mod.write_section_values('webhook', {'secret': 'tok'})
+  text = (tmp_path / 'config.toml').read_text()
+  # The new key must appear before the blank line that separates sections.
+  secret_pos = text.index('secret = "tok"')
+  blank_pos = text.index('\n\n')
+  assert secret_pos < blank_pos, 'new key was appended after the section separator blank line'
+
+
 def test_write_section_values_preserves_other_sections(
   tmp_path: Path,
   monkeypatch: pytest.MonkeyPatch,
