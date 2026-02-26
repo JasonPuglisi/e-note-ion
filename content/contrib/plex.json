@@ -48,12 +48,14 @@
       },
       "priority": 8,
       "private": true,
-      "truncation": "hard",
+      "truncation": "word",
       "integration": "plex",
       "templates": [
         {
           "format": [
-            "[R] NOW PLAYING"
+            "[R] NOW PLAYING",
+            "{show_name}",
+            "{episode_line}"
           ]
         }
       ]

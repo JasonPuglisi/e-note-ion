@@ -102,6 +102,41 @@ def test_handle_webhook_stop_has_finite_hold() -> None:
   assert result.timeout > 0
 
 
+def test_handle_webhook_stop_with_episode_metadata_includes_show_variables() -> None:
+  result = _plex.handle_webhook(_episode_payload('media.stop'))
+  assert result is not None
+  assert '[R] NOW PLAYING' in str(result.data['templates'])
+  variables = result.data['variables']
+  assert variables['show_name'] == [['THE BEAR']]
+  assert variables['episode_line'] == [['S2E1 BEEF']]
+  assert result.indefinite is False
+  assert result.interrupt is True
+
+
+def test_handle_webhook_stop_with_movie_metadata_includes_show_variables() -> None:
+  result = _plex.handle_webhook(_movie_payload('media.stop', 'Inception'))
+  assert result is not None
+  variables = result.data['variables']
+  assert variables['show_name'] == [['INCEPTION']]
+  assert variables['episode_line'] == [['']]
+
+
+def test_handle_webhook_stop_without_metadata_returns_bare_stopped_card() -> None:
+  result = _plex.handle_webhook({'event': 'media.stop'})
+  assert result is not None
+  assert result.data['variables'] == {}
+
+
+def test_handle_webhook_stop_with_non_video_metadata_returns_bare_stopped_card() -> None:
+  payload = {
+    'event': 'media.stop',
+    'Metadata': {'type': 'track', 'title': 'Some Song'},
+  }
+  result = _plex.handle_webhook(payload)
+  assert result is not None
+  assert result.data['variables'] == {}
+
+
 # ---------------------------------------------------------------------------
 # Ignored events
 # ---------------------------------------------------------------------------
@@ -121,7 +156,7 @@ def test_handle_webhook_scrobble_returns_none() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_handle_webhook_non_video_type_returns_none() -> None:
+def test_handle_webhook_play_non_video_type_returns_none() -> None:
   payload = {
     'event': 'media.play',
     'Metadata': {'type': 'track', 'title': 'Some Song'},
@@ -180,13 +215,17 @@ def test_handle_webhook_movie_title_preserves_article() -> None:
 
 
 def test_handle_webhook_long_show_name_truncated_to_one_row() -> None:
-  """A show name longer than model.cols must be truncated, not left to wrap."""
+  """A show name longer than model.cols must be word-truncated, not left to wrap."""
   long_show = 'Star Trek The Next Generation'
   result = _plex.handle_webhook(_episode_payload(show=long_show))
   assert result is not None
   show_name = result.data['variables']['show_name'][0][0]
-  # Must fit in one display row — no wrapping possible when delivered as a variable.
+  upper = long_show.upper()
+  # Must fit in one display row.
   assert _vb.display_len(show_name) <= _vb.model.cols
+  # Must be a whole-word prefix of the original (no mid-word cut).
+  assert upper.startswith(show_name)
+  assert show_name == upper or upper[len(show_name)] == ' '
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +243,20 @@ def test_handle_webhook_applies_config_override(monkeypatch: pytest.MonkeyPatch)
   assert result is not None
   assert result.hold == 7200
   assert result.priority == 9
+
+
+# ---------------------------------------------------------------------------
+# Trakt coordination
+# ---------------------------------------------------------------------------
+
+
+def test_handle_webhook_clears_trakt_watching_state(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Any handled Plex event clears Trakt's cached watching state."""
+  import integrations.trakt as _trakt
+
+  _trakt._last_watching_vars = {'show_name': [['SOME SHOW']]}
+  _plex.handle_webhook(_episode_payload('media.play'))
+  assert _trakt._last_watching_vars is None
 
 
 # ---------------------------------------------------------------------------

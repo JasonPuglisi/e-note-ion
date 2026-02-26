@@ -35,6 +35,11 @@ _TRAKT_API_BASE = 'https://api.trakt.tv'
 _auth_started = False
 _auth_lock = threading.Lock()
 
+# Last successfully fetched watching state; used to emit a stopped indicator
+# when a subsequent poll returns 204 (nothing playing).
+_last_watching_vars: dict[str, list[list[str]]] | None = None
+_watching_lock = threading.Lock()
+
 
 # --- Token management ---
 
@@ -254,7 +259,7 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
   future_entries.sort(key=lambda e: e['first_aired'])
   entry = future_entries[0]
 
-  show_name = _vb.truncate_line(entry['show']['title'].upper(), _vb.model.cols, 'ellipsis')
+  show_name = _vb.truncate_line(entry['show']['title'].upper(), _vb.model.cols, 'word')
   ep = entry['episode']
   episode_ref = _format_episode_ref(ep['season'], ep['number'])
   episode_title = _strip_leading_article((ep.get('title') or '').upper())
@@ -275,15 +280,31 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
   }
 
 
+def clear_watching_state() -> None:
+  """Clear the cached watching state.
+
+  Called by plex.py when a Plex event fires, preventing a stale Trakt stopped
+  indicator from appearing after Plex has already handled the stop.
+  """
+  global _last_watching_vars
+  with _watching_lock:
+    _last_watching_vars = None
+
+
 def get_variables_watching() -> dict[str, list[list[str]]]:
   """Fetch what the user is currently watching on Trakt.
 
-  Returns variables: show_name, episode_ref, episode_title.
+  Returns variables: status_line, show_name, episode_ref, episode_title.
+  status_line is '[G] NOW PLAYING' when playing, '[V] NOW PLAYING' on the
+  first poll after playback ends (violet = Trakt brand colour; used as a
+  generic stopped indicator since polling cannot distinguish pause/stop/finish).
   For movies: episode_ref = 'MOVIE', episode_title = ''.
   All values are uppercased.
 
-  Raises IntegrationDataUnavailableError if nothing is currently playing (204).
+  Raises IntegrationDataUnavailableError if nothing is currently playing and
+  no prior state was cached.
   """
+  global _last_watching_vars
   import config as _config_mod
 
   token = _get_token()
@@ -296,6 +317,13 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
   )
 
   if r.status_code == 204:
+    with _watching_lock:
+      last = _last_watching_vars
+      _last_watching_vars = None
+    if last is not None:
+      stopped = dict(last)
+      stopped['status_line'] = [['[V] NOW PLAYING']]
+      return stopped
     raise IntegrationDataUnavailableError('Nothing currently playing')
 
   try:
@@ -307,19 +335,23 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
   media_type = data.get('type')
 
   if media_type == 'episode':
-    show_name = _vb.truncate_line(data['show']['title'].upper(), _vb.model.cols, 'ellipsis')
+    show_name = _vb.truncate_line(data['show']['title'].upper(), _vb.model.cols, 'word')
     ep = data['episode']
     episode_ref = _format_episode_ref(ep['season'], ep['number'])
     episode_title = _strip_leading_article((ep.get('title') or '').upper())
   elif media_type == 'movie':
-    show_name = _vb.truncate_line(data['movie']['title'].upper(), _vb.model.cols, 'ellipsis')
+    show_name = _vb.truncate_line(data['movie']['title'].upper(), _vb.model.cols, 'word')
     episode_ref = 'MOVIE'
     episode_title = ''
   else:
     raise IntegrationDataUnavailableError(f'Unknown media type: {media_type!r}')
 
-  return {
+  result = {
+    'status_line': [['[G] NOW PLAYING']],
     'show_name': [[show_name]],
     'episode_ref': [[episode_ref]],
     'episode_title': [[episode_title]],
   }
+  with _watching_lock:
+    _last_watching_vars = result
+  return result
