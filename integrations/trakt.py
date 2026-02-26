@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 
 import requests
 
+import integrations.vestaboard as _vb
 from exceptions import IntegrationDataUnavailableError
 
 _TRAKT_API_BASE = 'https://api.trakt.tv'
@@ -253,7 +254,7 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
   future_entries.sort(key=lambda e: e['first_aired'])
   entry = future_entries[0]
 
-  show_name = entry['show']['title'].upper()
+  show_name = _vb.truncate_line(entry['show']['title'].upper(), _vb.model.cols, 'ellipsis')
   ep = entry['episode']
   episode_ref = _format_episode_ref(ep['season'], ep['number'])
   episode_title = _strip_leading_article((ep.get('title') or '').upper())
@@ -306,12 +307,12 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
   media_type = data.get('type')
 
   if media_type == 'episode':
-    show_name = data['show']['title'].upper()
+    show_name = _vb.truncate_line(data['show']['title'].upper(), _vb.model.cols, 'ellipsis')
     ep = data['episode']
     episode_ref = _format_episode_ref(ep['season'], ep['number'])
     episode_title = _strip_leading_article((ep.get('title') or '').upper())
   elif media_type == 'movie':
-    show_name = data['movie']['title'].upper()
+    show_name = _vb.truncate_line(data['movie']['title'].upper(), _vb.model.cols, 'ellipsis')
     episode_ref = 'MOVIE'
     episode_title = ''
   else:

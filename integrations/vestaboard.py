@@ -358,7 +358,7 @@ def display_len(text: str) -> int:
   return count
 
 
-def _truncate(
+def truncate_line(
   text: str,
   max_cols: int,
   strategy: TruncationStrategy = 'hard',
@@ -425,7 +425,7 @@ def _wrap_lines(
           result.append(' '.join(current))
           current = []
           current_len = 0
-        result.append(_truncate(word, cols, truncation))
+        result.append(truncate_line(word, cols, truncation))
         continue
       if not current:
         current = [word]

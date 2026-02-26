@@ -4,6 +4,7 @@ import pytest
 
 import config as _cfg
 import integrations.plex as _plex
+import integrations.vestaboard as _vb
 import scheduler as _mod
 
 # ---------------------------------------------------------------------------
@@ -11,13 +12,17 @@ import scheduler as _mod
 # ---------------------------------------------------------------------------
 
 
-def _episode_payload(event: str = 'media.play', title: str = 'The Beef') -> dict[str, Any]:
+def _episode_payload(
+  event: str = 'media.play',
+  title: str = 'The Beef',
+  show: str = 'The Bear',
+) -> dict[str, Any]:
   """Return a minimal Plex webhook payload for an episode event."""
   return {
     'event': event,
     'Metadata': {
       'type': 'episode',
-      'grandparentTitle': 'The Bear',
+      'grandparentTitle': show,
       'parentIndex': 2,
       'index': 1,
       'title': title,
@@ -163,6 +168,16 @@ def test_handle_webhook_movie_title_preserves_article() -> None:
   result = _plex.handle_webhook(_movie_payload('media.play', 'A Quiet Place'))
   assert result is not None
   assert result.data['variables']['show_name'] == [['A QUIET PLACE']]
+
+
+def test_handle_webhook_long_show_name_truncated_to_one_row() -> None:
+  """A show name longer than model.cols must be truncated, not left to wrap."""
+  long_show = 'Star Trek The Next Generation'
+  result = _plex.handle_webhook(_episode_payload(show=long_show))
+  assert result is not None
+  show_name = result.data['variables']['show_name'][0][0]
+  # Must fit in one display row — no wrapping possible when delivered as a variable.
+  assert _vb.display_len(show_name) <= _vb.model.cols
 
 
 # ---------------------------------------------------------------------------

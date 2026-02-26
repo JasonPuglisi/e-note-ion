@@ -10,6 +10,7 @@ import requests
 
 import config as _cfg
 import integrations.trakt as trakt
+import integrations.vestaboard as vb
 from exceptions import IntegrationDataUnavailableError
 
 
@@ -492,3 +493,44 @@ def test_get_variables_watching_http_error_does_not_leak_client_id(
 
   assert 'test-id' not in str(exc_info.value)
   assert 'test-access' not in str(exc_info.value)
+
+
+def test_get_variables_calendar_long_show_name_truncated(
+  config_with_tokens: Path,
+) -> None:
+  """A show name longer than model.cols must be truncated, not left to wrap."""
+  long_response = [
+    {
+      'first_aired': '2099-09-16T01:00:00.000Z',
+      'episode': {'season': 1, 'number': 1, 'title': 'Pilot'},
+      'show': {'title': 'Star Trek The Next Generation'},
+    }
+  ]
+  mock_response = MagicMock()
+  mock_response.status_code = 200
+  mock_response.json.return_value = long_response
+
+  with patch('requests.get', return_value=mock_response):
+    result = trakt.get_variables_calendar()
+
+  show_name = result['show_name'][0][0]
+  assert vb.display_len(show_name) <= vb.model.cols
+
+
+def test_get_variables_watching_long_show_name_truncated(
+  config_with_tokens: Path,
+) -> None:
+  """A show name longer than model.cols must be truncated, not left to wrap."""
+  mock_response = MagicMock()
+  mock_response.status_code = 200
+  mock_response.json.return_value = {
+    'type': 'episode',
+    'show': {'title': 'Star Trek The Next Generation'},
+    'episode': {'season': 1, 'number': 1, 'title': 'Encounter At Farpoint'},
+  }
+
+  with patch('requests.get', return_value=mock_response):
+    result = trakt.get_variables_watching()
+
+  show_name = result['show_name'][0][0]
+  assert vb.display_len(show_name) <= vb.model.cols

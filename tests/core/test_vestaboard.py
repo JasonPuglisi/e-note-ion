@@ -78,43 +78,43 @@ def test_encode_line_truncated_at_cols() -> None:
   assert len(result) == vb.model.cols
 
 
-# --- _truncate ---
+# --- truncate_line ---
 
 
 def test_truncate_exact_fit_unchanged() -> None:
   text = 'A' * vb.model.cols
-  assert vb._truncate(text, vb.model.cols) == text  # noqa: SLF001
+  assert vb.truncate_line(text, vb.model.cols) == text
 
 
 def test_truncate_short_text_unchanged() -> None:
-  assert vb._truncate('HI', 10) == 'HI'  # noqa: SLF001
+  assert vb.truncate_line('HI', 10) == 'HI'
 
 
 def test_truncate_hard() -> None:
-  assert vb._truncate('HELLO WORLD', 7) == 'HELLO W'  # noqa: SLF001
+  assert vb.truncate_line('HELLO WORLD', 7) == 'HELLO W'
 
 
 def test_truncate_word() -> None:
-  assert vb._truncate('HELLO WORLD', 7, 'word') == 'HELLO'  # noqa: SLF001
+  assert vb.truncate_line('HELLO WORLD', 7, 'word') == 'HELLO'
 
 
 def test_truncate_ellipsis() -> None:
   # target=7 (10-3): fits 'HELLO'(5) + space(6) + 'W'(7); base='HELLO' + '...'
-  assert vb._truncate('HELLO WORLD', 10, 'ellipsis') == 'HELLO...'  # noqa: SLF001
+  assert vb.truncate_line('HELLO WORLD', 10, 'ellipsis') == 'HELLO...'
 
 
 def test_truncate_word_no_space_falls_back_to_hard() -> None:
   # No space before the limit — word strategy behaves like hard
-  assert vb._truncate('HELLOWORLD', 5, 'word') == 'HELLO'  # noqa: SLF001
+  assert vb.truncate_line('HELLOWORLD', 5, 'word') == 'HELLO'
 
 
 def test_truncate_preserves_color_tag() -> None:
   # Truncating to 1 display char should return the full [G] token, not split it
-  assert vb._truncate('[G]AB', 1) == '[G]'  # noqa: SLF001
+  assert vb.truncate_line('[G]AB', 1) == '[G]'
 
 
 def test_truncate_preserves_heart() -> None:
-  assert vb._truncate('❤️AB', 1) == '❤️'  # noqa: SLF001
+  assert vb.truncate_line('❤️AB', 1) == '❤️'
 
 
 # --- _wrap_lines ---
@@ -256,19 +256,19 @@ def test_encode_line_escaped_color_tag_not_green() -> None:
   assert len(result) == vb.model.cols
 
 
-# --- _truncate (escaped tags) ---
+# --- truncate_line (escaped tags) ---
 
 
 def test_truncate_does_not_split_escaped_color_tag() -> None:
   # [[G]] is 3 display chars; truncating to 2 must not produce a partial sequence
-  result = vb._truncate('[[G]]AB', 2)  # noqa: SLF001
+  result = vb.truncate_line('[[G]]AB', 2)
   assert '[[G' not in result
   assert vb.display_len(result) <= 2
 
 
 def test_truncate_includes_escaped_color_tag_when_it_fits() -> None:
   # Truncating to 4 display chars: [[G]] (3) + A (1) fits
-  result = vb._truncate('[[G]]AB', 4)  # noqa: SLF001
+  result = vb.truncate_line('[[G]]AB', 4)
   assert result == '[[G]]A'
   assert vb.display_len(result) == 4
 
