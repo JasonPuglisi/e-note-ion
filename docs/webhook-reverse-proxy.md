@@ -21,16 +21,18 @@ forwarding needed.
 
 1. Install the **Tailscale** Community Application (if not already installed)
    and authenticate it to your tailnet via **Settings → Tailscale**.
-2. In `config.toml`, set `bind = "0.0.0.0"` so the container accepts
+2. In **Settings → Tailscale**, enable **Allow Tailscale Funnel**. This
+   authorizes the Unraid host to use Funnel.
+3. In `config.toml`, set `bind = "0.0.0.0"` so the container accepts
    connections from outside localhost. Restart the container.
-3. Open the **Unraid terminal** (Tools → Terminal) and run:
+4. Open the **Unraid terminal** (Tools → Terminal) and run:
    ```
    tailscale funnel --https=8443 --bg 32800
    ```
    Port 443 is occupied by Unraid's own web UI, so 8443 is used instead.
    Both 443 and 8443 are valid Tailscale Funnel ports. The `--bg` flag
    persists the configuration across Tailscale daemon restarts.
-4. Your public webhook URL is:
+5. Your public webhook URL is:
    ```
    https://<machine>.tail<hash>.ts.net:8443/webhook/<integration>
    ```
