@@ -104,6 +104,11 @@ unraid/
    until a message is available, discarding any that have exceeded their
    `timeout`. It then sends the message to the display and sleeps for `hold`
    seconds before processing the next one.
+4. When an integration template with `refresh_interval` finishes its hold and
+   the queue is empty, the worker enters **idle refresh**: it continues calling
+   the integration at the same interval, keeping the display current until the
+   next queued message arrives. This means a real-time display (e.g. BART
+   departures) keeps updating passively when nothing else is competing.
 
 The single-threaded worker ensures display messages never overlap — important
 for a physical split-flap device whose flaps need time to settle.
@@ -185,6 +190,7 @@ WebhookMessage(
     interrupt=False,       # True to cut the current hold short and show this immediately
     indefinite=False,      # True to hold until explicitly interrupted (e.g. a stop event)
     interrupt_only=False,  # True to fire _hold_interrupt without enqueueing (e.g. stop events)
+    supersede_tag='',      # if non-empty, removes earlier same-tagged messages from the queue before enqueueing
 )
 ```
 
@@ -199,6 +205,11 @@ never received.
 Set `interrupt_only=True` for stop/end events that should clear the display
 immediately without enqueueing any new content. The `data`, `priority`, `hold`,
 and `timeout` fields are ignored when `interrupt_only=True`.
+
+Set `supersede_tag` to a non-empty string to have `enqueue()` automatically
+remove any earlier messages with the same tag before adding the new one. Use
+this when a new event (e.g. Plex track change) makes any queued message for
+the same integration stale — so only the latest state reaches the display.
 
 The webhook listener is activated by adding a `[webhook]` section to
 `config.toml` (see `config.example.toml`). It binds to `127.0.0.1:8080` by
@@ -286,12 +297,15 @@ come from GitHub secrets env vars directly.
   hardcoded in the test via `config._config` patching):
   - BART: `BART_API_KEY`
   - Vestaboard: `VESTABOARD_VIRTUAL_API_KEY` (use a virtual board, not physical)
+  - Trakt: `TRAKT_CLIENT_ID`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`
 - CI runs the `integration` job on `main` pushes only; it is advisory
   (`continue-on-error: true`) and not required by the branch ruleset
-- GitHub secrets needed: `BART_API_KEY`, `VESTABOARD_VIRTUAL_API_KEY` — store as
-  **environment secrets** on the `integration` environment (Settings → Environments),
-  restricted to the `main` branch; this scopes them tighter than repo secrets and
-  prevents any PR branch from accessing them even if a workflow runs there
+- GitHub secrets/vars needed — store as **environment secrets** (or vars) on the
+  `integration` environment (Settings → Environments), restricted to the `main`
+  branch; this scopes them tighter than repo secrets and prevents any PR branch
+  from accessing them even if a workflow runs there:
+  - Secrets: `VESTABOARD_VIRTUAL_API_KEY`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`
+  - Variables: `TRAKT_CLIENT_ID` (non-sensitive; stored as an environment variable, not a secret)
 - If any integration test is skipped, the pytest session exits with code 5
   (NO_TESTS_COLLECTED), making the advisory job visibly fail rather than silently pass
 - When adding a new integration, also add `tests/integrations/test_<name>_integration.py`
@@ -315,7 +329,7 @@ prevention here — not just a one-off fix. See #65 for extended notes.
    ```
    gh api repos/JasonPuglisi/e-note-ion/rulesets/13082160 --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'
    ```
-9. **Integration test hygiene** — advisory CI job passing on `main`; GitHub secrets `BART_API_KEY` and `VESTABOARD_VIRTUAL_API_KEY` present; new integrations have `test_<name>_integration.py` and env vars in `tests/integrations/conftest.py`
+9. **Integration test hygiene** — advisory CI job passing on `main`; GitHub environment secrets/vars present (`BART_API_KEY`, `VESTABOARD_VIRTUAL_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN` as secrets; `TRAKT_CLIENT_ID` as a variable); new integrations have `test_<name>_integration.py` and env vars in `tests/integrations/conftest.py`
 10. **Issue/milestone hygiene**:
     - Every open issue has a milestone (no orphans); scope is right-sized
     - Blocking relationships explicit ("Blocked by #X" in body)
@@ -345,7 +359,10 @@ step may be skipped — use judgement.
 
 1. `git checkout -b feat/description`
 2. Make changes; run the full check suite
-3. If release-worthy (see below), bump `version` in `pyproject.toml`
+3. If release-worthy (see below), bump `version` in `pyproject.toml` **in the
+   same commit as the source change** — never a follow-up PR. Rule of thumb:
+   if any `.py` file is staged, check whether a bump is needed. Always stage
+   `uv.lock` alongside `pyproject.toml` to avoid pre-commit stash conflicts.
 4. Commit with `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
    (commits are auto-signed via `commit.gpgsign = true` in global git config)
 5. Verify signing succeeded: `git log -1 --show-signature` must show a valid signature before pushing
@@ -357,8 +374,10 @@ step may be skipped — use judgement.
     get merge SHA via `git rev-parse HEAD`; run `gh run list --branch main --commit <sha>`
     and watch all in-progress runs to completion (`gh run watch <id>`). This step is
     non-negotiable — run it even when PR checks looked clean.
-    Required jobs (check, docker, CodeQL) must pass. Advisory integration job may fail
-    (missing secrets or API issue) — note but not a blocker.
+    Required jobs must pass: `check` and `docker` from `ci.yml`, plus CodeQL's
+    "Analyze (actions)", "Analyze (python)", and "CodeQL" checks (GitHub's built-in
+    code scanning — runs automatically, not defined in `ci.yml`).
+    Advisory integration job may fail (missing secrets or API issue) — note but not a blocker.
 11. Keep `README.md` and `AGENTS.md` up to date as part of the same PR —
     new env vars, CLI flags, content format fields, project structure changes,
     and workflow changes should all be reflected before merge

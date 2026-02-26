@@ -143,6 +143,7 @@ Key `[scheduler]` settings:
 | `public` | `false` | Skip templates marked `public = false` (for shared spaces) |
 | `content_enabled` | _(absent)_ | Contrib content to enable: `["*"]` for all, or `["bart", "trakt"]` for specific stems |
 | `timezone` | system TZ | IANA timezone for cron job scheduling (e.g. `"America/Los_Angeles"`) |
+| `min_hold` | `60` | Minimum seconds any message stays on display before a high-priority (≥8) queued message can interrupt it. Set to `0` to disable (not recommended for physical displays). |
 
 ## Running directly
 
@@ -221,5 +222,8 @@ Required keys:
 |---|---|
 | `VESTABOARD_VIRTUAL_API_KEY` | [web.vestaboard.com](https://web.vestaboard.com) → Developer → Virtual Boards |
 | `BART_API_KEY` | [api.bart.gov/api/register.aspx](https://api.bart.gov/api/register.aspx) |
+| `TRAKT_CLIENT_ID` | [trakt.tv/oauth/applications](https://trakt.tv/oauth/applications) → your app |
+| `TRAKT_CLIENT_SECRET` | same app page |
+| `TRAKT_ACCESS_TOKEN` | run Trakt auth flow once and copy from `config.toml` |
 
 `.env` is git-ignored — never commit it.
