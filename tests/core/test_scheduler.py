@@ -1392,6 +1392,101 @@ def test_worker_refresh_fn_skips_duplicate_content() -> None:
     refresh_fn_ref[0]()  # must not raise
 
 
+# --- worker: idle refresh ---
+
+
+def test_worker_idle_refresh_called_after_hold_expires() -> None:
+  """After hold expires and queue is empty, idle refresh keeps calling set_state."""
+  msg = _make_integration_msg_with_refresh(30)
+  mock_integration = MagicMock()
+  mock_integration.get_variables.return_value = {'greeting': [['HELLO']]}
+  set_state_calls: list[Any] = []
+
+  def fake_set_state(*args: Any, **kwargs: Any) -> None:
+    set_state_calls.append(args)
+
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, None, KeyboardInterrupt()]),
+    patch.object(_mod, '_get_integration', return_value=mock_integration),
+    patch('integrations.vestaboard.set_state', side_effect=fake_set_state),
+    patch.object(_mod, '_do_hold'),  # returns immediately
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+
+  # Initial send + at least one idle refresh
+  assert len(set_state_calls) >= 2
+
+
+def test_worker_idle_refresh_cleared_on_new_send() -> None:
+  """Idle refresh state is cleared when a new message is successfully sent."""
+  msg1 = _make_integration_msg_with_refresh(30)
+  msg2 = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  mock_integration = MagicMock()
+  mock_integration.get_variables.return_value = {'greeting': [['HELLO']]}
+  set_state_calls: list[Any] = []
+
+  def fake_set_state(*args: Any, **kwargs: Any) -> None:
+    set_state_calls.append(args)
+
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg1, msg2, None, KeyboardInterrupt()]),
+    patch.object(_mod, '_get_integration', return_value=mock_integration),
+    patch('integrations.vestaboard.set_state', side_effect=fake_set_state),
+    patch.object(_mod, '_do_hold'),  # returns immediately
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+
+  # send(msg1) + idle_refresh + send(msg2); no idle refresh after msg2 (no refresh_interval)
+  assert len(set_state_calls) == 3
+
+
+def test_worker_idle_refresh_error_logged_and_continues(capsys: pytest.CaptureFixture[str]) -> None:
+  """Idle refresh errors are logged and the worker loop continues."""
+  msg = _make_integration_msg_with_refresh(30)
+  mock_integration = MagicMock()
+  mock_integration.get_variables.return_value = {'greeting': [['HELLO']]}
+  initial_send = [True]
+
+  def fake_set_state(*args: Any, **kwargs: Any) -> None:
+    if initial_send[0]:
+      initial_send[0] = False
+      return
+    raise RuntimeError('refresh failed')
+
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, None, KeyboardInterrupt()]),
+    patch.object(_mod, '_get_integration', return_value=mock_integration),
+    patch('integrations.vestaboard.set_state', side_effect=fake_set_state),
+    patch.object(_mod, '_do_hold'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+
+  assert 'Idle refresh error' in capsys.readouterr().out
+
+
+def test_worker_idle_refresh_not_set_for_non_integration_message() -> None:
+  """Non-integration messages (no refresh_interval) do not populate idle refresh state."""
+  msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  set_state_calls: list[Any] = []
+
+  def fake_set_state(*args: Any, **kwargs: Any) -> None:
+    set_state_calls.append(args)
+
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, None, KeyboardInterrupt()]),
+    patch('integrations.vestaboard.set_state', side_effect=fake_set_state),
+    patch.object(_mod, '_do_hold'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+
+  # Only the initial send; no idle refresh
+  assert len(set_state_calls) == 1
+
+
 # --- _do_hold: indefinite ---
 
 

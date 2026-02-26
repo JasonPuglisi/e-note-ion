@@ -275,7 +275,22 @@ def worker() -> None:
   # sequentially and never overlap. After sending a message, sleeps for
   # `hold` seconds before pulling the next one, giving the physical flaps
   # time to settle and the content time to be read.
+  _idle_refresh_fn: Callable[[], None] | None = None
+  _idle_refresh_interval: int | None = None
+  _idle_last_refresh: float = 0.0
   while True:
+    # Idle refresh: if the queue is empty and the previous integration message
+    # is still on the board, keep refreshing at the same interval until a new
+    # message is successfully sent. Errors are logged; the loop continues.
+    if _idle_refresh_fn and _idle_refresh_interval:
+      now = time.monotonic()
+      if now - _idle_last_refresh >= _idle_refresh_interval:
+        _idle_last_refresh = now
+        try:
+          _idle_refresh_fn()
+        except Exception as e:  # noqa: BLE001
+          print(f'Idle refresh error: {e}')
+
     message = pop_valid_message()
     if message is None:
       continue
@@ -315,6 +330,11 @@ def worker() -> None:
       print(f'Error sending to board: {e}')
       continue
 
+    # New message successfully sent (or DuplicateContentError fell through) —
+    # clear idle refresh state before setting up the new hold.
+    _idle_refresh_fn = None
+    _idle_refresh_interval = None
+
     _refresh_fn: Callable[[], None] | None = None
     refresh_interval = message.data.get('refresh_interval')
     if refresh_interval and 'integration' in message.data:
@@ -338,6 +358,14 @@ def worker() -> None:
       _refresh_fn = _do_refresh
 
     _do_hold(message, _get_min_hold(), refresh_fn=_refresh_fn, refresh_interval=refresh_interval)
+
+    # Hold expired — if this was a refresh-capable integration message, transfer
+    # the refresh fn to idle state so the display keeps updating while the queue
+    # is empty. Set last_refresh to 0 so the first idle refresh fires immediately.
+    if _refresh_fn and refresh_interval:
+      _idle_refresh_fn = _refresh_fn
+      _idle_refresh_interval = refresh_interval
+      _idle_last_refresh = 0.0
 
 
 # --- Webhook Server ---
