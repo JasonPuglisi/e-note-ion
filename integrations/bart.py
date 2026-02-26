@@ -103,11 +103,16 @@ def _no_service_line(dest_abbr: str, color_map: dict[str, list[str]]) -> str:
 
 
 def _format_minutes(mins: str) -> str:
-  """Convert a BART API minutes string to a short display string."""
+  """Convert a BART API minutes string to a short display string.
+
+  Numeric minutes are right-aligned in a 2-character field so departure
+  times align in column when two lines are shown side by side on the board.
+  E.g. ' 5' and '12' rather than '5' and '12'.
+  """
   if mins in ('Leaving', '0'):
     return 'Now'
   try:
-    return str(int(mins))
+    return f'{int(mins):>2}'
   except ValueError:
     return mins
 

@@ -52,6 +52,29 @@ def _mock_etd(dest: str = 'DALY', minutes: str = '5', color: str = 'GREEN') -> M
   return mock
 
 
+# --- _format_minutes ---
+
+
+def test_format_minutes_single_digit_right_aligned() -> None:
+  assert bart._format_minutes('5') == ' 5'
+
+
+def test_format_minutes_double_digit_unchanged() -> None:
+  assert bart._format_minutes('12') == '12'
+
+
+def test_format_minutes_leaving_returns_now() -> None:
+  assert bart._format_minutes('Leaving') == 'Now'
+
+
+def test_format_minutes_zero_returns_now() -> None:
+  assert bart._format_minutes('0') == 'Now'
+
+
+def test_format_minutes_non_numeric_passthrough() -> None:
+  assert bart._format_minutes('unknown') == 'unknown'
+
+
 # --- get_variables ---
 
 
