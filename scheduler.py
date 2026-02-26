@@ -18,6 +18,7 @@ import email.message
 import email.parser
 import heapq
 import importlib
+import importlib.metadata
 import json
 import secrets
 import sys
@@ -764,7 +765,8 @@ def main() -> None:
     extras.append('public mode')
   if not extras:
     extras.append('user content only')
-  print(f'Starting e-note-ion — {board_desc}, {", ".join(extras)}')
+  version = importlib.metadata.version('e-note-ion')
+  print(f'Starting e-note-ion v{version} — {board_desc}, {", ".join(extras)}')
 
   print('Current message:')
   try:

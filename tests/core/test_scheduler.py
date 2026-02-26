@@ -706,6 +706,25 @@ def test_main_note_startup_banner(monkeypatch: pytest.MonkeyPatch, capsys: pytes
   assert 'Note (3×15)' in out
 
 
+def test_main_version_in_banner(capsys: pytest.CaptureFixture[str]) -> None:
+  mock_sched = _mock_sched()
+  with (
+    patch.object(_mod, '_validate_startup'),
+    patch('config.load_config'),
+    patch('config.get_model', return_value='note'),
+    patch('config.get_public_mode', return_value=False),
+    patch('config.get_content_enabled', return_value=set()),
+    patch.object(_mod, 'load_content'),
+    patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
+    patch('threading.Thread'),
+    patch('apscheduler.schedulers.background.BackgroundScheduler', return_value=mock_sched),
+    patch('time.sleep', side_effect=KeyboardInterrupt),
+    patch('importlib.metadata.version', return_value='1.2.3'),
+  ):
+    _mod.main()
+  assert 'v1.2.3' in capsys.readouterr().out
+
+
 def test_main_flagship_sets_model_and_banner(
   monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
