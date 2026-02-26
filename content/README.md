@@ -6,14 +6,14 @@ board. Restart the scheduler to pick up changes.
 ## Directories
 
 - **`contrib/`** — bundled community-contributed content, disabled by default.
-  Enable files by stem using `--content-enabled` (or the `CONTENT_ENABLED` env var):
-  ```bash
-  python scheduler.py --content-enabled bart        # enable one file
-  python scheduler.py --content-enabled bart,other  # enable multiple
-  python scheduler.py --content-enabled '*'         # enable all
+  Enable files by setting `content_enabled` in `config.toml` under `[scheduler]`:
+  ```toml
+  content_enabled = ["bart"]   # enable one file
+  content_enabled = ["bart", "trakt"]  # enable multiple
+  content_enabled = ["*"]      # enable all
   ```
   To contribute content, open a pull request adding a `.json` file and a
-  companion `.md` doc (see template in `CLAUDE.md`).
+  companion `.md` doc (see template in `content/contrib/TEMPLATE.md`).
 
 - **`user/`** — your personal content. Files placed here are always loaded
   automatically — no opt-in needed. This directory is git-ignored so personal
