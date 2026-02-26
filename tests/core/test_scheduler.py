@@ -1628,3 +1628,14 @@ def test_load_file_webhook_only_logged_in_startup_table(
   out = capsys.readouterr().out
   assert 'webhook=true' in out
   assert 'now_playing' in out
+
+
+def test_known_integrations_covers_all_integration_modules() -> None:
+  """Every module in integrations/ (except vestaboard) must be in _KNOWN_INTEGRATIONS."""
+  import importlib
+  from pathlib import Path
+
+  integrations_dir = Path(importlib.import_module('integrations').__file__).parent  # type: ignore[arg-type]
+  modules = {p.stem for p in integrations_dir.glob('*.py') if p.stem not in ('__init__', 'vestaboard')}
+  missing = modules - _mod._KNOWN_INTEGRATIONS
+  assert not missing, f'Integrations missing from _KNOWN_INTEGRATIONS: {missing}'
