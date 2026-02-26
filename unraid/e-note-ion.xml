@@ -44,4 +44,15 @@
     Display="always"
     Required="false"
     Mask="false"/>
+
+  <Config
+    Name="Webhook port"
+    Target="8080"
+    Default="32800"
+    Mode="tcp"
+    Description="Optional. Host port for the HTTP webhook listener (used by Plex and other push integrations). Only takes effect if [webhook] is enabled in config.toml with bind = &quot;0.0.0.0&quot;. The container always listens on 8080 internally; this maps it to a host port. 32800 is the recommended default to avoid conflicts with other common services on 8080."
+    Type="Port"
+    Display="advanced"
+    Required="false"
+    Mask="false"/>
 </Container>

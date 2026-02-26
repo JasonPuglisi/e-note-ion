@@ -204,7 +204,9 @@ The webhook listener is activated by adding a `[webhook]` section to
 `config.toml` (see `config.example.toml`). It binds to `127.0.0.1:8080` by
 default. A shared secret is auto-generated on first startup if not configured;
 check the startup log to copy it into your webhook sender. Endpoint:
-`POST /webhook/<integration>` with `X-Webhook-Secret: <secret>` header.
+`POST /webhook/<integration>` — secret accepted as `X-Webhook-Secret: <secret>`
+header (preferred) or `?secret=<secret>` query parameter (for senders like Plex
+that cannot set custom headers).
 
 When adding a new webhook-capable integration, also add its name to
 `_KNOWN_INTEGRATIONS` in `scheduler.py`.
