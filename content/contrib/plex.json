@@ -13,7 +13,7 @@
       "templates": [
         {
           "format": [
-            "[O] NOW PLAYING",
+            "[G] NOW PLAYING",
             "{show_name}",
             "{episode_line}"
           ]
@@ -33,9 +33,27 @@
       "templates": [
         {
           "format": [
-            "[O] PAUSED",
+            "[Y] NOW PLAYING",
             "{show_name}",
             "{episode_line}"
+          ]
+        }
+      ]
+    },
+    "stopped": {
+      "webhook": true,
+      "schedule": {
+        "hold": 60,
+        "timeout": 30
+      },
+      "priority": 8,
+      "public": false,
+      "truncation": "hard",
+      "integration": "plex",
+      "templates": [
+        {
+          "format": [
+            "[R] NOW PLAYING"
           ]
         }
       ]

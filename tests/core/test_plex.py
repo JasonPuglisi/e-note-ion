@@ -73,24 +73,33 @@ def test_handle_webhook_resume_returns_indefinite_now_playing() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_handle_webhook_pause_returns_indefinite_paused() -> None:
+def test_handle_webhook_pause_returns_indefinite_now_playing_yellow() -> None:
   result = _plex.handle_webhook(_episode_payload('media.pause'))
   assert isinstance(result, _mod.WebhookMessage)
   assert result.indefinite is True
   assert result.interrupt is True
-  assert 'PAUSED' in str(result.data['templates'])
+  assert '[Y] NOW PLAYING' in str(result.data['templates'])
 
 
 # ---------------------------------------------------------------------------
-# stop → interrupt_only
+# stop → stopped card
 # ---------------------------------------------------------------------------
 
 
-def test_handle_webhook_stop_returns_interrupt_only() -> None:
+def test_handle_webhook_stop_returns_stopped_card() -> None:
   result = _plex.handle_webhook({'event': 'media.stop'})
   assert isinstance(result, _mod.WebhookMessage)
-  assert result.interrupt_only is True
+  assert result.interrupt_only is False
+  assert result.interrupt is True
   assert result.indefinite is False
+  assert '[R] NOW PLAYING' in str(result.data['templates'])
+
+
+def test_handle_webhook_stop_has_finite_hold() -> None:
+  result = _plex.handle_webhook({'event': 'media.stop'})
+  assert result is not None
+  assert result.hold > 0
+  assert result.timeout > 0
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +223,7 @@ def test_handle_webhook_pause_has_supersede_tag() -> None:
   assert result.supersede_tag == 'plex'
 
 
-def test_handle_webhook_stop_has_no_supersede_tag() -> None:
+def test_handle_webhook_stop_has_supersede_tag() -> None:
   result = _plex.handle_webhook({'event': 'media.stop'})
   assert result is not None
-  assert result.supersede_tag == ''
+  assert result.supersede_tag == 'plex'

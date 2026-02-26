@@ -35,7 +35,7 @@
       "templates": [
         {
           "format": [
-            "[V] NOW PLAYING",
+            "[G] NOW PLAYING",
             "{show_name}",
             "{episode_ref} {episode_title}"
           ]
