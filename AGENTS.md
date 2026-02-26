@@ -126,7 +126,7 @@ for a physical split-flap device whose flaps need time to settle.
         "refresh_interval": 60  // optional: re-fetch integration data every N seconds during hold (min 30; integration templates only)
       },
       "priority": 5,           // integer 0–10; higher number = higher priority
-      "public": true,          // if false, skipped when running with --public
+      "private": false,        // if true, hidden when public mode is enabled in config.toml
       "truncation": "word",    // optional: "hard" (default), "word", "ellipsis"
       "webhook": false,        // optional: true makes cron optional; template fires on webhook only
       "templates": [

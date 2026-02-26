@@ -169,15 +169,16 @@ def test_pop_valid_message_discards_expired_in_batch() -> None:
 def _make_content(
   *,
   priority: int = 5,
-  public: bool = True,
+  private: bool = False,
   truncation: str | None = None,
 ) -> dict[str, Any]:
   template: dict[str, Any] = {
     'schedule': {'cron': '0 8 * * *', 'hold': 60, 'timeout': 60},
     'priority': priority,
-    'public': public,
     'templates': [{'format': ['HELLO']}],
   }
+  if private:
+    template['private'] = True
   if truncation is not None:
     template['truncation'] = truncation
   return {'templates': {'tmpl': template}}
@@ -298,14 +299,14 @@ def test_load_file_invalid_truncation_raises(sched: BackgroundScheduler, tmp_pat
 
 def test_load_file_public_mode_skips_private(sched: BackgroundScheduler, tmp_path: Path) -> None:
   f = tmp_path / 'test.json'
-  f.write_text(json.dumps(_make_content(public=False)))
+  f.write_text(json.dumps(_make_content(private=True)))
   _mod._load_file(sched, f, public_mode=True)
   assert len(sched.get_jobs()) == 0
 
 
-def test_load_file_public_mode_keeps_public(sched: BackgroundScheduler, tmp_path: Path) -> None:
+def test_load_file_public_mode_keeps_non_private(sched: BackgroundScheduler, tmp_path: Path) -> None:
   f = tmp_path / 'test.json'
-  f.write_text(json.dumps(_make_content(public=True)))
+  f.write_text(json.dumps(_make_content(private=False)))
   _mod._load_file(sched, f, public_mode=True)
   assert len(sched.get_jobs()) == 1
 
@@ -513,6 +514,123 @@ def test_load_file_ignores_unknown_override_keys(
   assert sched.get_jobs()[0].args[2] == 90  # hold applied
 
 
+def test_load_file_skips_disabled_template(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'disabled': True}}}})
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content()))
+  _mod._load_file(sched, f, False)
+  assert len(sched.get_jobs()) == 0
+
+
+def test_load_file_disabled_false_does_not_skip(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'disabled': False}}}})
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content()))
+  _mod._load_file(sched, f, False)
+  assert len(sched.get_jobs()) == 1
+
+
+def test_load_file_disabled_string_true_coerces(
+  sched: BackgroundScheduler,
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  capsys: pytest.CaptureFixture[str],
+) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'disabled': 'true'}}}})
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content()))
+  _mod._load_file(sched, f, False)
+  assert len(sched.get_jobs()) == 0
+  assert 'Warning' in capsys.readouterr().out
+
+
+def test_load_file_disabled_invalid_type_ignored(
+  sched: BackgroundScheduler,
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  capsys: pytest.CaptureFixture[str],
+) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'disabled': 1}}}})
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content()))
+  _mod._load_file(sched, f, False)
+  assert len(sched.get_jobs()) == 1
+  assert 'Warning' in capsys.readouterr().out
+
+
+def test_load_file_skips_disabled_webhook_only_template(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  # Cron template enabled, webhook-only template disabled — only cron job scheduled.
+  import config as _cfg
+
+  content: dict[str, Any] = {
+    'templates': {
+      'cron_tmpl': {
+        'schedule': {'cron': '0 8 * * *', 'hold': 60, 'timeout': 60},
+        'priority': 5,
+        'templates': [{'format': ['HELLO']}],
+      },
+      'webhook_tmpl': {
+        'webhook': True,
+        'schedule': {'hold': 60, 'timeout': 60},
+        'priority': 5,
+        'templates': [{'format': ['WEBHOOK']}],
+      },
+    }
+  }
+  monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'webhook_tmpl': {'disabled': True}}}})
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(content))
+  _mod._load_file(sched, f, False)
+  assert len(sched.get_jobs()) == 1
+  assert sched.get_jobs()[0].id.endswith('cron_tmpl')
+
+
+def test_load_file_private_override_hides_in_public_mode(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'private': True}}}})
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content()))  # template has no 'private' field in JSON
+  _mod._load_file(sched, f, public_mode=True)
+  assert len(sched.get_jobs()) == 0
+
+
+def test_load_file_private_override_visible_in_normal_mode(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'private': True}}}})
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content()))
+  _mod._load_file(sched, f, public_mode=False)
+  assert len(sched.get_jobs()) == 1
+
+
+def test_load_file_private_json_field_hides_in_public_mode(sched: BackgroundScheduler, tmp_path: Path) -> None:
+  # Validates the renamed 'private' JSON field works (was 'public').
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content(private=True)))
+  _mod._load_file(sched, f, public_mode=True)
+  assert len(sched.get_jobs()) == 0
+
+
 # --- worker ---
 
 
@@ -574,15 +692,15 @@ def test_worker_log_includes_template_name(capsys: pytest.CaptureFixture[str]) -
 # --- _load_file (public key missing) ---
 
 
-def test_load_file_public_key_missing_included_in_public_mode(sched: BackgroundScheduler, tmp_path: Path) -> None:
-  # A template with no 'public' key should default to included (True) in
+def test_load_file_private_key_missing_included_in_public_mode(sched: BackgroundScheduler, tmp_path: Path) -> None:
+  # A template with no 'private' key should default to included (False) in
   # public mode rather than raising a KeyError.
   content: dict[str, Any] = {
     'templates': {
       'tmpl': {
         'schedule': {'cron': '0 8 * * *', 'hold': 60, 'timeout': 60},
         'priority': 5,
-        # 'public' key intentionally omitted
+        # 'private' key intentionally omitted — should default to not private
         'templates': [{'format': ['HELLO']}],
       }
     }
