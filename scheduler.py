@@ -541,6 +541,25 @@ def parse_cron(cron: str) -> dict[str, str]:
 _VALID_TRUNCATION: frozenset[str] = frozenset({'hard', 'word', 'ellipsis'})
 
 
+def _coerce_bool(val: object, label: str) -> bool | None:
+  """Coerce a config override value to bool, warning on string input.
+
+  Returns True/False for recognised values, None for unrecognised (caller
+  ignores). Native TOML booleans pass through directly. String 'true'/'false'
+  (case-insensitive) are accepted with a warning nudging toward correct TOML.
+  Any other type is rejected with a warning.
+  """
+  if isinstance(val, bool):
+    return val
+  if isinstance(val, str):
+    lower = val.strip().lower()
+    if lower in ('true', 'false'):
+      print(f'Warning: {label} should be a TOML boolean (true/false without quotes), not a string; treating as {lower}')
+      return lower == 'true'
+  print(f'Warning: ignoring invalid {label}: {val!r}')
+  return None
+
+
 def _validate_template(name: str, template: dict[str, Any]) -> None:
   """Validate a single template dict, raising ValueError with a clear message.
 
@@ -603,10 +622,22 @@ def _load_file(
   stem = f'{content_file.parent.name}.{content_file.stem}'
   new_jobs = []
   webhook_only_jobs: list[tuple[str, int, dict[str, Any], dict[str, Any]]] = []
+  disabled_jobs: list[str] = []
   for template_name, template in content['templates'].items():
-    if public_mode and not template.get('public', True):
+    if public_mode and template.get('private', False):
       continue
     _validate_template(f'{stem}.{template_name}', template)
+    # Check disabled/private overrides before building the job.
+    override = _config_mod.get_schedule_override(f'{content_file.stem}.{template_name}')
+    if 'disabled' in override:
+      coerced = _coerce_bool(override['disabled'], f'disabled override for {stem}.{template_name}')
+      if coerced is True:
+        disabled_jobs.append(template_name)
+        continue
+    if public_mode and 'private' in override:
+      coerced = _coerce_bool(override['private'], f'private override for {stem}.{template_name}')
+      if coerced is True:
+        continue
     priority = template['priority']
     truncation = template.get('truncation', 'hard')
     data: dict[str, Any] = {
@@ -667,7 +698,7 @@ def _load_file(
   max_hold = max((len(str(effective['hold'])) + 1 for _, _, _, effective in effective_jobs), default=0)
   max_timeout = max((len(str(effective['timeout'])) + 1 for _, _, _, effective in effective_jobs), default=0)
 
-  if effective_jobs or webhook_only_jobs:
+  if effective_jobs or webhook_only_jobs or disabled_jobs:
     print(f'Loaded {content_file.parent.name}/{content_file.name}:')
   for job_id, priority, data, effective in effective_jobs:
     template_name = job_id[len(stem) + 1 :]
@@ -706,6 +737,9 @@ def _load_file(
         f'  {f"hold={schedule['hold']}s".ljust(max_wh_hold + 5)}'
         f'  {f"timeout={schedule['timeout']}s".ljust(max_wh_timeout + 8)}'
       )
+
+  for template_name in disabled_jobs:
+    print(f'  · {template_name}  disabled')
 
 
 def load_content(

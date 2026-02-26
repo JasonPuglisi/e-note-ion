@@ -8,7 +8,6 @@
         "refresh_interval": 60
       },
       "priority": 8,
-      "public": true,
       "truncation": "ellipsis",
       "integration": "bart",
       "templates": [

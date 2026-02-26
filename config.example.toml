@@ -11,7 +11,7 @@
 # Display model: "note" (3×15, default) or "flagship" (6×22)
 # model = "flagship"
 
-# Public mode: skip templates marked public = false. Useful when the display
+# Public mode: skip templates marked private = true. Useful when the display
 # is in a shared or guest-visible space.
 # public = true
 
@@ -54,6 +54,8 @@ line1_dest = "DALY"
 # timeout = 60
 # priority = 8
 # refresh_interval = 60  # re-fetch departure times every 60s during the hold (min 30)
+# disabled = true        # skip this template entirely (all other fields ignored)
+# private = true         # hide in public mode (overrides the template's private field)
 
 [weather]
 # City to display weather for. Geocoded via Open-Meteo on first call; no API
@@ -69,6 +71,8 @@ city = "San Francisco"
 # hold = 600
 # timeout = 1800
 # priority = 5
+# disabled = true  # skip this template entirely (all other fields ignored)
+# private = true   # hide in public mode (overrides the template's private field)
 
 [webhook]
 # Optional: enable the HTTP webhook listener so external systems (Plex,

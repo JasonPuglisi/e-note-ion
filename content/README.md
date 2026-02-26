@@ -36,7 +36,7 @@ schedule and display settings.
         "timeout": 600
       },
       "priority": 5,
-      "public": true,
+      "private": false,
       "truncation": "word",
       "templates": [
         { "format": ["GOOD MORNING", "{quip}"] }
@@ -58,7 +58,7 @@ schedule and display settings.
 | `hold` | Seconds the message stays on display before the next update |
 | `timeout` | Seconds the message can wait in the queue before being discarded |
 | `priority` | Integer 0–10; higher number runs first when multiple messages are queued simultaneously |
-| `public` | If `false`, excluded when running with `--public` |
+| `private` | If `true`, excluded when public mode is enabled (`[scheduler] public = true` in config.toml) |
 | `truncation` | `hard` cuts mid-word (default); `word` stops at a word boundary; `ellipsis` adds `...` |
 
 ### Variables
@@ -129,8 +129,8 @@ Rules of thumb:
 
 ### Schedule overrides
 
-Override `cron`, `hold`, `timeout`, or `priority` for any named template
-directly in `config.toml`, without editing the content file:
+Override schedule fields or visibility for any named template directly in
+`config.toml`, without editing the content file:
 
 ```toml
 [bart.schedules.departures]
@@ -138,10 +138,15 @@ cron = "*/5 6-9 * * 1-5"  # extend window to start at 6am
 hold = 180
 timeout = 90
 priority = 9
+disabled = true            # skip this template entirely
+private = true             # hide in public mode
 ```
 
-The section name is `[<file-stem>.schedules.<template-name>]`. All four fields
-are optional; unspecified fields use the template's JSON default.
+The section name is `[<file-stem>.schedules.<template-name>]`. All fields are
+optional; unspecified fields use the template's JSON default. `disabled = true`
+takes precedence over all other fields — the template is skipped entirely.
+`private = true` marks a template as hidden in public mode even if the JSON
+does not.
 
 ## Contrib integrations
 

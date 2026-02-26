@@ -7,7 +7,6 @@
         "timeout": 1800
       },
       "priority": 5,
-      "public": true,
       "truncation": "word",
       "integration": "weather",
       "templates": [
