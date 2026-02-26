@@ -360,6 +360,11 @@ def worker() -> None:
 
       _refresh_fn = _do_refresh
 
+    # Clear any interrupt that was set before this hold began — e.g. the webhook
+    # interrupt that caused the previous hold to exit and triggered enqueueing of
+    # this very message. Only interrupts that arrive *during* the hold should end
+    # it early; a stale pre-hold event would otherwise exit the new hold instantly.
+    _hold_interrupt.clear()
     _do_hold(message, _get_min_hold(), refresh_fn=_refresh_fn, refresh_interval=refresh_interval)
 
     # Hold expired — if this was a refresh-capable integration message, transfer

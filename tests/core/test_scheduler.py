@@ -689,6 +689,31 @@ def test_worker_log_includes_template_name(capsys: pytest.CaptureFixture[str]) -
   assert 'user.test.my_template' in out
 
 
+def test_worker_clears_stale_hold_interrupt_before_hold() -> None:
+  # Regression: #271 — when a webhook fires with interrupt=True and the worker
+  # is idle, _hold_interrupt is set before the worker picks up the message.
+  # Without the fix, _do_hold's first wait() returns immediately (stale event),
+  # causing an indefinite hold to exit in ~0 seconds.
+  msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  _mod._hold_interrupt.set()  # simulate stale pre-hold interrupt
+  hold_calls: list[bool] = []
+
+  def _fake_do_hold(m: Any, min_hold: Any, **kw: Any) -> None:
+    # Capture whether the interrupt was already cleared when _do_hold started.
+    hold_calls.append(_mod._hold_interrupt.is_set())
+    raise KeyboardInterrupt()
+
+  with (
+    patch.object(_mod, 'pop_valid_message', return_value=msg),
+    patch('integrations.vestaboard.set_state'),
+    patch.object(_mod, '_do_hold', side_effect=_fake_do_hold),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+
+  assert hold_calls == [False], '_hold_interrupt must be cleared before _do_hold is called'
+
+
 # --- _load_file (public key missing) ---
 
 
