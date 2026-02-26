@@ -431,6 +431,12 @@ def test_get_variables_calendar_http_error_does_not_leak_client_id(
 # --- get_variables_watching ---
 
 
+@pytest.fixture(autouse=True)
+def reset_watching_state() -> None:
+  """Clear module-level watching state between tests."""
+  trakt._last_watching_vars = None
+
+
 def test_get_variables_watching_episode_returns_vars(
   config_with_tokens: Path,
 ) -> None:
@@ -445,6 +451,7 @@ def test_get_variables_watching_episode_returns_vars(
   with patch('requests.get', return_value=mock_response):
     result = trakt.get_variables_watching()
 
+  assert result['status_line'] == [['[G] NOW PLAYING']]
   assert result['show_name'] == [['MY SHOW']]
   assert result['episode_ref'] == [['S1E3']]
   assert result['episode_title'] == [['PILOT']]
@@ -463,6 +470,7 @@ def test_get_variables_watching_movie_returns_vars(
   with patch('requests.get', return_value=mock_response):
     result = trakt.get_variables_watching()
 
+  assert result['status_line'] == [['[G] NOW PLAYING']]
   assert result['show_name'] == [['INCEPTION']]
   assert result['episode_ref'] == [['MOVIE']]
   assert result['episode_title'] == [['']]
@@ -477,6 +485,92 @@ def test_get_variables_watching_204_raises_unavailable(
   with patch('requests.get', return_value=mock_response):
     with pytest.raises(IntegrationDataUnavailableError, match='Nothing currently playing'):
       trakt.get_variables_watching()
+
+
+def test_get_variables_watching_204_after_playing_returns_violet_stopped_state(
+  config_with_tokens: Path,
+) -> None:
+  play_response = MagicMock()
+  play_response.status_code = 200
+  play_response.json.return_value = {
+    'type': 'episode',
+    'show': {'title': 'My Show'},
+    'episode': {'season': 1, 'number': 3, 'title': 'Pilot'},
+  }
+  stop_response = MagicMock()
+  stop_response.status_code = 204
+
+  with patch('requests.get', side_effect=[play_response, stop_response]):
+    trakt.get_variables_watching()
+    result = trakt.get_variables_watching()
+
+  assert result['status_line'] == [['[V] NOW PLAYING']]
+  assert result['show_name'] == [['MY SHOW']]
+  assert result['episode_ref'] == [['S1E3']]
+  assert result['episode_title'] == [['PILOT']]
+
+
+def test_get_variables_watching_state_cleared_after_stopped(
+  config_with_tokens: Path,
+) -> None:
+  play_response = MagicMock()
+  play_response.status_code = 200
+  play_response.json.return_value = {
+    'type': 'episode',
+    'show': {'title': 'My Show'},
+    'episode': {'season': 1, 'number': 3, 'title': 'Pilot'},
+  }
+  stop_response = MagicMock()
+  stop_response.status_code = 204
+
+  with patch('requests.get', side_effect=[play_response, stop_response, stop_response]):
+    trakt.get_variables_watching()
+    trakt.get_variables_watching()  # returns violet stopped state, clears cache
+    with pytest.raises(IntegrationDataUnavailableError):
+      trakt.get_variables_watching()  # no prior state — raises
+
+
+def test_clear_watching_state_resets_cached_vars(config_with_tokens: Path) -> None:
+  play_response = MagicMock()
+  play_response.status_code = 200
+  play_response.json.return_value = {
+    'type': 'episode',
+    'show': {'title': 'My Show'},
+    'episode': {'season': 1, 'number': 3, 'title': 'Pilot'},
+  }
+  stop_response = MagicMock()
+  stop_response.status_code = 204
+
+  with patch('requests.get', return_value=play_response):
+    trakt.get_variables_watching()
+
+  assert trakt._last_watching_vars is not None
+  trakt.clear_watching_state()
+  assert trakt._last_watching_vars is None
+
+  # After clear, 204 should raise rather than return stopped state.
+  with patch('requests.get', return_value=stop_response):
+    with pytest.raises(IntegrationDataUnavailableError):
+      trakt.get_variables_watching()
+
+
+def test_get_variables_watching_state_reset_on_new_play(
+  config_with_tokens: Path,
+) -> None:
+  play_response = MagicMock()
+  play_response.status_code = 200
+  play_response.json.return_value = {
+    'type': 'movie',
+    'movie': {'title': 'Inception'},
+  }
+
+  # Two successful polls — second should return fresh green state, not violet.
+  with patch('requests.get', side_effect=[play_response, play_response]):
+    trakt.get_variables_watching()
+    result = trakt.get_variables_watching()
+
+  assert result['status_line'] == [['[G] NOW PLAYING']]
+  assert result['show_name'] == [['INCEPTION']]
 
 
 def test_get_variables_watching_http_error_does_not_leak_client_id(
@@ -498,12 +592,13 @@ def test_get_variables_watching_http_error_does_not_leak_client_id(
 def test_get_variables_calendar_long_show_name_truncated(
   config_with_tokens: Path,
 ) -> None:
-  """A show name longer than model.cols must be truncated, not left to wrap."""
+  """A show name longer than model.cols must be word-truncated, not left to wrap."""
+  long_title = 'Star Trek The Next Generation'
   long_response = [
     {
       'first_aired': '2099-09-16T01:00:00.000Z',
       'episode': {'season': 1, 'number': 1, 'title': 'Pilot'},
-      'show': {'title': 'Star Trek The Next Generation'},
+      'show': {'title': long_title},
     }
   ]
   mock_response = MagicMock()
@@ -514,18 +609,22 @@ def test_get_variables_calendar_long_show_name_truncated(
     result = trakt.get_variables_calendar()
 
   show_name = result['show_name'][0][0]
+  upper = long_title.upper()
   assert vb.display_len(show_name) <= vb.model.cols
+  assert upper.startswith(show_name)
+  assert show_name == upper or upper[len(show_name)] == ' '
 
 
 def test_get_variables_watching_long_show_name_truncated(
   config_with_tokens: Path,
 ) -> None:
-  """A show name longer than model.cols must be truncated, not left to wrap."""
+  """A show name longer than model.cols must be word-truncated, not left to wrap."""
+  long_title = 'Star Trek The Next Generation'
   mock_response = MagicMock()
   mock_response.status_code = 200
   mock_response.json.return_value = {
     'type': 'episode',
-    'show': {'title': 'Star Trek The Next Generation'},
+    'show': {'title': long_title},
     'episode': {'season': 1, 'number': 1, 'title': 'Encounter At Farpoint'},
   }
 
@@ -533,4 +632,7 @@ def test_get_variables_watching_long_show_name_truncated(
     result = trakt.get_variables_watching()
 
   show_name = result['show_name'][0][0]
+  upper = long_title.upper()
   assert vb.display_len(show_name) <= vb.model.cols
+  assert upper.startswith(show_name)
+  assert show_name == upper or upper[len(show_name)] == ' '

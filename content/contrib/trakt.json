@@ -25,7 +25,8 @@
       "schedule": {
         "cron": "*/3 * * * *",
         "hold": 180,
-        "timeout": 120
+        "timeout": 120,
+        "refresh_interval": 30
       },
       "priority": 7,
       "private": true,
@@ -35,7 +36,7 @@
       "templates": [
         {
           "format": [
-            "[G] NOW PLAYING",
+            "{status_line}",
             "{show_name}",
             "{episode_ref} {episode_title}"
           ]

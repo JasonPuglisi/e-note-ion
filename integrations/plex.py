@@ -89,12 +89,35 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
     if event not in _HANDLED_EVENTS:
       return None
 
+    try:
+      import integrations.trakt as _trakt
+
+      _trakt.clear_watching_state()
+    except ImportError:
+      pass
+
+    metadata = payload.get('Metadata')
+    media_type = metadata.get('type') if metadata else None
+
+    if media_type == 'episode' and metadata:
+      show_name = _vb.truncate_line(metadata['grandparentTitle'].upper(), _vb.model.cols, 'word')
+      episode_ref = f'S{metadata["parentIndex"]}E{metadata["index"]}'
+      episode_detail = _strip_leading_article((metadata.get('title') or '').upper())
+      episode_line = f'{episode_ref} {episode_detail}'.strip()
+    elif media_type == 'movie' and metadata:
+      show_name = _vb.truncate_line(metadata['title'].upper(), _vb.model.cols, 'word')
+      episode_line = ''
+    else:
+      show_name = ''
+      episode_line = ''
+
     if event in _STOP_EVENTS:
       cfg = _load_template_config('stopped')
+      has_media = bool(show_name)
       return WebhookMessage(
         data={
           'templates': cfg['templates'],
-          'variables': {},
+          'variables': {'show_name': [[show_name]], 'episode_line': [[episode_line]]} if has_media else {},
           'truncation': cfg['truncation'],
         },
         priority=cfg['priority'],
@@ -104,27 +127,11 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
         supersede_tag='plex',
       )
 
-    metadata = payload.get('Metadata')
-    if not metadata:
-      return None
-
-    media_type = metadata.get('type')
-    if media_type == 'episode':
-      show_name = metadata['grandparentTitle'].upper()
-      episode_ref = f'S{metadata["parentIndex"]}E{metadata["index"]}'
-      episode_detail = _strip_leading_article((metadata.get('title') or '').upper())
-      episode_line = f'{episode_ref} {episode_detail}'.strip()
-    elif media_type == 'movie':
-      show_name = metadata['title'].upper()
-      episode_ref = ''
-      episode_detail = ''
-      episode_line = ''
-    else:
+    if not show_name:
       return None
 
     template_name = 'paused' if event == _PAUSE_EVENT else 'now_playing'
     cfg = _load_template_config(template_name)
-    show_name = _vb.truncate_line(show_name, _vb.model.cols, cfg['truncation'])
 
     return WebhookMessage(
       data={
