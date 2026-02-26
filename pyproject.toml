@@ -1,6 +1,6 @@
 [project]
 name = "e-note-ion"
-version = "0.18.3"
+version = "0.18.4"
 description = "Automation for Vestaboard displays — with emotion"
 keywords = ["vestaboard", "note", "flagship", "automation", "schedule", "scheduling"]
 authors = [
