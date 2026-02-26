@@ -60,10 +60,10 @@ line1_dest = "DALY"
 # iOS Shortcuts, etc.) can push display messages to the board in real time.
 # Remove the comment from this entire section to activate the listener.
 #
-# ⚠  Security: when bind = "0.0.0.0", place a TLS-terminating reverse proxy
-# (Caddy, nginx, NPM) in front of the listener before exposing it externally.
+# ⚠  Security: external webhook senders (outside your LAN) require TLS.
+# Recommended: use Tailscale Funnel — no domain or cert management needed.
 # Never send the shared secret over plaintext HTTP across the internet.
-# See: https://github.com/JasonPuglisi/e-note-ion/issues/175
+# See: https://github.com/JasonPuglisi/e-note-ion/blob/main/docs/webhook-reverse-proxy.md
 #
 # port = 8080
 # secret is auto-generated on first startup if omitted — check logs for the
