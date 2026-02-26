@@ -332,6 +332,29 @@ def test_enqueue_seq_increments() -> None:
   assert msg1.seq < msg2.seq
 
 
+def test_enqueue_supersede_tag_removes_earlier_same_tagged() -> None:
+  _mod.enqueue(priority=8, data={}, hold=60, timeout=60, name='first', supersede_tag='plex')
+  _mod.enqueue(priority=8, data={}, hold=60, timeout=60, name='second', supersede_tag='plex')
+  # Only the latest tagged message should remain.
+  assert _mod._queue.qsize() == 1
+  msg = _mod._queue.get_nowait()
+  assert msg.name == 'second'
+
+
+def test_enqueue_supersede_tag_leaves_other_tags_intact() -> None:
+  _mod.enqueue(priority=9, data={}, hold=60, timeout=60, name='aria', supersede_tag='')
+  _mod.enqueue(priority=8, data={}, hold=60, timeout=60, name='paused', supersede_tag='plex')
+  _mod.enqueue(priority=8, data={}, hold=60, timeout=60, name='now_playing', supersede_tag='plex')
+  # aria (no tag) must survive; only the latest plex-tagged message remains.
+  assert _mod._queue.qsize() == 2
+  with patch('time.sleep'):
+    first = _mod.pop_valid_message()
+  assert first is not None
+  assert first.name == 'aria'
+  second = _mod._queue.get_nowait()
+  assert second.name == 'now_playing'
+
+
 # --- load_content ---
 
 

@@ -16,6 +16,7 @@
 
 import email.message
 import email.parser
+import heapq
 import importlib
 import json
 import secrets
@@ -78,6 +79,7 @@ class QueuedMessage:
   hold: int  # seconds message must stay on display
   timeout: int  # seconds message can wait in queue before being discarded
   indefinite: bool = False  # if True, hold runs until explicitly interrupted
+  supersede_tag: str = ''  # if non-empty, enqueue() removes earlier same-tagged messages first
 
   def __lt__(self, other: 'QueuedMessage') -> bool:
     # PriorityQueue is a min-heap, so we invert priority comparison so that
@@ -103,6 +105,7 @@ class WebhookMessage:
   interrupt: bool = False
   indefinite: bool = False
   interrupt_only: bool = False
+  supersede_tag: str = ''  # if non-empty, enqueue() removes earlier same-tagged messages first
 
 
 # --- Priority Queue ---
@@ -119,24 +122,33 @@ def enqueue(
   timeout: int,
   name: str = '',
   indefinite: bool = False,
+  supersede_tag: str = '',
 ) -> None:
   global _counter
   with _counter_lock:
     seq = _counter
     _counter += 1
 
-  _queue.put(
-    QueuedMessage(
-      priority=priority,
-      seq=seq,
-      name=name,
-      scheduled_at=time.monotonic(),
-      data=data,
-      hold=hold,
-      timeout=timeout,
-      indefinite=indefinite,
-    )
+  msg = QueuedMessage(
+    priority=priority,
+    seq=seq,
+    name=name,
+    scheduled_at=time.monotonic(),
+    data=data,
+    hold=hold,
+    timeout=timeout,
+    indefinite=indefinite,
+    supersede_tag=supersede_tag,
   )
+
+  if supersede_tag:
+    with _queue.mutex:
+      before = len(_queue.queue)
+      _queue.queue[:] = [m for m in _queue.queue if m.supersede_tag != supersede_tag]
+      if len(_queue.queue) < before:
+        heapq.heapify(_queue.queue)
+
+  _queue.put(msg)
 
 
 def pop_valid_message() -> QueuedMessage | None:
@@ -435,6 +447,7 @@ def _make_webhook_handler(secret: str) -> type:
         timeout=result.timeout,
         name=result.name or f'webhook.{integration_name}',
         indefinite=result.indefinite,
+        supersede_tag=result.supersede_tag,
       )
       if result.interrupt:
         _hold_interrupt.set()

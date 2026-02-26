@@ -180,3 +180,26 @@ def test_handle_webhook_applies_config_override(monkeypatch: pytest.MonkeyPatch)
   assert result is not None
   assert result.hold == 7200
   assert result.priority == 9
+
+
+# ---------------------------------------------------------------------------
+# supersede_tag
+# ---------------------------------------------------------------------------
+
+
+def test_handle_webhook_play_has_supersede_tag() -> None:
+  result = _plex.handle_webhook(_episode_payload('media.play'))
+  assert result is not None
+  assert result.supersede_tag == 'plex'
+
+
+def test_handle_webhook_pause_has_supersede_tag() -> None:
+  result = _plex.handle_webhook(_episode_payload('media.pause'))
+  assert result is not None
+  assert result.supersede_tag == 'plex'
+
+
+def test_handle_webhook_stop_has_no_supersede_tag() -> None:
+  result = _plex.handle_webhook({'event': 'media.stop'})
+  assert result is not None
+  assert result.supersede_tag == ''

@@ -132,6 +132,7 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
       timeout=cfg['timeout'],
       indefinite=True,
       interrupt=True,
+      supersede_tag='plex',
     )
   except Exception as e:  # noqa: BLE001
     print(f'Plex webhook error: {e}')

@@ -344,6 +344,7 @@ def test_handle_webhook_result_enqueues_message() -> None:
           timeout=60,
           name='test.webhook',
           indefinite=False,
+          supersede_tag='',
         )
       finally:
         server.shutdown()
