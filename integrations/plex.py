@@ -21,6 +21,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import integrations.vestaboard as _vb
 from scheduler import WebhookMessage
 
 _PLEX_JSON_PATH = Path(__file__).parent.parent / 'content' / 'contrib' / 'plex.json'
@@ -117,6 +118,7 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
 
     template_name = 'paused' if event == _PAUSE_EVENT else 'now_playing'
     cfg = _load_template_config(template_name)
+    show_name = _vb.truncate_line(show_name, _vb.model.cols, cfg['truncation'])
 
     return WebhookMessage(
       data={
