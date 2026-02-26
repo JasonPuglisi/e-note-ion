@@ -148,4 +148,5 @@ are optional; unspecified fields use the template's JSON default.
 | File | Description |
 |---|---|
 | [`bart.json`](contrib/bart.md) | BART real-time departure board |
+| [`plex.json`](contrib/plex.md) | Plex Media Server now-playing via webhook |
 | [`trakt.json`](contrib/trakt.md) | Trakt.tv upcoming calendar and now-playing |

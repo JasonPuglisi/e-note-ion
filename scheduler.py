@@ -36,7 +36,7 @@ from exceptions import IntegrationDataUnavailableError
 
 # Allowlist of valid integration names. Must be extended when a new integration
 # is added to integrations/.
-_KNOWN_INTEGRATIONS: frozenset[str] = frozenset({'bart', 'trakt'})
+_KNOWN_INTEGRATIONS: frozenset[str] = frozenset({'bart', 'plex', 'trakt'})
 
 # Cache of loaded integration modules, keyed by name.
 _integrations: dict[str, Any] = {}
@@ -74,6 +74,7 @@ class QueuedMessage:
   data: dict[str, Any]
   hold: int  # seconds message must stay on display
   timeout: int  # seconds message can wait in queue before being discarded
+  indefinite: bool = False  # if True, hold runs until explicitly interrupted
 
   def __lt__(self, other: 'QueuedMessage') -> bool:
     # PriorityQueue is a min-heap, so we invert priority comparison so that
@@ -87,13 +88,18 @@ class QueuedMessage:
 class WebhookMessage:
   # Returned by an integration's handle_webhook() to enqueue a display message
   # triggered by an external HTTP POST. Set interrupt=True to cut the current
-  # hold short so this message is shown immediately.
+  # hold short so this message is shown immediately. Set indefinite=True to
+  # hold until an explicit interrupt (e.g. a stop event) rather than timing
+  # out at hold seconds. Set interrupt_only=True (e.g. for stop events) to
+  # fire _hold_interrupt without enqueueing a new message.
   data: dict[str, Any]
   priority: int
   hold: int
   timeout: int
   name: str = ''
   interrupt: bool = False
+  indefinite: bool = False
+  interrupt_only: bool = False
 
 
 # --- Priority Queue ---
@@ -109,6 +115,7 @@ def enqueue(
   hold: int,
   timeout: int,
   name: str = '',
+  indefinite: bool = False,
 ) -> None:
   global _counter
   with _counter_lock:
@@ -124,6 +131,7 @@ def enqueue(
       data=data,
       hold=hold,
       timeout=timeout,
+      indefinite=indefinite,
     )
   )
 
@@ -218,10 +226,10 @@ def _do_hold(
   while True:
     elapsed = time.monotonic() - hold_start
     remaining = message.hold - elapsed
-    if remaining <= 0:
+    if remaining <= 0 and not message.indefinite:
       break
 
-    next_wake = min(_HOLD_POLL_INTERVAL, remaining)
+    next_wake = _HOLD_POLL_INTERVAL if message.indefinite else min(_HOLD_POLL_INTERVAL, remaining)
     if refresh_fn and refresh_interval:
       time_until_refresh = refresh_interval - (time.monotonic() - last_refresh)
       next_wake = min(next_wake, max(0.0, time_until_refresh))
@@ -257,11 +265,12 @@ def worker() -> None:
       continue
 
     scheduled = datetime.fromtimestamp(time.time() - (time.monotonic() - message.scheduled_at))
+    hold_desc = f'{message.hold}s (indefinite)' if message.indefinite else f'{message.hold}s'
     print(
       f'[{datetime.now().strftime("%H:%M:%S")}] Sending {message.name}'
       f' | scheduled: {scheduled.strftime("%H:%M:%S")}'
       f' | priority: {message.priority}'
-      f' | hold: {message.hold}s'
+      f' | hold: {hold_desc}'
     )
     try:
       variables = message.data['variables']
@@ -380,12 +389,18 @@ def _make_webhook_handler(secret: str) -> type:
         self._respond(200, 'Discarded')
         return
 
+      if result.interrupt_only:
+        _hold_interrupt.set()
+        self._respond(200, 'Interrupted')
+        return
+
       enqueue(
         priority=result.priority,
         data=result.data,
         hold=result.hold,
         timeout=result.timeout,
         name=result.name or f'webhook.{integration_name}',
+        indefinite=result.indefinite,
       )
       if result.interrupt:
         _hold_interrupt.set()
@@ -455,14 +470,17 @@ def _validate_template(name: str, template: dict[str, Any]) -> None:
 
   Checks: schedule fields (cron str, hold/timeout non-negative int),
   priority range, truncation value, and that at least one of templates or
-  integration is present.
+  integration is present. When "webhook": true is set, cron is optional —
+  hold and timeout in the schedule dict still serve as webhook defaults.
   """
+  is_webhook = bool(template.get('webhook', False))
   schedule = template.get('schedule')
   if not isinstance(schedule, dict):
     raise ValueError(f'{name}: missing or invalid "schedule" field')
   cron = schedule.get('cron')
-  if not isinstance(cron, str) or not cron.strip():
-    raise ValueError(f'{name}: schedule.cron must be a non-empty string')
+  if not is_webhook:
+    if not isinstance(cron, str) or not cron.strip():
+      raise ValueError(f'{name}: schedule.cron must be a non-empty string')
   for field in ('hold', 'timeout'):
     val = schedule.get(field)
     if not isinstance(val, int) or val < 0:
@@ -508,6 +526,7 @@ def _load_file(
   # files with the same name in different directories don't collide.
   stem = f'{content_file.parent.name}.{content_file.stem}'
   new_jobs = []
+  webhook_only_jobs: list[tuple[str, int, dict[str, Any], dict[str, Any]]] = []
   for template_name, template in content['templates'].items():
     if public_mode and not template.get('public', True):
       continue
@@ -523,14 +542,13 @@ def _load_file(
       data['integration'] = template['integration']
     if 'integration_fn' in template:
       data['integration_fn'] = template['integration_fn']
-    new_jobs.append(
-      (
-        f'{stem}.{template_name}',
-        priority,
-        data,
-        template['schedule'],
-      )
-    )
+    schedule = template['schedule']
+    is_webhook = bool(template.get('webhook', False))
+    has_cron = isinstance(schedule.get('cron'), str) and bool(schedule['cron'].strip())
+    if is_webhook and not has_cron:
+      webhook_only_jobs.append((f'{stem}.{template_name}', priority, data, schedule))
+    else:
+      new_jobs.append((f'{stem}.{template_name}', priority, data, schedule))
 
   # Atomically swap out the old jobs for this file.
   for job in scheduler.get_jobs():
@@ -573,7 +591,7 @@ def _load_file(
   max_hold = max((len(str(effective['hold'])) + 1 for _, _, _, effective in effective_jobs), default=0)
   max_timeout = max((len(str(effective['timeout'])) + 1 for _, _, _, effective in effective_jobs), default=0)
 
-  if effective_jobs:
+  if effective_jobs or webhook_only_jobs:
     print(f'Loaded {content_file.parent.name}/{content_file.name}:')
   for job_id, priority, data, effective in effective_jobs:
     template_name = job_id[len(stem) + 1 :]
@@ -597,6 +615,21 @@ def _load_file(
       f'  {f"hold={effective['hold']}s".ljust(max_hold + 5)}'
       f'  {f"timeout={effective['timeout']}s".ljust(max_timeout + 8)}'
     )
+
+  if webhook_only_jobs:
+    max_wh_name = max((len(job_id[len(stem) + 1 :]) for job_id, *_ in webhook_only_jobs), default=0)
+    max_wh_hold = max((len(str(schedule['hold'])) + 1 for _, _, _, schedule in webhook_only_jobs), default=0)
+    max_wh_timeout = max((len(str(schedule['timeout'])) + 1 for _, _, _, schedule in webhook_only_jobs), default=0)
+    max_wh_priority = max((len(str(priority)) for _, priority, _, _ in webhook_only_jobs), default=0)
+    for job_id, priority, _, schedule in webhook_only_jobs:
+      template_name = job_id[len(stem) + 1 :]
+      print(
+        f'  · {template_name.ljust(max_wh_name)}'
+        f'  {"webhook=true".ljust(12)}'
+        f'  {f"priority={priority}".ljust(max_wh_priority + 9)}'
+        f'  {f"hold={schedule['hold']}s".ljust(max_wh_hold + 5)}'
+        f'  {f"timeout={schedule['timeout']}s".ljust(max_wh_timeout + 8)}'
+      )
 
 
 def load_content(

@@ -1,4 +1,5 @@
 import json
+import threading
 import time
 from pathlib import Path
 from queue import Empty
@@ -1341,3 +1342,146 @@ def test_worker_refresh_fn_skips_duplicate_content() -> None:
   assert refresh_fn_ref, 'refresh_fn was not captured'
   with patch('integrations.vestaboard.set_state', side_effect=vb.DuplicateContentError('dup')):
     refresh_fn_ref[0]()  # must not raise
+
+
+# --- _do_hold: indefinite ---
+
+
+def _make_indefinite_message(hold: int = 30) -> _mod.QueuedMessage:
+  return _mod.QueuedMessage(
+    priority=4,
+    seq=0,
+    name='test-indefinite',
+    scheduled_at=time.monotonic(),
+    data={},
+    hold=hold,
+    timeout=300,
+    indefinite=True,
+  )
+
+
+def test_do_hold_indefinite_does_not_exit_on_time() -> None:
+  """Indefinite hold does not exit at the hold boundary — only on interrupt."""
+  message = _make_indefinite_message(hold=1)
+  _mod._hold_interrupt.clear()
+  # Fire interrupt after 2s (> 1s hold boundary)
+  t = threading.Timer(2.0, _mod._hold_interrupt.set)
+  t.start()
+  try:
+    start = time.monotonic()
+    _mod._do_hold(message, min_hold=0)
+    elapsed = time.monotonic() - start
+    assert elapsed >= 1.9, f'Expected ≥1.9s elapsed, got {elapsed:.2f}s'
+  finally:
+    t.cancel()
+    _mod._hold_interrupt.clear()
+
+
+def test_do_hold_indefinite_exits_on_webhook_interrupt() -> None:
+  """Indefinite hold exits promptly when _hold_interrupt is set."""
+  message = _make_indefinite_message(hold=30)
+  _mod._hold_interrupt.set()
+  start = time.monotonic()
+  _mod._do_hold(message, min_hold=0)
+  assert time.monotonic() - start < 5
+
+
+def test_do_hold_indefinite_exits_on_priority_interrupt() -> None:
+  """Indefinite hold at low priority exits after min_hold when high-priority item enqueued."""
+  message = _make_indefinite_message(hold=30)
+  _mod._hold_interrupt.clear()
+  _enqueue_priority(8)
+  start = time.monotonic()
+  _mod._do_hold(message, min_hold=1)
+  elapsed = time.monotonic() - start
+  assert elapsed < 10, f'Expected early exit, got {elapsed:.2f}s'
+
+
+def test_do_hold_non_indefinite_unchanged() -> None:
+  """Timed (non-indefinite) hold still exits at its hold duration."""
+  message = _make_message(priority=4, hold=2)
+  _mod._hold_interrupt.clear()
+  start = time.monotonic()
+  _mod._do_hold(message, min_hold=0)
+  assert time.monotonic() - start >= 1.9
+
+
+# --- enqueue: indefinite ---
+
+
+def test_enqueue_propagates_indefinite_true() -> None:
+  enqueue = _mod.enqueue
+  enqueue(priority=5, data={}, hold=60, timeout=30, indefinite=True)
+  msg = _mod._queue.get_nowait()
+  assert msg.indefinite is True
+
+
+def test_enqueue_indefinite_defaults_false() -> None:
+  _mod.enqueue(priority=5, data={}, hold=60, timeout=30)
+  msg = _mod._queue.get_nowait()
+  assert msg.indefinite is False
+
+
+# --- _validate_template: webhook ---
+
+
+def _webhook_template() -> dict[str, Any]:
+  return {
+    'webhook': True,
+    'schedule': {'hold': 60, 'timeout': 60},
+    'priority': 8,
+    'templates': [{'format': ['LINE ONE']}],
+  }
+
+
+def test_validate_template_webhook_true_no_cron_passes() -> None:
+  _mod._validate_template('ctx.tmpl', _webhook_template())
+
+
+def test_validate_template_webhook_true_missing_hold_raises() -> None:
+  t = _webhook_template()
+  del t['schedule']['hold']
+  with pytest.raises(ValueError, match='hold'):
+    _mod._validate_template('ctx.tmpl', t)
+
+
+def test_validate_template_no_webhook_no_cron_raises() -> None:
+  t = _base_template()
+  del t['schedule']['cron']
+  with pytest.raises(ValueError, match='cron'):
+    _mod._validate_template('ctx.tmpl', t)
+
+
+# --- _load_file: webhook-only ---
+
+
+def _make_webhook_only_content() -> dict[str, Any]:
+  return {
+    'templates': {
+      'now_playing': {
+        'webhook': True,
+        'schedule': {'hold': 14400, 'timeout': 30},
+        'priority': 8,
+        'public': True,
+        'templates': [{'format': ['[O] NOW PLAYING', '{show_name}']}],
+      }
+    }
+  }
+
+
+def test_load_file_webhook_only_template_not_scheduled(sched: BackgroundScheduler, tmp_path: Path) -> None:
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_webhook_only_content()))
+  _mod._load_file(sched, f, False)
+  assert len(sched.get_jobs()) == 0
+
+
+def test_load_file_webhook_only_logged_in_startup_table(
+  sched: BackgroundScheduler, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_webhook_only_content()))
+  _mod._load_file(sched, f, False)
+  out = capsys.readouterr().out
+  assert 'webhook=true' in out
+  assert 'now_playing' in out

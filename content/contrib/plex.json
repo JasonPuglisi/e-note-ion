@@ -1,0 +1,44 @@
+{
+  "templates": {
+    "now_playing": {
+      "webhook": true,
+      "schedule": {
+        "hold": 14400,
+        "timeout": 30
+      },
+      "priority": 8,
+      "public": false,
+      "truncation": "ellipsis",
+      "integration": "plex",
+      "templates": [
+        {
+          "format": [
+            "[O] NOW PLAYING",
+            "{show_name}",
+            "{episode_detail}"
+          ]
+        }
+      ]
+    },
+    "paused": {
+      "webhook": true,
+      "schedule": {
+        "hold": 14400,
+        "timeout": 30
+      },
+      "priority": 8,
+      "public": false,
+      "truncation": "ellipsis",
+      "integration": "plex",
+      "templates": [
+        {
+          "format": [
+            "[O] PAUSED",
+            "{show_name}",
+            "{episode_detail}"
+          ]
+        }
+      ]
+    }
+  }
+}
