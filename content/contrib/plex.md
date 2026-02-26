@@ -125,13 +125,13 @@ Only video media is displayed — music and photo events return no message.
 ```
 [O] NOW PLAYING
 SHOW NAME
-EPISODE TITLE
+S3E3 EPISODE TITLE
 ```
 
 - Row 1: `[O]` (orange, Plex brand color) + mode label
 - Row 2: Show name (for episodes) or movie title (for movies)
-- Row 3: Episode title, with leading articles stripped (A, An, The)
-  For movies, row 3 is blank.
+- Row 3: Season/episode reference + episode title (e.g. `S3E3 BEEF`), truncated
+  with ellipsis if too long. For movies, row 3 is blank.
 
 Leading articles are stripped from episode titles only. Show names and
 movie titles are preserved as-is: "THE BEAR" stays "THE BEAR", but the

@@ -106,10 +106,12 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
       show_name = metadata['grandparentTitle'].upper()
       episode_ref = f'S{metadata["parentIndex"]}E{metadata["index"]}'
       episode_detail = _strip_leading_article((metadata.get('title') or '').upper())
+      episode_line = f'{episode_ref} {episode_detail}'.strip()
     elif media_type == 'movie':
       show_name = metadata['title'].upper()
       episode_ref = ''
       episode_detail = ''
+      episode_line = ''
     else:
       return None
 
@@ -121,8 +123,7 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
         'templates': cfg['templates'],
         'variables': {
           'show_name': [[show_name]],
-          'episode_ref': [[episode_ref]],
-          'episode_detail': [[episode_detail]],
+          'episode_line': [[episode_line]],
         },
         'truncation': cfg['truncation'],
       },
