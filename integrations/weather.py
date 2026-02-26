@@ -66,16 +66,21 @@ def _geocode(city: str) -> tuple[float, float, str]:
   """Resolve a city name to (latitude, longitude, canonical_name).
 
   Uses the Open-Meteo geocoding API. Raises IntegrationDataUnavailableError
-  if the city cannot be resolved.
+  if the city cannot be resolved or the request fails.
   """
-  r = requests.get(
-    _GEOCODING_URL,
-    params={'name': city, 'count': 1, 'format': 'json'},
-    timeout=10,
-  )
+  try:
+    r = requests.get(
+      _GEOCODING_URL,
+      params={'name': city, 'count': 1, 'format': 'json'},
+      timeout=10,
+    )
+  except requests.RequestException as e:
+    print(f'Weather: geocoding request failed — {e}')
+    raise IntegrationDataUnavailableError(f'Weather: geocoding request failed — {e}') from None
   try:
     r.raise_for_status()
   except requests.HTTPError as e:
+    print(f'Weather: geocoding error {e.response.status_code} {e.response.reason}')
     raise IntegrationDataUnavailableError(
       f'Weather geocoding error: {e.response.status_code} {e.response.reason}'
     ) from None
@@ -139,32 +144,39 @@ def get_variables() -> dict[str, list[list[str]]]:
     temp_unit = 'celsius'
     wind_unit = 'kmh'
 
-  r = requests.get(
-    _FORECAST_URL,
-    params={
-      'latitude': lat,
-      'longitude': lon,
-      'current': ','.join(
-        [
-          'temperature_2m',
-          'apparent_temperature',
-          'weather_code',
-          'wind_speed_10m',
-          'precipitation_probability',
-        ]
-      ),
-      'daily': 'temperature_2m_max,temperature_2m_min',
-      'temperature_unit': temp_unit,
-      'wind_speed_unit': wind_unit,
-      'forecast_days': 1,
-      'timezone': 'auto',
-    },
-    timeout=10,
-  )
+  try:
+    r = requests.get(
+      _FORECAST_URL,
+      params={
+        'latitude': lat,
+        'longitude': lon,
+        'current': ','.join(
+          [
+            'temperature_2m',
+            'apparent_temperature',
+            'weather_code',
+            'wind_speed_10m',
+            'precipitation_probability',
+          ]
+        ),
+        'daily': 'temperature_2m_max,temperature_2m_min',
+        'temperature_unit': temp_unit,
+        'wind_speed_unit': wind_unit,
+        'forecast_days': 1,
+        'timezone': 'auto',
+      },
+      timeout=10,
+    )
+  except requests.RequestException as e:
+    print(f'Weather: forecast request failed — {e}')
+    raise IntegrationDataUnavailableError(f'Weather: forecast request failed — {e}') from None
   try:
     r.raise_for_status()
   except requests.HTTPError as e:
-    raise requests.HTTPError(f'Weather forecast error: {e.response.status_code} {e.response.reason}') from None
+    print(f'Weather: forecast error {e.response.status_code} {e.response.reason}')
+    raise IntegrationDataUnavailableError(
+      f'Weather forecast error: {e.response.status_code} {e.response.reason}'
+    ) from None
 
   data = r.json()
   current: dict[str, Any] = data['current']
