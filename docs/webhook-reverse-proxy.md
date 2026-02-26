@@ -19,26 +19,30 @@ forwarding needed.
 
 ### Unraid
 
-1. Install the **Tailscale** Community Application (if not already installed).
-2. In the Tailscale admin console, enable Funnel for your Unraid node under
-   **Machines → [your machine] → Funnel**.
-3. In the Unraid terminal, run:
+1. Install the **Tailscale** Community Application (if not already installed)
+   and authenticate it to your tailnet via **Settings → Tailscale**.
+2. In `config.toml`, set `bind = "0.0.0.0"` so the container accepts
+   connections from outside localhost. Restart the container.
+3. Open the **Unraid terminal** (Tools → Terminal) and run:
    ```
-   tailscale funnel --bg 32800
+   tailscale funnel --https=8443 --bg 32800
    ```
-   This tells Tailscale to forward public HTTPS traffic on port 443 to
-   `localhost:32800` (the host port mapped to the container's webhook listener).
-4. In `config.toml`, set `bind = "0.0.0.0"` so the container accepts connections
-   from outside localhost.
-5. Your public webhook URL is:
+   Port 443 is occupied by Unraid's own web UI, so 8443 is used instead.
+   Both 443 and 8443 are valid Tailscale Funnel ports. The `--bg` flag
+   persists the configuration across Tailscale daemon restarts.
+4. Your public webhook URL is:
    ```
-   https://<machine>.tail<hash>.ts.net/webhook/<integration>
+   https://<machine>.tail<hash>.ts.net:8443/webhook/<integration>
    ```
    Pass the secret as a query parameter or `X-Webhook-Secret` header (see
    [Webhook setup](../AGENTS.md#webhook-integrations)).
 
 > **Note:** Tailscale Funnel makes the endpoint reachable from the open
 > internet. The shared secret protects it — guard it like a password.
+>
+> **Do not** use the per-container Tailscale integration available in the
+> Docker container edit UI — that hook requires the container to run as
+> root, which is unnecessary here and should be avoided.
 
 ### Docker Compose
 
@@ -66,8 +70,10 @@ services:
 ```
 
 With `network_mode: service:tailscale`, the e-note-ion container shares
-Tailscale's network stack, so Funnel routes directly to the listener on
-port 8080 without a host port mapping.
+Tailscale's network stack. Configure Funnel in `tailscale-config/serve.json`
+to route public HTTPS traffic on port 443 to `http://localhost:8080`.
+See the [Tailscale Docker guide](https://tailscale.com/kb/1282/docker) for
+the serve config format.
 
 ---
 
