@@ -65,11 +65,14 @@ config.toml                 # Runtime config with API keys (git-ignored; copy fr
 config.example.toml         # Config template committed to the repo
 integrations/vestaboard.py  # Vestaboard API client (get_state, set_state)
 integrations/bart.py        # BART real-time departures integration
+integrations/plex.py        # Plex Media Server now-playing via webhook
 integrations/trakt.py       # Trakt.tv calendar and now-playing (OAuth device flow)
 content/
   contrib/                  # Bundled community content (disabled by default)
     bart.json               # BART real-time departure board
     bart.md                 # Sidecar doc: configuration and data sources
+    plex.json               # Plex Media Server now-playing (webhook-only)
+    plex.md                 # Sidecar doc: Plex Pass requirement and webhook setup
     trakt.json              # Trakt.tv calendar and now-playing
     trakt.md                # Sidecar doc: OAuth setup and data sources
   user/                     # Personal content (always loaded, git-ignored)
@@ -91,7 +94,10 @@ unraid/
 ## How It Works
 
 1. `load_content()` reads all JSON files from `content/` and registers each
-   template as an APScheduler cron job (using `BackgroundScheduler`).
+   template as an APScheduler cron job (using `BackgroundScheduler`). Templates
+   with `"webhook": true` and no `cron` are webhook-only — they are validated
+   and logged but not scheduled; they fire only when the webhook server receives
+   a matching event.
 2. When a job fires, it calls `enqueue()`, which pushes a `QueuedMessage` into a
    `PriorityQueue`.
 3. A single worker thread calls `pop_valid_message()` in a loop, which blocks
@@ -109,14 +115,15 @@ for a physical split-flap device whose flaps need time to settle.
   "templates": {
     "<template_name>": {
       "schedule": {
-        "cron": "0 8 * * *",  // standard 5-field cron expression
-        "hold": 600,  // seconds to show before pulling next
+        "cron": "0 8 * * *",  // standard 5-field cron expression; omit when "webhook": true
+        "hold": 600,  // seconds to show before pulling next (safety ceiling for indefinite webhook holds)
         "timeout": 600,  // seconds message can wait before discarding
         "refresh_interval": 60  // optional: re-fetch integration data every N seconds during hold (min 30; integration templates only)
       },
       "priority": 5,           // integer 0–10; higher number = higher priority
       "public": true,          // if false, skipped when running with --public
       "truncation": "word",    // optional: "hard" (default), "word", "ellipsis"
+      "webhook": false,        // optional: true makes cron optional; template fires on webhook only
       "templates": [
         { "format": ["LINE ONE", "LINE {variable}"] }
       ]
@@ -170,17 +177,28 @@ display message:
 from scheduler import WebhookMessage
 
 WebhookMessage(
-    data={...},       # same shape as cron-enqueued data (templates, variables, truncation)
-    priority=8,       # 0–10
-    hold=60,          # seconds to show
-    timeout=120,      # seconds before discarding if not yet shown
-    name='',          # optional: appears in logs (defaults to webhook.<integration>)
-    interrupt=False,  # True to cut the current hold short and show this immediately
+    data={...},            # same shape as cron-enqueued data (templates, variables, truncation)
+    priority=8,            # 0–10
+    hold=60,               # seconds to show (or safety ceiling when indefinite=True)
+    timeout=120,           # seconds before discarding if not yet shown
+    name='',               # optional: appears in logs (defaults to webhook.<integration>)
+    interrupt=False,       # True to cut the current hold short and show this immediately
+    indefinite=False,      # True to hold until explicitly interrupted (e.g. a stop event)
+    interrupt_only=False,  # True to fire _hold_interrupt without enqueueing (e.g. stop events)
 )
 ```
 
 Set `interrupt=True` for time-sensitive state changes (e.g. Plex pause/resume)
 that should preempt whatever is currently on the display.
+
+Set `indefinite=True` for playback-state messages that should stay on screen
+until a stop or resume event arrives, rather than timing out after `hold`
+seconds. The `hold` value acts as a safety ceiling in case the stop event is
+never received.
+
+Set `interrupt_only=True` for stop/end events that should clear the display
+immediately without enqueueing any new content. The `data`, `priority`, `hold`,
+and `timeout` fields are ignored when `interrupt_only=True`.
 
 The webhook listener is activated by adding a `[webhook]` section to
 `config.toml` (see `config.example.toml`). It binds to `127.0.0.1:8080` by

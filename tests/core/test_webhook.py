@@ -245,6 +245,7 @@ def test_handle_webhook_result_enqueues_message() -> None:
           hold=30,
           timeout=60,
           name='test.webhook',
+          indefinite=False,
         )
       finally:
         server.shutdown()
@@ -318,6 +319,58 @@ def test_interrupt_true_sets_hold_interrupt_event() -> None:
         _post(port, '/webhook/bart')
         time.sleep(0.05)  # allow handler thread to complete
         assert _mod._hold_interrupt.is_set()
+      finally:
+        server.shutdown()
+
+
+def test_interrupt_only_sets_hold_interrupt_without_enqueue() -> None:
+  wm = _mod.WebhookMessage(
+    data={},
+    priority=0,
+    hold=0,
+    timeout=0,
+    interrupt_only=True,
+  )
+  mock_mod = MagicMock()
+  mock_mod.handle_webhook.return_value = wm
+
+  with patch.object(_mod, '_get_integration', return_value=mock_mod):
+    with patch.object(_mod, 'enqueue') as mock_enqueue:
+      server, port = _start_test_server()
+      try:
+        status, body = _post(port, '/webhook/bart')
+        time.sleep(0.05)
+        assert status == 200
+        assert 'Interrupted' in body
+        mock_enqueue.assert_not_called()
+        assert _mod._hold_interrupt.is_set()
+      finally:
+        server.shutdown()
+
+
+def test_webhook_normal_indefinite_enqueues_with_indefinite_flag() -> None:
+  wm = _mod.WebhookMessage(
+    data={'templates': [], 'variables': {}, 'truncation': 'hard'},
+    priority=8,
+    hold=14400,
+    timeout=30,
+    indefinite=True,
+    interrupt=True,
+  )
+  mock_mod = MagicMock()
+  mock_mod.handle_webhook.return_value = wm
+
+  with patch.object(_mod, '_get_integration', return_value=mock_mod):
+    with patch.object(_mod, 'enqueue') as mock_enqueue:
+      server, port = _start_test_server()
+      try:
+        status, body = _post(port, '/webhook/bart', {'event': 'play'})
+        time.sleep(0.05)
+        assert status == 200
+        assert 'Enqueued' in body
+        mock_enqueue.assert_called_once()
+        call_kwargs = mock_enqueue.call_args.kwargs
+        assert call_kwargs['indefinite'] is True
       finally:
         server.shutdown()
 
