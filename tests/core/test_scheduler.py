@@ -1605,6 +1605,40 @@ def test_worker_idle_refresh_not_set_for_non_integration_message() -> None:
   assert len(set_state_calls) == 1
 
 
+def test_worker_idle_refresh_skipped_when_queue_pending() -> None:
+  """Idle refresh is skipped when a message is already waiting in the queue."""
+  msg = _make_integration_msg_with_refresh(30)
+  mock_integration = MagicMock()
+  mock_integration.get_variables.return_value = {'greeting': [['HELLO']]}
+  set_state_calls: list[Any] = []
+
+  def fake_set_state(*args: Any, **kwargs: Any) -> None:
+    set_state_calls.append(args)
+
+  # Pre-populate the real queue so the guard sees a pending message.
+  pending = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  _mod._queue.put(pending)
+  try:
+    with (
+      patch.object(_mod, 'pop_valid_message', side_effect=[msg, None, KeyboardInterrupt()]),
+      patch.object(_mod, '_get_integration', return_value=mock_integration),
+      patch('integrations.vestaboard.set_state', side_effect=fake_set_state),
+      patch.object(_mod, '_do_hold'),  # returns immediately
+    ):
+      with pytest.raises(KeyboardInterrupt):
+        _mod.worker()
+  finally:
+    # Drain the queue so it doesn't leak into other tests.
+    while not _mod._queue.empty():
+      try:
+        _mod._queue.get_nowait()
+      except Exception:  # noqa: BLE001
+        break
+
+  # Only the initial send; idle refresh was suppressed by the pending message.
+  assert len(set_state_calls) == 1
+
+
 # --- _do_hold: indefinite ---
 
 
