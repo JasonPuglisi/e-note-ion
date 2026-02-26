@@ -8,7 +8,11 @@
 # canonical city name from the API response are cached for the process lifetime.
 #
 # Required config.toml keys ([weather]):
-#   city   — City name (e.g. "San Francisco"); geocoded on first call
+#   city   — City name, optionally with a state or country suffix to
+#             disambiguate (e.g. "Santa Clara, CA" or "Paris, FR").
+#             US state abbreviations (CA, NY, TX, …) narrow results to the
+#             United States; ISO 3166-1 alpha-2 country codes narrow results
+#             to that country. The suffix is stripped before querying the API.
 #
 # Optional config.toml keys:
 #   units  — "imperial" (°F, mph, default) or "metric" (°C, km/h)
@@ -57,21 +61,112 @@ _WMO_CONDITIONS: dict[int, tuple[str, str]] = {
   99: ('STORM + HAIL', '[R]'),
 }
 
+# US state/territory abbreviations — used to detect "City, ST" notation and
+# narrow geocoding requests to the United States.
+_US_STATE_CODES: frozenset[str] = frozenset(
+  [
+    'AL',
+    'AK',
+    'AZ',
+    'AR',
+    'CA',
+    'CO',
+    'CT',
+    'DE',
+    'FL',
+    'GA',
+    'HI',
+    'ID',
+    'IL',
+    'IN',
+    'IA',
+    'KS',
+    'KY',
+    'LA',
+    'ME',
+    'MD',
+    'MA',
+    'MI',
+    'MN',
+    'MS',
+    'MO',
+    'MT',
+    'NE',
+    'NV',
+    'NH',
+    'NJ',
+    'NM',
+    'NY',
+    'NC',
+    'ND',
+    'OH',
+    'OK',
+    'OR',
+    'PA',
+    'RI',
+    'SC',
+    'SD',
+    'TN',
+    'TX',
+    'UT',
+    'VT',
+    'VA',
+    'WA',
+    'WV',
+    'WI',
+    'WY',
+    'DC',
+  ]
+)
+
 # Module-level geocoding cache: (latitude, longitude, canonical_city_name).
 # None = not yet populated.
 _geocode_cache: tuple[float, float, str] | None = None
 
 
-def _geocode(city: str) -> tuple[float, float, str]:
+def _parse_city_config(city_config: str) -> tuple[str, str | None]:
+  """Parse a city config string into (query_name, country_code).
+
+  Handles "City, ST" (US state) and "City, CC" (ISO country code) notation.
+  The suffix is stripped from the query sent to the geocoding API; the country
+  code (if any) is passed separately to narrow results.
+
+  Examples:
+    "Santa Clara, CA" -> ("Santa Clara", "US")
+    "Paris, FR"       -> ("Paris", "FR")
+    "London"          -> ("London", None)
+  """
+  if ',' not in city_config:
+    return city_config.strip(), None
+  city, suffix = city_config.split(',', 1)
+  suffix = suffix.strip().upper()
+  if suffix in _US_STATE_CODES:
+    return city.strip(), 'US'
+  if len(suffix) == 2:
+    # Treat as an ISO 3166-1 alpha-2 country code.
+    return city.strip(), suffix
+  # Unrecognised suffix (e.g. full country name) — pass through as-is.
+  return city_config.strip(), None
+
+
+def _geocode(city_query: str, country_code: str | None) -> tuple[float, float, str]:
   """Resolve a city name to (latitude, longitude, canonical_name).
 
   Uses the Open-Meteo geocoding API. Raises IntegrationDataUnavailableError
   if the city cannot be resolved or the request fails.
+
+  When country_code is provided, count=2 is used instead of count=1 to work
+  around an Open-Meteo API bug where count=1 + countryCode sometimes returns
+  empty results even when a match exists.
   """
+  count = 2 if country_code else 1
+  params: dict[str, str | int] = {'name': city_query, 'count': count, 'format': 'json'}
+  if country_code:
+    params['countryCode'] = country_code
   try:
     r = requests.get(
       _GEOCODING_URL,
-      params={'name': city, 'count': 1, 'format': 'json'},
+      params=params,
       timeout=10,
     )
   except requests.RequestException as e:
@@ -131,7 +226,8 @@ def get_variables() -> dict[str, list[list[str]]]:
   units = _config_mod.get_optional('weather', 'units') or 'imperial'
 
   if _geocode_cache is None:
-    lat, lon, canonical_city = _geocode(city_config)
+    city_query, country_code = _parse_city_config(city_config)
+    lat, lon, canonical_city = _geocode(city_query, country_code)
     _geocode_cache = (lat, lon, canonical_city)
   else:
     lat, lon, canonical_city = _geocode_cache

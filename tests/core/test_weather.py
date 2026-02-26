@@ -149,6 +149,31 @@ def test_city_name_uses_api_canonical_name(weather_config_imperial: None) -> Non
   assert result['city'][0][0] == 'San Francisco'
 
 
+# --- _parse_city_config ---
+
+
+def test_parse_city_config_bare_city() -> None:
+  assert weather._parse_city_config('San Francisco') == ('San Francisco', None)
+
+
+def test_parse_city_config_us_state_code() -> None:
+  city, cc = weather._parse_city_config('Santa Clara, CA')
+  assert city == 'Santa Clara'
+  assert cc == 'US'
+
+
+def test_parse_city_config_iso_country_code() -> None:
+  city, cc = weather._parse_city_config('Paris, FR')
+  assert city == 'Paris'
+  assert cc == 'FR'
+
+
+def test_parse_city_config_unrecognised_suffix_passthrough() -> None:
+  city, cc = weather._parse_city_config('Paris, France')
+  assert city == 'Paris, France'
+  assert cc is None
+
+
 # --- geocoding cache ---
 
 
@@ -161,6 +186,27 @@ def test_geocoding_cached_after_first_call(weather_config_imperial: None) -> Non
     weather.get_variables()
   # First call: 2 requests (geocode + forecast). Second call: 1 request (forecast only).
   assert mock_get.call_count == 3
+
+
+def test_geocoding_uses_count2_with_country_code(monkeypatch: pytest.MonkeyPatch) -> None:
+  """count=2 must be sent when a country code is present (Open-Meteo count=1+countryCode bug)."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'weather': {'city': 'Santa Clara, CA'}})
+  with patch('integrations.weather.requests.get', side_effect=[_mock_geocode(), _mock_forecast()]) as mock_get:
+    weather.get_variables()
+  geocode_call = mock_get.call_args_list[0]
+  assert geocode_call.kwargs['params']['count'] == 2
+  assert geocode_call.kwargs['params']['countryCode'] == 'US'
+
+
+def test_geocoding_uses_count1_without_country_code(weather_config_imperial: None) -> None:
+  """count=1 must be used when no country code suffix is present."""
+  with patch('integrations.weather.requests.get', side_effect=[_mock_geocode(), _mock_forecast()]) as mock_get:
+    weather.get_variables()
+  geocode_call = mock_get.call_args_list[0]
+  assert geocode_call.kwargs['params']['count'] == 1
+  assert 'countryCode' not in geocode_call.kwargs['params']
 
 
 def test_geocoding_not_found_raises_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
