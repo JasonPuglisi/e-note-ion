@@ -14,6 +14,8 @@
 # Display model, public mode, and content selection are configured in
 # config.toml under [scheduler].
 
+import email.message
+import email.parser
 import importlib
 import json
 import secrets
@@ -368,11 +370,35 @@ def _make_webhook_handler(secret: str) -> type:
       except ValueError:
         content_length = 0
       body = self.rfile.read(content_length)
-      try:
-        payload: dict[str, Any] = json.loads(body) if body else {}
-      except json.JSONDecodeError:
-        self._respond(400, 'Invalid JSON')
-        return
+      content_type = self.headers.get('Content-Type', '')
+      if 'multipart/form-data' in content_type:
+        # Plex sends webhooks as multipart/form-data with JSON in a 'payload'
+        # field. Prepend the Content-Type header to form a parseable MIME
+        # message, then extract the named part.
+        raw = b'Content-Type: ' + content_type.encode() + b'\r\n\r\n' + body
+        msg = email.parser.BytesParser().parsebytes(raw)
+        json_bytes: bytes | None = None
+        if msg.is_multipart():
+          for part in msg.get_payload():  # type: ignore[union-attr]
+            if not isinstance(part, email.message.Message):
+              continue
+            if part.get_param('name', header='content-disposition') == 'payload':
+              json_bytes = part.get_payload(decode=True)  # type: ignore[assignment]
+              break
+        if not json_bytes:
+          self._respond(400, 'Missing payload field in multipart body')
+          return
+        try:
+          payload: dict[str, Any] = json.loads(json_bytes)
+        except json.JSONDecodeError:
+          self._respond(400, 'Invalid JSON in payload field')
+          return
+      else:
+        try:
+          payload = json.loads(body) if body else {}
+        except json.JSONDecodeError:
+          self._respond(400, 'Invalid JSON')
+          return
 
       # Load integration and check for webhook support.
       try:

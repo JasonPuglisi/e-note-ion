@@ -18,6 +18,9 @@ import scheduler as _mod  # noqa: E402
 
 _SECRET = 'test-secret-value'
 
+# Boundary used by multipart helper; must be ASCII-safe.
+_BOUNDARY = 'TestBoundary1234'
+
 
 def _start_test_server(secret: str = _SECRET) -> tuple[HTTPServer, int]:
   """Start a webhook server on an OS-assigned port and return (server, port)."""
@@ -44,6 +47,35 @@ def _post(
   if secret:
     headers['X-Webhook-Secret'] = secret
   conn.request('POST', path, body=encoded, headers=headers)
+  resp = conn.getresponse()
+  return resp.status, resp.read().decode()
+
+
+def _multipart_body(payload_json: str) -> bytes:
+  """Build a minimal multipart/form-data body with a single 'payload' field."""
+  return (
+    f'--{_BOUNDARY}\r\nContent-Disposition: form-data; name="payload"\r\n\r\n{payload_json}\r\n--{_BOUNDARY}--\r\n'
+  ).encode()
+
+
+def _post_multipart(
+  port: int,
+  path: str,
+  payload_json: str,
+  secret: str = _SECRET,
+) -> tuple[int, str]:
+  body = _multipart_body(payload_json)
+  conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+  conn.request(
+    'POST',
+    path,
+    body=body,
+    headers={
+      'Content-Type': f'multipart/form-data; boundary={_BOUNDARY}',
+      'Content-Length': str(len(body)),
+      'X-Webhook-Secret': secret,
+    },
+  )
   resp = conn.getresponse()
   return resp.status, resp.read().decode()
 
@@ -523,3 +555,52 @@ def test_existing_secret_not_overwritten(
   out = capsys.readouterr().out
   assert 'generated' not in out.lower()
   assert _cfg._config['webhook']['secret'] == existing
+
+
+# ---------------------------------------------------------------------------
+# Multipart body parsing (Plex sends multipart/form-data, not raw JSON)
+# ---------------------------------------------------------------------------
+
+
+def test_multipart_payload_field_is_parsed_as_json() -> None:
+  """Plex-style multipart/form-data body is unwrapped and dispatched correctly."""
+  mock_mod = MagicMock()
+  mock_mod.handle_webhook.return_value = None
+  server, port = _start_test_server()
+  try:
+    with patch.dict('scheduler._integrations', {'plex': mock_mod}):
+      status, _ = _post_multipart(port, '/webhook/plex', '{"event": "media.play"}')
+    assert status == 200
+    mock_mod.handle_webhook.assert_called_once_with({'event': 'media.play'})
+  finally:
+    server.shutdown()
+
+
+def test_multipart_missing_payload_field_returns_400() -> None:
+  body = f'--{_BOUNDARY}\r\nContent-Disposition: form-data; name="other"\r\n\r\nvalue\r\n--{_BOUNDARY}--\r\n'.encode()
+  server, port = _start_test_server()
+  try:
+    conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+    conn.request(
+      'POST',
+      '/webhook/plex',
+      body=body,
+      headers={
+        'Content-Type': f'multipart/form-data; boundary={_BOUNDARY}',
+        'Content-Length': str(len(body)),
+        'X-Webhook-Secret': _SECRET,
+      },
+    )
+    resp = conn.getresponse()
+    assert resp.status == 400
+  finally:
+    server.shutdown()
+
+
+def test_multipart_invalid_json_in_payload_returns_400() -> None:
+  server, port = _start_test_server()
+  try:
+    status, _ = _post_multipart(port, '/webhook/plex', 'not json{')
+    assert status == 400
+  finally:
+    server.shutdown()
