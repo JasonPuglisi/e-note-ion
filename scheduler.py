@@ -286,10 +286,13 @@ def worker() -> None:
       now = time.monotonic()
       if now - _idle_last_refresh >= _idle_refresh_interval:
         _idle_last_refresh = now
-        try:
-          _idle_refresh_fn()
-        except Exception as e:  # noqa: BLE001
-          print(f'Idle refresh error: {e}')
+        with _queue.mutex:
+          queue_pending = bool(_queue.queue)
+        if not queue_pending:
+          try:
+            _idle_refresh_fn()
+          except Exception as e:  # noqa: BLE001
+            print(f'Idle refresh error: {e}')
 
     message = pop_valid_message()
     if message is None:
