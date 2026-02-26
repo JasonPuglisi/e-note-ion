@@ -30,3 +30,10 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+
+      - id: check-version-bump
+        name: check version bump
+        entry: scripts/check-version-bump.sh
+        language: script
+        pass_filenames: false
+        always_run: true
