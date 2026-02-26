@@ -288,8 +288,9 @@ def worker() -> None:
     except IntegrationDataUnavailableError:
       continue  # expected empty state — skip silently
     except vestaboard.DuplicateContentError:
-      print('Duplicate content, skipping.')
-      continue
+      print(f'Duplicate content for {message.name} — already on board, still holding.')
+      # Fall through to _do_hold(): content is already showing; we must still
+      # hold it so lower-priority queued messages cannot preempt it.
     except vestaboard.BoardLockedError as e:
       print(f'Board locked: {e}. Retrying in {_LOCK_RETRY_DELAY}s.')
       time.sleep(_LOCK_RETRY_DELAY)

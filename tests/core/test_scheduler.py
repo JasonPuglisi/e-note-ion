@@ -843,17 +843,23 @@ def test_worker_logs_and_skips_on_missing_integration_deps() -> None:
   mock_set_state.assert_not_called()
 
 
-def test_worker_skips_on_duplicate_content() -> None:
+def test_worker_still_holds_on_duplicate_content() -> None:
+  """DuplicateContentError must fall through to _do_hold, not skip the hold.
+
+  Regression for: Plex re-sends media.play → interrupt ends first hold → second
+  plex message hits DuplicateContentError → old code skipped hold → lower-priority
+  trakt message immediately took over the display.
+  """
   msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  hold_called = []
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
     patch('integrations.vestaboard.set_state', side_effect=vb.DuplicateContentError('already shown')),
-    patch('time.sleep'),
+    patch.object(_mod, '_do_hold', side_effect=lambda *a, **kw: hold_called.append(True)),
   ):
     with pytest.raises(KeyboardInterrupt):
       _mod.worker()
-  # Message is discarded — not re-enqueued and hold sleep not called
-  assert _mod._queue.empty()
+  assert hold_called, '_do_hold must be called even when set_state raises DuplicateContentError'
 
 
 # --- _get_integration ---
