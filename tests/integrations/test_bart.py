@@ -150,11 +150,11 @@ def reset_color_cache() -> Generator[None, None, None]:
 
 
 def test_format_minutes_leaving() -> None:
-  assert bart._format_minutes('Leaving') == 'Now'  # noqa: SLF001
+  assert bart._format_minutes('Leaving') == '00'  # noqa: SLF001
 
 
 def test_format_minutes_zero() -> None:
-  assert bart._format_minutes('0') == 'Now'  # noqa: SLF001
+  assert bart._format_minutes('0') == '00'  # noqa: SLF001
 
 
 def test_format_minutes_numeric() -> None:

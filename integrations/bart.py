@@ -105,14 +105,14 @@ def _no_service_line(dest_abbr: str, color_map: dict[str, list[str]]) -> str:
 def _format_minutes(mins: str) -> str:
   """Convert a BART API minutes string to a short display string.
 
-  Numeric minutes are right-aligned in a 2-character field so departure
-  times align in column when two lines are shown side by side on the board.
-  E.g. ' 5' and '12' rather than '5' and '12'.
+  All times are zero-padded to 2 digits so departure columns always align
+  regardless of how many single-digit times appear on a line. Arriving trains
+  ('Leaving' or '0') are shown as '00'. E.g. '00', '05', '12'.
   """
-  if mins in ('Leaving', '0'):
-    return 'Now'
+  if mins == 'Leaving':
+    return '00'
   try:
-    return f'{int(mins):>2}'
+    return f'{int(mins):02}'
   except ValueError:
     return mins
 
