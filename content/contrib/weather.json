@@ -8,14 +8,14 @@
       },
       "priority": 5,
       "public": true,
-      "truncation": "ellipsis",
+      "truncation": "word",
       "integration": "weather",
       "templates": [
         {
           "format": [
             "{city}",
             "{condition}",
-            "{temp}  H:{high} L:{low}"
+            "{temp} H:{high} L:{low}"
           ]
         }
       ]
