@@ -124,35 +124,31 @@ def test_handle_webhook_missing_metadata_returns_none() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_handle_webhook_movie_has_empty_episode_detail() -> None:
+def test_handle_webhook_movie_has_empty_episode_line() -> None:
   result = _plex.handle_webhook(_movie_payload('media.play', 'Inception'))
   assert result is not None
   variables = result.data['variables']
-  assert variables['episode_detail'] == [['']]
+  assert variables['episode_line'] == [['']]
   assert variables['show_name'] == [['INCEPTION']]
 
 
-def test_handle_webhook_movie_has_empty_episode_ref() -> None:
-  result = _plex.handle_webhook(_movie_payload('media.play', 'Inception'))
-  assert result is not None
-  assert result.data['variables']['episode_ref'] == [['']]
-
-
 # ---------------------------------------------------------------------------
-# Article stripping (episode titles only)
+# episode_line formatting and article stripping
 # ---------------------------------------------------------------------------
 
 
-def test_handle_webhook_episode_strips_article_from_episode_title() -> None:
+def test_handle_webhook_episode_line_includes_season_episode_ref() -> None:
+  """episode_line must include the S/E reference so it appears on the board."""
   result = _plex.handle_webhook(_episode_payload('media.play', title='The Beef'))
   assert result is not None
-  assert result.data['variables']['episode_detail'] == [['BEEF']]
+  # parentIndex=2, index=1 → S2E1; article stripped from title → BEEF
+  assert result.data['variables']['episode_line'] == [['S2E1 BEEF']]
 
 
-def test_handle_webhook_episode_strips_a_article() -> None:
+def test_handle_webhook_episode_strips_a_article_in_episode_line() -> None:
   result = _plex.handle_webhook(_episode_payload('media.play', title='A New Hope'))
   assert result is not None
-  assert result.data['variables']['episode_detail'] == [['NEW HOPE']]
+  assert result.data['variables']['episode_line'] == [['S2E1 NEW HOPE']]
 
 
 def test_handle_webhook_show_name_preserves_article() -> None:

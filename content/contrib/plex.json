@@ -15,7 +15,7 @@
           "format": [
             "[O] NOW PLAYING",
             "{show_name}",
-            "{episode_detail}"
+            "{episode_line}"
           ]
         }
       ]
@@ -35,7 +35,7 @@
           "format": [
             "[O] PAUSED",
             "{show_name}",
-            "{episode_detail}"
+            "{episode_line}"
           ]
         }
       ]
