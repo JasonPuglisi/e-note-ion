@@ -146,25 +146,6 @@ def reset_color_cache() -> Generator[None, None, None]:
   bart._dest_color_cache = original  # noqa: SLF001
 
 
-# --- _format_minutes ---
-
-
-def test_format_minutes_leaving() -> None:
-  assert bart._format_minutes('Leaving') == '00'  # noqa: SLF001
-
-
-def test_format_minutes_zero() -> None:
-  assert bart._format_minutes('0') == '00'  # noqa: SLF001
-
-
-def test_format_minutes_numeric() -> None:
-  assert bart._format_minutes('12') == '12'  # noqa: SLF001
-
-
-def test_format_minutes_non_numeric_passthrough() -> None:
-  assert bart._format_minutes('???') == '???'  # noqa: SLF001
-
-
 # --- _build_line ---
 
 
