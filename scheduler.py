@@ -206,6 +206,18 @@ _REFRESH_MIN_INTERVAL = 30  # minimum allowed refresh_interval (seconds); preven
 # the current hold short. Cleared by the worker after each hold completes.
 _hold_interrupt = threading.Event()
 
+# Tracks the supersede_tag of the message currently being held by the worker,
+# or '' when the worker is idle. Used by integrations to detect whether their
+# content is still on the board (e.g. to suppress stale stop/pause events).
+_current_hold_lock = threading.Lock()
+_current_hold_supersede_tag: str = ''
+
+
+def current_hold_tag() -> str:
+  """Return the supersede_tag of the message currently being held, or ''."""
+  with _current_hold_lock:
+    return _current_hold_supersede_tag
+
 
 def _get_min_hold() -> int:
   """Return the global minimum hold in seconds from config (default 60)."""
@@ -365,8 +377,12 @@ def worker() -> None:
     # interrupt that caused the previous hold to exit and triggered enqueueing of
     # this very message. Only interrupts that arrive *during* the hold should end
     # it early; a stale pre-hold event would otherwise exit the new hold instantly.
+    with _current_hold_lock:
+      _current_hold_supersede_tag = message.supersede_tag
     _hold_interrupt.clear()
     _do_hold(message, _get_min_hold(), refresh_fn=_refresh_fn, refresh_interval=refresh_interval)
+    with _current_hold_lock:
+      _current_hold_supersede_tag = ''
 
     # Hold expired — if this was a refresh-capable integration message, transfer
     # the refresh fn to idle state so the display keeps updating while the queue
