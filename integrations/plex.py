@@ -36,6 +36,11 @@ _STOP_EVENTS = frozenset({'media.stop'})
 # All events this integration handles; others are silently discarded.
 _HANDLED_EVENTS = _PLAY_EVENTS | {_PAUSE_EVENT} | _STOP_EVENTS
 
+# Set after processing a stop event; cleared on play/resume. Prevents a second
+# media.stop (e.g. when the user exits the player after a pause-timeout stop)
+# from interrupting content the board has already moved on to.
+_stop_processed: bool = False
+
 
 def _strip_leading_article(title: str) -> str:
   """Remove a leading article (A, An, The) from an uppercased title."""
@@ -84,6 +89,8 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
   Returns None for unrecognised events, non-video media types, or missing
   metadata. Errors are logged and return None rather than propagating.
   """
+  global _stop_processed
+
   try:
     event = payload.get('event', '')
     if event not in _HANDLED_EVENTS:
@@ -95,6 +102,11 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
       _trakt.clear_watching_state()
     except ImportError:
       pass
+
+    if event in _PLAY_EVENTS:
+      _stop_processed = False
+    elif event in _STOP_EVENTS and _stop_processed:
+      return None
 
     metadata = payload.get('Metadata')
     media_type = metadata.get('type') if metadata else None
@@ -112,6 +124,7 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
       episode_line = ''
 
     if event in _STOP_EVENTS:
+      _stop_processed = True
       cfg = _load_template_config('stopped')
       has_media = bool(show_name)
       return WebhookMessage(
