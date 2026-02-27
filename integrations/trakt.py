@@ -28,6 +28,7 @@ import requests
 
 import integrations.vestaboard as _vb
 from exceptions import IntegrationDataUnavailableError
+from integrations.http import CacheEntry, fetch_with_retry
 
 _TRAKT_API_BASE = 'https://api.trakt.tv'
 
@@ -43,6 +44,12 @@ _last_watching_vars: dict[str, list[list[str]]] | None = None
 # episode transitions (autoplay gap ~30 s) don't produce a false stopped card.
 _stop_pending: bool = False
 _watching_lock = threading.Lock()
+
+# Last-known-good cache for calendar data. Served on transient API failures
+# if the entry is within _CALENDAR_CACHE_TTL seconds of its fetch time.
+# No cache for watching — stale now-playing data is actively misleading.
+_calendar_cache: CacheEntry | None = None
+_CALENDAR_CACHE_TTL = 3600  # 1 hour
 
 
 # --- Token management ---
@@ -238,16 +245,26 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
   except ValueError:
     days = 7
 
+  global _calendar_cache
+
   today = datetime.now().strftime('%Y-%m-%d')
-  r = requests.get(
-    f'{_TRAKT_API_BASE}/calendars/my/shows/{today}/{days}',
-    headers=_request_headers(token, client_id),
-    timeout=10,
-  )
   try:
+    r = fetch_with_retry(
+      'GET',
+      f'{_TRAKT_API_BASE}/calendars/my/shows/{today}/{days}',
+      headers=_request_headers(token, client_id),
+      timeout=10,
+    )
     r.raise_for_status()
-  except requests.HTTPError as e:
-    raise requests.HTTPError(f'Trakt calendar API error: {e.response.status_code} {e.response.reason}') from None
+  except requests.RequestException as e:
+    if isinstance(e, requests.HTTPError):
+      msg = f'Trakt calendar API error: {e.response.status_code} {e.response.reason}'
+    else:
+      msg = str(e)
+    print(f'Trakt: calendar request failed — {msg}')
+    if _calendar_cache is not None and _calendar_cache.is_valid(_CALENDAR_CACHE_TTL):
+      return _calendar_cache.value
+    raise IntegrationDataUnavailableError(f'Trakt: calendar request failed — {msg}') from None
 
   entries = r.json()
   if not entries:
@@ -275,13 +292,15 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
   air_day = local_dt.strftime('%a').upper()[:3]
   air_time = f'{local_dt.hour:02d}:{local_dt.minute:02d}'
 
-  return {
+  result = {
     'show_name': [[show_name]],
     'episode_ref': [[episode_ref]],
     'air_day': [[air_day]],
     'air_time': [[air_time]],
     'episode_title': [[episode_title]],
   }
+  _calendar_cache = CacheEntry(result)
+  return result
 
 
 def clear_watching_state() -> None:
@@ -316,11 +335,15 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
   token = _get_token()
   client_id = _config_mod.get('trakt', 'client_id')
 
-  r = requests.get(
-    f'{_TRAKT_API_BASE}/users/me/watching',
-    headers=_request_headers(token, client_id),
-    timeout=10,
-  )
+  try:
+    r = fetch_with_retry(
+      'GET',
+      f'{_TRAKT_API_BASE}/users/me/watching',
+      headers=_request_headers(token, client_id),
+      timeout=10,
+    )
+  except requests.RequestException as e:
+    raise IntegrationDataUnavailableError(f'Trakt: watching request failed — {e}') from None
 
   if r.status_code == 204:
     with _watching_lock:
@@ -344,7 +367,9 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
   try:
     r.raise_for_status()
   except requests.HTTPError as e:
-    raise requests.HTTPError(f'Trakt watching API error: {e.response.status_code} {e.response.reason}') from None
+    raise IntegrationDataUnavailableError(
+      f'Trakt watching API error: {e.response.status_code} {e.response.reason}'
+    ) from None
 
   data = r.json()
   media_type = data.get('type')

@@ -15,9 +15,12 @@ from exceptions import IntegrationDataUnavailableError
 
 
 @pytest.fixture(autouse=True)
-def reset_trakt_auth_state() -> None:
-  """Reset module-level auth state between tests."""
+def reset_trakt_state() -> None:
+  """Reset module-level state between tests."""
   trakt._auth_started = False
+  trakt._calendar_cache = None
+  trakt._last_watching_vars = None
+  trakt._stop_pending = False
 
 
 @pytest.fixture()
@@ -350,7 +353,7 @@ def test_get_variables_calendar_returns_expected_vars(
   mock_response.status_code = 200
   mock_response.json.return_value = _CALENDAR_RESPONSE
 
-  with patch('requests.get', return_value=mock_response):
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_response):
     result = trakt.get_variables_calendar()
 
   assert result['show_name'] == [['GREAT SHOW']]
@@ -367,7 +370,7 @@ def test_get_variables_calendar_empty_raises_unavailable(
   mock_response.status_code = 200
   mock_response.json.return_value = []
 
-  with patch('requests.get', return_value=mock_response):
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_response):
     with pytest.raises(IntegrationDataUnavailableError):
       trakt.get_variables_calendar()
 
@@ -379,7 +382,7 @@ def test_get_variables_calendar_all_past_raises_unavailable(
   mock_response.status_code = 200
   mock_response.json.return_value = _CALENDAR_RESPONSE_ALL_PAST
 
-  with patch('requests.get', return_value=mock_response):
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_response):
     with pytest.raises(IntegrationDataUnavailableError):
       trakt.get_variables_calendar()
 
@@ -392,7 +395,7 @@ def test_get_variables_calendar_skips_past_entries(
   mock_response.status_code = 200
   mock_response.json.return_value = _CALENDAR_RESPONSE_ALL_PAST + _CALENDAR_RESPONSE
 
-  with patch('requests.get', return_value=mock_response):
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_response):
     result = trakt.get_variables_calendar()
 
   assert result['show_name'] == [['GREAT SHOW']]
@@ -407,8 +410,8 @@ def test_get_variables_calendar_http_error_raised(
   mock_response.reason = 'Forbidden'
   mock_response.raise_for_status.side_effect = requests.HTTPError(response=mock_response)
 
-  with patch('requests.get', return_value=mock_response):
-    with pytest.raises(requests.HTTPError, match='403'):
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_response):
+    with pytest.raises(IntegrationDataUnavailableError, match='403'):
       trakt.get_variables_calendar()
 
 
@@ -420,8 +423,8 @@ def test_get_variables_calendar_http_error_does_not_leak_client_id(
   mock_response.reason = 'Unauthorized'
   mock_response.raise_for_status.side_effect = requests.HTTPError(response=mock_response)
 
-  with patch('requests.get', return_value=mock_response):
-    with pytest.raises(requests.HTTPError) as exc_info:
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_response):
+    with pytest.raises(IntegrationDataUnavailableError) as exc_info:
       trakt.get_variables_calendar()
 
   assert 'test-id' not in str(exc_info.value)
@@ -429,13 +432,6 @@ def test_get_variables_calendar_http_error_does_not_leak_client_id(
 
 
 # --- get_variables_watching ---
-
-
-@pytest.fixture(autouse=True)
-def reset_watching_state() -> None:
-  """Clear module-level watching state between tests."""
-  trakt._last_watching_vars = None
-  trakt._stop_pending = False
 
 
 def test_get_variables_watching_episode_returns_vars(
@@ -449,7 +445,7 @@ def test_get_variables_watching_episode_returns_vars(
     'episode': {'season': 1, 'number': 3, 'title': 'Pilot'},
   }
 
-  with patch('requests.get', return_value=mock_response):
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_response):
     result = trakt.get_variables_watching()
 
   assert result['status_line'] == [['[G] NOW PLAYING']]
@@ -468,7 +464,7 @@ def test_get_variables_watching_movie_returns_vars(
     'movie': {'title': 'Inception'},
   }
 
-  with patch('requests.get', return_value=mock_response):
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_response):
     result = trakt.get_variables_watching()
 
   assert result['status_line'] == [['[G] NOW PLAYING']]
@@ -483,7 +479,7 @@ def test_get_variables_watching_204_raises_unavailable(
   mock_response = MagicMock()
   mock_response.status_code = 204
 
-  with patch('requests.get', return_value=mock_response):
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_response):
     with pytest.raises(IntegrationDataUnavailableError, match='Nothing currently playing'):
       trakt.get_variables_watching()
 
@@ -503,7 +499,7 @@ def test_get_variables_watching_first_204_after_playing_skips(
   stop_response = MagicMock()
   stop_response.status_code = 204
 
-  with patch('requests.get', side_effect=[play_response, stop_response]):
+  with patch('integrations.trakt.fetch_with_retry', side_effect=[play_response, stop_response]):
     trakt.get_variables_watching()
     with pytest.raises(IntegrationDataUnavailableError):
       trakt.get_variables_watching()  # first 204 — debounced, not shown yet
@@ -524,7 +520,7 @@ def test_get_variables_watching_second_204_returns_violet_stopped_state(
   stop_response = MagicMock()
   stop_response.status_code = 204
 
-  with patch('requests.get', side_effect=[play_response, stop_response, stop_response]):
+  with patch('integrations.trakt.fetch_with_retry', side_effect=[play_response, stop_response, stop_response]):
     trakt.get_variables_watching()
     with pytest.raises(IntegrationDataUnavailableError):
       trakt.get_variables_watching()  # first 204 — skip
@@ -549,7 +545,10 @@ def test_get_variables_watching_state_cleared_after_stopped(
   stop_response = MagicMock()
   stop_response.status_code = 204
 
-  with patch('requests.get', side_effect=[play_response, stop_response, stop_response, stop_response]):
+  with patch(
+    'integrations.trakt.fetch_with_retry',
+    side_effect=[play_response, stop_response, stop_response, stop_response],
+  ):
     trakt.get_variables_watching()
     with pytest.raises(IntegrationDataUnavailableError):
       trakt.get_variables_watching()  # first 204 — skip
@@ -573,7 +572,7 @@ def test_get_variables_watching_play_after_first_204_resets_pending(
   stop_response = MagicMock()
   stop_response.status_code = 204
 
-  with patch('requests.get', side_effect=[play_response, stop_response, play_response]):
+  with patch('integrations.trakt.fetch_with_retry', side_effect=[play_response, stop_response, play_response]):
     trakt.get_variables_watching()
     with pytest.raises(IntegrationDataUnavailableError):
       trakt.get_variables_watching()  # first 204 — skip
@@ -594,7 +593,7 @@ def test_clear_watching_state_resets_cached_vars(config_with_tokens: Path) -> No
   stop_response = MagicMock()
   stop_response.status_code = 204
 
-  with patch('requests.get', return_value=play_response):
+  with patch('integrations.trakt.fetch_with_retry', return_value=play_response):
     trakt.get_variables_watching()
 
   assert trakt._last_watching_vars is not None
@@ -602,7 +601,7 @@ def test_clear_watching_state_resets_cached_vars(config_with_tokens: Path) -> No
   assert trakt._last_watching_vars is None
 
   # After clear, 204 should raise rather than return stopped state.
-  with patch('requests.get', return_value=stop_response):
+  with patch('integrations.trakt.fetch_with_retry', return_value=stop_response):
     with pytest.raises(IntegrationDataUnavailableError):
       trakt.get_variables_watching()
 
@@ -618,7 +617,7 @@ def test_get_variables_watching_state_reset_on_new_play(
   }
 
   # Two successful polls — second should return fresh green state, not violet.
-  with patch('requests.get', side_effect=[play_response, play_response]):
+  with patch('integrations.trakt.fetch_with_retry', side_effect=[play_response, play_response]):
     trakt.get_variables_watching()
     result = trakt.get_variables_watching()
 
@@ -634,8 +633,8 @@ def test_get_variables_watching_http_error_does_not_leak_client_id(
   mock_response.reason = 'Unauthorized'
   mock_response.raise_for_status.side_effect = requests.HTTPError(response=mock_response)
 
-  with patch('requests.get', return_value=mock_response):
-    with pytest.raises(requests.HTTPError) as exc_info:
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_response):
+    with pytest.raises(IntegrationDataUnavailableError) as exc_info:
       trakt.get_variables_watching()
 
   assert 'test-id' not in str(exc_info.value)
@@ -658,7 +657,7 @@ def test_get_variables_calendar_long_show_name_truncated(
   mock_response.status_code = 200
   mock_response.json.return_value = long_response
 
-  with patch('requests.get', return_value=mock_response):
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_response):
     result = trakt.get_variables_calendar()
 
   show_name = result['show_name'][0][0]
@@ -681,7 +680,7 @@ def test_get_variables_watching_long_show_name_truncated(
     'episode': {'season': 1, 'number': 1, 'title': 'Encounter At Farpoint'},
   }
 
-  with patch('requests.get', return_value=mock_response):
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_response):
     result = trakt.get_variables_watching()
 
   show_name = result['show_name'][0][0]
@@ -689,3 +688,71 @@ def test_get_variables_watching_long_show_name_truncated(
   assert vb.display_len(show_name) <= vb.model.cols
   assert upper.startswith(show_name)
   assert show_name == upper or upper[len(show_name)] == ' '
+
+
+# --- calendar cache ---
+
+
+def test_calendar_cache_hit_within_ttl_returns_cached_value(config_with_tokens: Path) -> None:
+  """On API failure within TTL, cached calendar data is returned instead of raising."""
+  mock_ok = MagicMock()
+  mock_ok.status_code = 200
+  mock_ok.raise_for_status.return_value = None
+  mock_ok.json.return_value = _CALENDAR_RESPONSE
+
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_ok):
+    trakt.get_variables_calendar()
+
+  with patch('integrations.trakt.fetch_with_retry', side_effect=requests.ConnectionError()):
+    result = trakt.get_variables_calendar()
+
+  assert result['show_name'] == [['GREAT SHOW']]
+
+
+def test_calendar_cache_expired_raises_unavailable(config_with_tokens: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  """On API failure with an expired cache, raises IntegrationDataUnavailableError."""
+  mock_ok = MagicMock()
+  mock_ok.status_code = 200
+  mock_ok.raise_for_status.return_value = None
+  mock_ok.json.return_value = _CALENDAR_RESPONSE
+
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_ok):
+    trakt.get_variables_calendar()
+
+  assert trakt._calendar_cache is not None
+  monkeypatch.setattr(trakt._calendar_cache, 'cached_at', time.monotonic() - trakt._CALENDAR_CACHE_TTL - 1)
+
+  with patch('integrations.trakt.fetch_with_retry', side_effect=requests.ConnectionError()):
+    with pytest.raises(IntegrationDataUnavailableError):
+      trakt.get_variables_calendar()
+
+
+def test_calendar_cache_cold_start_raises_unavailable(config_with_tokens: Path) -> None:
+  """With no cache and API down, raises IntegrationDataUnavailableError."""
+  with patch('integrations.trakt.fetch_with_retry', side_effect=requests.ConnectionError()):
+    with pytest.raises(IntegrationDataUnavailableError):
+      trakt.get_variables_calendar()
+
+
+def test_calendar_cache_updated_on_success(config_with_tokens: Path) -> None:
+  """Successful calendar fetch writes to the cache."""
+  mock_ok = MagicMock()
+  mock_ok.status_code = 200
+  mock_ok.raise_for_status.return_value = None
+  mock_ok.json.return_value = _CALENDAR_RESPONSE
+
+  assert trakt._calendar_cache is None
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_ok):
+    trakt.get_variables_calendar()
+  assert trakt._calendar_cache is not None
+  assert trakt._calendar_cache.value['show_name'] == [['GREAT SHOW']]
+
+
+# --- watching: no cache ---
+
+
+def test_watching_network_error_raises_unavailable(config_with_tokens: Path) -> None:
+  """Network error on watching endpoint raises IntegrationDataUnavailableError (no cache)."""
+  with patch('integrations.trakt.fetch_with_retry', side_effect=requests.ConnectionError()):
+    with pytest.raises(IntegrationDataUnavailableError, match='watching request failed'):
+      trakt.get_variables_watching()

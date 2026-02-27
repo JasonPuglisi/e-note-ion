@@ -22,6 +22,7 @@ from typing import Any
 import requests
 
 from exceptions import IntegrationDataUnavailableError
+from integrations.http import CacheEntry, fetch_with_retry
 
 _GEOCODING_URL = 'https://geocoding-api.open-meteo.com/v1/search'
 _FORECAST_URL = 'https://api.open-meteo.com/v1/forecast'
@@ -123,6 +124,11 @@ _US_STATE_CODES: frozenset[str] = frozenset(
 # None = not yet populated.
 _geocode_cache: tuple[float, float, str] | None = None
 
+# Last-known-good cache for forecast data. Served on transient API failures
+# if the entry is within _FORECAST_CACHE_TTL seconds of its fetch time.
+_forecast_cache: CacheEntry | None = None
+_FORECAST_CACHE_TTL = 4 * 3600  # 4 hours
+
 
 def _parse_city_config(city_config: str) -> tuple[str, str | None]:
   """Parse a city config string into (query_name, country_code).
@@ -164,11 +170,7 @@ def _geocode(city_query: str, country_code: str | None) -> tuple[float, float, s
   if country_code:
     params['countryCode'] = country_code
   try:
-    r = requests.get(
-      _GEOCODING_URL,
-      params=params,
-      timeout=10,
-    )
+    r = fetch_with_retry('GET', _GEOCODING_URL, params=params, timeout=10)
   except requests.RequestException as e:
     print(f'Weather: geocoding request failed — {e}')
     raise IntegrationDataUnavailableError(f'Weather: geocoding request failed — {e}') from None
@@ -217,8 +219,12 @@ def get_variables() -> dict[str, list[list[str]]]:
   The geocoding result is cached in-process on first call. The canonical city
   name from the API response is always used for the {city} variable, regardless
   of what was typed in config.toml.
+
+  On transient API failure, returns the last-known-good forecast if it is
+  within _FORECAST_CACHE_TTL. Raises IntegrationDataUnavailableError on cold
+  start or when the cache has expired.
   """
-  global _geocode_cache
+  global _geocode_cache, _forecast_cache
 
   import config as _config_mod
 
@@ -241,7 +247,8 @@ def get_variables() -> dict[str, list[list[str]]]:
     wind_unit = 'kmh'
 
   try:
-    r = requests.get(
+    r = fetch_with_retry(
+      'GET',
       _FORECAST_URL,
       params={
         'latitude': lat,
@@ -263,16 +270,12 @@ def get_variables() -> dict[str, list[list[str]]]:
       },
       timeout=10,
     )
-  except requests.RequestException as e:
-    print(f'Weather: forecast request failed — {e}')
-    raise IntegrationDataUnavailableError(f'Weather: forecast request failed — {e}') from None
-  try:
     r.raise_for_status()
-  except requests.HTTPError as e:
-    print(f'Weather: forecast error {e.response.status_code} {e.response.reason}')
-    raise IntegrationDataUnavailableError(
-      f'Weather forecast error: {e.response.status_code} {e.response.reason}'
-    ) from None
+  except requests.RequestException as e:
+    print(f'Weather: forecast error — {e}')
+    if _forecast_cache is not None and _forecast_cache.is_valid(_FORECAST_CACHE_TTL):
+      return _forecast_cache.value
+    raise IntegrationDataUnavailableError(f'Weather: forecast error — {e}') from None
 
   data = r.json()
   current: dict[str, Any] = data['current']
@@ -285,7 +288,7 @@ def get_variables() -> dict[str, list[list[str]]]:
   precip_raw = current.get('precipitation_probability')
   precip = f'{round(precip_raw)}%' if precip_raw is not None else '0%'
 
-  return {
+  result = {
     'city': [[canonical_city]],
     'condition': [[condition]],
     'temp': [[_fmt_temp(current['temperature_2m'], units)]],
@@ -295,3 +298,5 @@ def get_variables() -> dict[str, list[list[str]]]:
     'wind': [[_fmt_wind(current['wind_speed_10m'], units)]],
     'precip': [[precip]],
   }
+  _forecast_cache = CacheEntry(result)
+  return result

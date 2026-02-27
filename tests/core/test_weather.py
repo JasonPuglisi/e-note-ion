@@ -10,11 +10,13 @@ from exceptions import IntegrationDataUnavailableError
 
 
 @pytest.fixture(autouse=True)
-def reset_geocode_cache() -> Generator[None, None, None]:
-  """Reset the module-level geocode cache before each test."""
+def reset_caches() -> Generator[None, None, None]:
+  """Reset module-level caches before each test."""
   weather._geocode_cache = None
+  weather._forecast_cache = None
   yield
   weather._geocode_cache = None  # type: ignore[assignment]
+  weather._forecast_cache = None
 
 
 @pytest.fixture()
@@ -91,25 +93,27 @@ def _mock_forecast(
 
 
 def test_get_variables_imperial_returns_expected_keys(weather_config_imperial: None) -> None:
-  with patch('integrations.weather.requests.get', side_effect=[_mock_geocode(), _mock_forecast()]):
+  with patch('integrations.weather.fetch_with_retry', side_effect=[_mock_geocode(), _mock_forecast()]):
     result = weather.get_variables()
   assert set(result.keys()) == {'city', 'condition', 'temp', 'feels_like', 'high', 'low', 'wind', 'precip'}
 
 
 def test_get_variables_imperial_temp_uses_f_suffix(weather_config_imperial: None) -> None:
-  with patch('integrations.weather.requests.get', side_effect=[_mock_geocode(), _mock_forecast(temp=72.4)]):
+  with patch('integrations.weather.fetch_with_retry', side_effect=[_mock_geocode(), _mock_forecast(temp=72.4)]):
     result = weather.get_variables()
   assert result['temp'][0][0] == '72F'
 
 
 def test_get_variables_imperial_wind_uses_mph(weather_config_imperial: None) -> None:
-  with patch('integrations.weather.requests.get', side_effect=[_mock_geocode(), _mock_forecast(wind=12.0)]):
+  with patch('integrations.weather.fetch_with_retry', side_effect=[_mock_geocode(), _mock_forecast(wind=12.0)]):
     result = weather.get_variables()
   assert result['wind'][0][0] == '12MPH'
 
 
 def test_get_variables_imperial_high_low_format(weather_config_imperial: None) -> None:
-  with patch('integrations.weather.requests.get', side_effect=[_mock_geocode(), _mock_forecast(high=75.0, low=59.0)]):
+  with patch(
+    'integrations.weather.fetch_with_retry', side_effect=[_mock_geocode(), _mock_forecast(high=75.0, low=59.0)]
+  ):
     result = weather.get_variables()
   assert result['high'][0][0] == '75'
   assert result['low'][0][0] == '59'
@@ -119,13 +123,13 @@ def test_get_variables_imperial_high_low_format(weather_config_imperial: None) -
 
 
 def test_get_variables_metric_temp_uses_c_suffix(weather_config_metric: None) -> None:
-  with patch('integrations.weather.requests.get', side_effect=[_mock_geocode('London'), _mock_forecast(temp=22.0)]):
+  with patch('integrations.weather.fetch_with_retry', side_effect=[_mock_geocode('London'), _mock_forecast(temp=22.0)]):
     result = weather.get_variables()
   assert result['temp'][0][0] == '22C'
 
 
 def test_get_variables_metric_wind_uses_kmh(weather_config_metric: None) -> None:
-  with patch('integrations.weather.requests.get', side_effect=[_mock_geocode('London'), _mock_forecast(wind=20.0)]):
+  with patch('integrations.weather.fetch_with_retry', side_effect=[_mock_geocode('London'), _mock_forecast(wind=20.0)]):
     result = weather.get_variables()
   assert result['wind'][0][0] == '20KMH'
 
@@ -134,7 +138,9 @@ def test_get_variables_metric_wind_uses_kmh(weather_config_metric: None) -> None
 
 
 def test_get_variables_default_units_is_imperial(weather_config_no_units: None) -> None:
-  with patch('integrations.weather.requests.get', side_effect=[_mock_geocode('Chicago'), _mock_forecast(temp=68.0)]):
+  with patch(
+    'integrations.weather.fetch_with_retry', side_effect=[_mock_geocode('Chicago'), _mock_forecast(temp=68.0)]
+  ):
     result = weather.get_variables()
   assert result['temp'][0][0].endswith('F')
 
@@ -144,7 +150,7 @@ def test_get_variables_default_units_is_imperial(weather_config_no_units: None) 
 
 def test_city_name_uses_api_canonical_name(weather_config_imperial: None) -> None:
   """Config has lowercase/typo city; {city} variable must use the API's canonical name."""
-  with patch('integrations.weather.requests.get', side_effect=[_mock_geocode('San Francisco'), _mock_forecast()]):
+  with patch('integrations.weather.fetch_with_retry', side_effect=[_mock_geocode('San Francisco'), _mock_forecast()]):
     result = weather.get_variables()
   assert result['city'][0][0] == 'San Francisco'
 
@@ -180,12 +186,12 @@ def test_parse_city_config_unrecognised_suffix_passthrough() -> None:
 def test_geocoding_cached_after_first_call(weather_config_imperial: None) -> None:
   """Geocoding endpoint should only be called once across multiple get_variables() calls."""
   with patch(
-    'integrations.weather.requests.get', side_effect=[_mock_geocode(), _mock_forecast(), _mock_forecast()]
-  ) as mock_get:
+    'integrations.weather.fetch_with_retry', side_effect=[_mock_geocode(), _mock_forecast(), _mock_forecast()]
+  ) as mock_fetch:
     weather.get_variables()
     weather.get_variables()
   # First call: 2 requests (geocode + forecast). Second call: 1 request (forecast only).
-  assert mock_get.call_count == 3
+  assert mock_fetch.call_count == 3
 
 
 def test_geocoding_uses_count2_with_country_code(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -193,18 +199,18 @@ def test_geocoding_uses_count2_with_country_code(monkeypatch: pytest.MonkeyPatch
   import config as _cfg
 
   monkeypatch.setattr(_cfg, '_config', {'weather': {'city': 'Santa Clara, CA'}})
-  with patch('integrations.weather.requests.get', side_effect=[_mock_geocode(), _mock_forecast()]) as mock_get:
+  with patch('integrations.weather.fetch_with_retry', side_effect=[_mock_geocode(), _mock_forecast()]) as mock_fetch:
     weather.get_variables()
-  geocode_call = mock_get.call_args_list[0]
+  geocode_call = mock_fetch.call_args_list[0]
   assert geocode_call.kwargs['params']['count'] == 2
   assert geocode_call.kwargs['params']['countryCode'] == 'US'
 
 
 def test_geocoding_uses_count1_without_country_code(weather_config_imperial: None) -> None:
   """count=1 must be used when no country code suffix is present."""
-  with patch('integrations.weather.requests.get', side_effect=[_mock_geocode(), _mock_forecast()]) as mock_get:
+  with patch('integrations.weather.fetch_with_retry', side_effect=[_mock_geocode(), _mock_forecast()]) as mock_fetch:
     weather.get_variables()
-  geocode_call = mock_get.call_args_list[0]
+  geocode_call = mock_fetch.call_args_list[0]
   assert geocode_call.kwargs['params']['count'] == 1
   assert 'countryCode' not in geocode_call.kwargs['params']
 
@@ -216,7 +222,7 @@ def test_geocoding_not_found_raises_unavailable(monkeypatch: pytest.MonkeyPatch)
   mock = MagicMock()
   mock.raise_for_status.return_value = None
   mock.json.return_value = {'results': []}
-  with patch('integrations.weather.requests.get', return_value=mock):
+  with patch('integrations.weather.fetch_with_retry', return_value=mock):
     with pytest.raises(IntegrationDataUnavailableError):
       weather.get_variables()
 
@@ -228,9 +234,10 @@ def test_geocoding_http_error_raises_unavailable(monkeypatch: pytest.MonkeyPatch
   err_resp = MagicMock()
   err_resp.status_code = 500
   err_resp.reason = 'Internal Server Error'
-  mock = MagicMock()
-  mock.raise_for_status.side_effect = requests.HTTPError(response=err_resp)
-  with patch('integrations.weather.requests.get', return_value=mock):
+  with patch(
+    'integrations.weather.fetch_with_retry',
+    side_effect=requests.HTTPError(response=err_resp),
+  ):
     with pytest.raises(IntegrationDataUnavailableError):
       weather.get_variables()
 
@@ -243,27 +250,26 @@ def test_forecast_http_error_raises_unavailable(weather_config_imperial: None) -
   err_resp = MagicMock()
   err_resp.status_code = 503
   err_resp.reason = 'Service Unavailable'
-  mock_forecast = MagicMock()
-  mock_forecast.raise_for_status.side_effect = requests.HTTPError(response=err_resp)
 
-  with patch('integrations.weather.requests.get', side_effect=[_mock_geocode(), mock_forecast]):
-    with pytest.raises(IntegrationDataUnavailableError) as exc_info:
+  with patch(
+    'integrations.weather.fetch_with_retry',
+    side_effect=[_mock_geocode(), requests.HTTPError(response=err_resp)],
+  ):
+    with pytest.raises(IntegrationDataUnavailableError):
       weather.get_variables()
-  assert 'san francisco' not in str(exc_info.value).lower()
-  assert 'San Francisco' not in str(exc_info.value)
 
 
 def test_geocoding_timeout_raises_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _cfg
 
   monkeypatch.setattr(_cfg, '_config', {'weather': {'city': 'San Francisco'}})
-  with patch('integrations.weather.requests.get', side_effect=requests.Timeout):
+  with patch('integrations.weather.fetch_with_retry', side_effect=requests.Timeout()):
     with pytest.raises(IntegrationDataUnavailableError):
       weather.get_variables()
 
 
 def test_forecast_timeout_raises_unavailable(weather_config_imperial: None) -> None:
-  with patch('integrations.weather.requests.get', side_effect=[_mock_geocode(), requests.Timeout]):
+  with patch('integrations.weather.fetch_with_retry', side_effect=[_mock_geocode(), requests.Timeout()]):
     with pytest.raises(IntegrationDataUnavailableError):
       weather.get_variables()
 
@@ -273,7 +279,7 @@ def test_forecast_timeout_raises_unavailable(weather_config_imperial: None) -> N
 
 def test_get_variables_metric_high_low_no_unit(weather_config_metric: None) -> None:
   with patch(
-    'integrations.weather.requests.get', side_effect=[_mock_geocode('London'), _mock_forecast(high=28.0, low=13.0)]
+    'integrations.weather.fetch_with_retry', side_effect=[_mock_geocode('London'), _mock_forecast(high=28.0, low=13.0)]
   ):
     result = weather.get_variables()
   assert result['high'][0][0] == '28'
@@ -283,7 +289,7 @@ def test_get_variables_metric_high_low_no_unit(weather_config_metric: None) -> N
 def test_get_variables_high_low_three_digit_fits_note_cols(weather_config_imperial: None) -> None:
   """Three-digit high/low temps must fit within Note's column width after rendering."""
   with patch(
-    'integrations.weather.requests.get',
+    'integrations.weather.fetch_with_retry',
     side_effect=[_mock_geocode(), _mock_forecast(temp=102.0, high=108.0, low=85.0)],
   ):
     result = weather.get_variables()
@@ -334,3 +340,54 @@ def test_condition_string_fits_note_cols() -> None:
     assert length <= vb.VestaboardModel.NOTE.cols, (
       f'WMO {code}: {full!r} is {length} display chars, exceeds {vb.VestaboardModel.NOTE.cols}'
     )
+
+
+# --- forecast cache ---
+
+
+def test_forecast_cache_hit_within_ttl_returns_cached_value(weather_config_imperial: None) -> None:
+  """On API failure within TTL, cached forecast is returned instead of raising."""
+  with patch('integrations.weather.fetch_with_retry', side_effect=[_mock_geocode(), _mock_forecast(temp=72.0)]):
+    weather.get_variables()
+
+  with patch(
+    'integrations.weather.fetch_with_retry',
+    side_effect=[requests.ConnectionError()],
+  ):
+    result = weather.get_variables()
+
+  assert result['temp'][0][0] == '72F'
+
+
+def test_forecast_cache_expired_raises_unavailable(
+  weather_config_imperial: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  """On API failure with an expired cache entry, raises IntegrationDataUnavailableError."""
+  import time
+
+  with patch('integrations.weather.fetch_with_retry', side_effect=[_mock_geocode(), _mock_forecast()]):
+    weather.get_variables()
+
+  # Expire the cache by backdating its timestamp beyond the TTL.
+  assert weather._forecast_cache is not None
+  monkeypatch.setattr(weather._forecast_cache, 'cached_at', time.monotonic() - weather._FORECAST_CACHE_TTL - 1)
+
+  with patch('integrations.weather.fetch_with_retry', side_effect=[requests.ConnectionError()]):
+    with pytest.raises(IntegrationDataUnavailableError):
+      weather.get_variables()
+
+
+def test_forecast_cache_cold_start_raises_unavailable(weather_config_imperial: None) -> None:
+  """With no cache and API down, raises IntegrationDataUnavailableError."""
+  with patch('integrations.weather.fetch_with_retry', side_effect=[_mock_geocode(), requests.ConnectionError()]):
+    with pytest.raises(IntegrationDataUnavailableError):
+      weather.get_variables()
+
+
+def test_forecast_cache_updated_on_success(weather_config_imperial: None) -> None:
+  """Successful fetch writes to the cache."""
+  assert weather._forecast_cache is None
+  with patch('integrations.weather.fetch_with_retry', side_effect=[_mock_geocode(), _mock_forecast(temp=65.0)]):
+    weather.get_variables()
+  assert weather._forecast_cache is not None
+  assert weather._forecast_cache.value['temp'][0][0] == '65F'

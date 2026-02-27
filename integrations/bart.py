@@ -20,6 +20,8 @@ from typing import Any
 import requests
 
 import integrations.vestaboard as vestaboard
+from exceptions import IntegrationDataUnavailableError
+from integrations.http import CacheEntry, fetch_with_retry
 
 _API_BASE = 'https://api.bart.gov/api'
 
@@ -39,6 +41,11 @@ _LINE_COLOR_TAG: dict[str, str] = {
 # None = not yet populated; {} = populated but empty (or failed).
 _dest_color_cache: dict[str, list[str]] | None = None
 
+# Last-known-good cache for departure data. Served on transient API failures
+# if the entry is within _DEPARTURES_CACHE_TTL seconds of its fetch time.
+_departures_cache: CacheEntry | None = None
+_DEPARTURES_CACHE_TTL = 5 * 60  # 5 minutes
+
 
 def _fetch_dest_colors(api_key: str, origin: str) -> dict[str, list[str]]:
   """Build a dest_abbr → [color_tags] map using the BART routes API.
@@ -50,7 +57,8 @@ def _fetch_dest_colors(api_key: str, origin: str) -> dict[str, list[str]]:
 
   Raises requests.HTTPError on API failure; the caller handles degradation.
   """
-  r = requests.get(
+  r = fetch_with_retry(
+    'GET',
     f'{_API_BASE}/route.aspx',
     params={'cmd': 'routes', 'key': api_key, 'json': 'y'},
     timeout=10,
@@ -68,7 +76,8 @@ def _fetch_dest_colors(api_key: str, origin: str) -> dict[str, list[str]]:
     tag = _LINE_COLOR_TAG.get(route.get('color', '').upper())
     if not tag:
       continue
-    ri = requests.get(
+    ri = fetch_with_retry(
+      'GET',
       f'{_API_BASE}/route.aspx',
       params={'cmd': 'routeinfo', 'route': route['number'], 'key': api_key, 'json': 'y'},
       timeout=10,
@@ -137,8 +146,11 @@ def get_variables() -> dict[str, list[list[str]]]:
 
   The route color cache is populated lazily on first call. If the routes API
   fails, no-service lines degrade to colorless 'NO SERVICE'.
+
+  On transient API failure, returns the last-known-good departures if within
+  _DEPARTURES_CACHE_TTL. Raises IntegrationDataUnavailableError otherwise.
   """
-  global _dest_color_cache
+  global _dest_color_cache, _departures_cache
 
   import config as _config_mod
 
@@ -155,16 +167,23 @@ def get_variables() -> dict[str, list[list[str]]]:
       print(f'Warning: could not build BART color cache: {e}')
       _dest_color_cache = {}
 
-  r = requests.get(
-    f'{_API_BASE}/etd.aspx',
-    params={'cmd': 'etd', 'orig': station, 'key': api_key, 'json': 'y'},
-    timeout=10,
-  )
   try:
+    r = fetch_with_retry(
+      'GET',
+      f'{_API_BASE}/etd.aspx',
+      params={'cmd': 'etd', 'orig': station, 'key': api_key, 'json': 'y'},
+      timeout=10,
+    )
     r.raise_for_status()
-  except requests.HTTPError as e:
-    # Re-raise without the URL to avoid leaking the API key in logs.
-    raise requests.HTTPError(f'BART API error: {e.response.status_code} {e.response.reason}') from None
+  except requests.RequestException as e:
+    if isinstance(e, requests.HTTPError):
+      msg = f'BART API error: {e.response.status_code} {e.response.reason}'
+    else:
+      msg = str(e)
+    print(f'BART: departures request failed — {msg}')
+    if _departures_cache is not None and _departures_cache.is_valid(_DEPARTURES_CACHE_TTL):
+      return _departures_cache.value
+    raise IntegrationDataUnavailableError(f'BART: departures request failed — {msg}') from None
   data = r.json()
 
   station_data = data['root']['station'][0]
@@ -186,4 +205,5 @@ def get_variables() -> dict[str, list[list[str]]]:
         break
     variables[f'line{i}'] = [[line_value]]
 
+  _departures_cache = CacheEntry(variables)
   return variables
