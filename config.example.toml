@@ -77,6 +77,24 @@ city = "San Francisco"
 # disabled = true  # skip this template entirely (all other fields ignored)
 # private = true   # hide in public mode (overrides the template's private field)
 
+[discogs]
+# Personal access token (read-only) — generate at https://www.discogs.com/settings/developers
+# Your username is resolved automatically from the token; no username key required.
+token = "your-discogs-personal-access-token"
+
+# Optional: collection folder ID (default: 0 = all releases).
+# List your folders at https://www.discogs.com/users/<username>/collection
+# folder_id = "0"
+
+# ── Schedule overrides (optional) ─────────────────────────────────────────────
+# [discogs.schedules.morning_spin]
+# cron = "0 9 * * *"
+# hold = 600
+# timeout = 3600
+# priority = 5
+# disabled = true  # skip this template entirely (all other fields ignored)
+# private = true   # hide in public mode (overrides the template's private field)
+
 [webhook]
 # Optional: enable the HTTP webhook listener so external systems (Plex,
 # iOS Shortcuts, etc.) can push display messages to the board in real time.

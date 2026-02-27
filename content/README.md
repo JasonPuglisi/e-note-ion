@@ -162,6 +162,7 @@ does not.
 | File | Description |
 |---|---|
 | [`bart.json`](contrib/bart.md) | BART real-time departure board |
+| [`discogs.json`](contrib/discogs.md) | Daily vinyl suggestion from your Discogs collection |
 | [`plex.json`](contrib/plex.md) | Plex Media Server now-playing via webhook |
 | [`trakt.json`](contrib/trakt.md) | Trakt.tv upcoming calendar and now-playing |
 | [`weather.json`](contrib/weather.md) | Current weather conditions via Open-Meteo |
