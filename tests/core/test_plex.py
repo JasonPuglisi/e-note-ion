@@ -1,4 +1,5 @@
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -48,9 +49,28 @@ def _empty_config(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _reset_stop_processed(monkeypatch: pytest.MonkeyPatch) -> None:
-  """Reset _stop_processed module state before each test."""
-  monkeypatch.setattr(_plex, '_stop_processed', False)
+def _reset_plex_state(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Reset _state to IDLE before each test."""
+  monkeypatch.setattr(_plex, '_state', _plex._State.IDLE)
+
+
+@pytest.fixture()
+def _plex_playing(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Set state to PLAYING and board tag to 'plex' — simulates active session."""
+  monkeypatch.setattr(_plex, '_state', _plex._State.PLAYING)
+
+
+@pytest.fixture()
+def _plex_paused(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Set state to PAUSED and board tag to 'plex' — simulates paused session."""
+  monkeypatch.setattr(_plex, '_state', _plex._State.PAUSED)
+
+
+@pytest.fixture(autouse=True)
+def _board_shows_plex() -> Any:
+  """Default: board tag is 'plex' so board-displacement checks pass."""
+  with patch('scheduler.current_hold_tag', return_value='plex'):
+    yield
 
 
 # ---------------------------------------------------------------------------
@@ -74,12 +94,36 @@ def test_handle_webhook_resume_returns_indefinite_now_playing() -> None:
   assert 'NOW PLAYING' in str(result.data['templates'])
 
 
+def test_handle_webhook_play_transitions_state_to_playing() -> None:
+  _plex.handle_webhook(_episode_payload('media.play'))
+  assert _plex._state == _plex._State.PLAYING
+
+
+def test_handle_webhook_resume_transitions_state_to_playing() -> None:
+  _plex.handle_webhook(_episode_payload('media.resume'))
+  assert _plex._state == _plex._State.PLAYING
+
+
+def test_handle_webhook_play_always_fires_regardless_of_board(monkeypatch: pytest.MonkeyPatch) -> None:
+  """play fires even when the board is showing non-Plex content."""
+  with patch('scheduler.current_hold_tag', return_value=''):
+    result = _plex.handle_webhook(_episode_payload('media.play'))
+  assert isinstance(result, _mod.WebhookMessage)
+
+
+def test_handle_webhook_resume_always_fires_regardless_of_board() -> None:
+  """resume fires even when the board is showing non-Plex content."""
+  with patch('scheduler.current_hold_tag', return_value=''):
+    result = _plex.handle_webhook(_episode_payload('media.resume'))
+  assert isinstance(result, _mod.WebhookMessage)
+
+
 # ---------------------------------------------------------------------------
 # pause → paused
 # ---------------------------------------------------------------------------
 
 
-def test_handle_webhook_pause_returns_indefinite_now_playing_yellow() -> None:
+def test_handle_webhook_pause_returns_indefinite_paused_yellow(_plex_playing: None) -> None:
   result = _plex.handle_webhook(_episode_payload('media.pause'))
   assert isinstance(result, _mod.WebhookMessage)
   assert result.indefinite is True
@@ -87,12 +131,48 @@ def test_handle_webhook_pause_returns_indefinite_now_playing_yellow() -> None:
   assert '[Y] NOW PLAYING' in str(result.data['templates'])
 
 
+def test_handle_webhook_pause_transitions_state_to_paused(_plex_playing: None) -> None:
+  _plex.handle_webhook(_episode_payload('media.pause'))
+  assert _plex._state == _plex._State.PAUSED
+
+
+def test_handle_webhook_pause_in_idle_returns_none() -> None:
+  """pause is invalid from IDLE — no session to pause."""
+  result = _plex.handle_webhook(_episode_payload('media.pause'))
+  assert result is None
+
+
+def test_handle_webhook_pause_in_idle_does_not_change_state() -> None:
+  _plex.handle_webhook(_episode_payload('media.pause'))
+  assert _plex._state == _plex._State.IDLE
+
+
+def test_handle_webhook_pause_in_paused_returns_none(_plex_paused: None) -> None:
+  """pause is a no-op when already paused."""
+  result = _plex.handle_webhook(_episode_payload('media.pause'))
+  assert result is None
+
+
+def test_handle_webhook_pause_when_board_displaced_returns_none(_plex_playing: None) -> None:
+  """pause suppressed when Plex hold has been displaced by other content."""
+  with patch('scheduler.current_hold_tag', return_value=''):
+    result = _plex.handle_webhook(_episode_payload('media.pause'))
+  assert result is None
+
+
+def test_handle_webhook_pause_when_board_displaced_still_transitions_state(_plex_playing: None) -> None:
+  """State transitions to PAUSED even when board check suppresses the message."""
+  with patch('scheduler.current_hold_tag', return_value=''):
+    _plex.handle_webhook(_episode_payload('media.pause'))
+  assert _plex._state == _plex._State.PAUSED
+
+
 # ---------------------------------------------------------------------------
 # stop → stopped card
 # ---------------------------------------------------------------------------
 
 
-def test_handle_webhook_stop_returns_stopped_card() -> None:
+def test_handle_webhook_stop_returns_stopped_card(_plex_playing: None) -> None:
   result = _plex.handle_webhook({'event': 'media.stop'})
   assert isinstance(result, _mod.WebhookMessage)
   assert result.interrupt_only is False
@@ -101,14 +181,41 @@ def test_handle_webhook_stop_returns_stopped_card() -> None:
   assert '[R] NOW PLAYING' in str(result.data['templates'])
 
 
-def test_handle_webhook_stop_has_finite_hold() -> None:
+def test_handle_webhook_stop_has_finite_hold(_plex_playing: None) -> None:
   result = _plex.handle_webhook({'event': 'media.stop'})
   assert result is not None
   assert result.hold > 0
   assert result.timeout > 0
 
 
-def test_handle_webhook_stop_with_episode_metadata_includes_show_variables() -> None:
+def test_handle_webhook_stop_transitions_state_to_idle(_plex_playing: None) -> None:
+  _plex.handle_webhook({'event': 'media.stop'})
+  assert _plex._state == _plex._State.IDLE
+
+
+def test_handle_webhook_stop_from_paused_returns_stopped_card(_plex_paused: None) -> None:
+  result = _plex.handle_webhook({'event': 'media.stop'})
+  assert isinstance(result, _mod.WebhookMessage)
+  assert result.interrupt is True
+
+
+def test_handle_webhook_stop_from_paused_transitions_state_to_idle(_plex_paused: None) -> None:
+  _plex.handle_webhook({'event': 'media.stop'})
+  assert _plex._state == _plex._State.IDLE
+
+
+def test_handle_webhook_stop_in_idle_returns_none() -> None:
+  """stop is invalid from IDLE — no session to stop."""
+  result = _plex.handle_webhook({'event': 'media.stop'})
+  assert result is None
+
+
+def test_handle_webhook_stop_in_idle_does_not_change_state() -> None:
+  _plex.handle_webhook({'event': 'media.stop'})
+  assert _plex._state == _plex._State.IDLE
+
+
+def test_handle_webhook_stop_with_episode_metadata_includes_show_variables(_plex_playing: None) -> None:
   result = _plex.handle_webhook(_episode_payload('media.stop'))
   assert result is not None
   assert '[R] NOW PLAYING' in str(result.data['templates'])
@@ -119,7 +226,7 @@ def test_handle_webhook_stop_with_episode_metadata_includes_show_variables() -> 
   assert result.interrupt is True
 
 
-def test_handle_webhook_stop_with_movie_metadata_includes_show_variables() -> None:
+def test_handle_webhook_stop_with_movie_metadata_includes_show_variables(_plex_playing: None) -> None:
   result = _plex.handle_webhook(_movie_payload('media.stop', 'Inception'))
   assert result is not None
   variables = result.data['variables']
@@ -127,13 +234,13 @@ def test_handle_webhook_stop_with_movie_metadata_includes_show_variables() -> No
   assert variables['episode_line'] == [['']]
 
 
-def test_handle_webhook_stop_without_metadata_returns_bare_stopped_card() -> None:
+def test_handle_webhook_stop_without_metadata_returns_bare_stopped_card(_plex_playing: None) -> None:
   result = _plex.handle_webhook({'event': 'media.stop'})
   assert result is not None
   assert result.data['variables'] == {}
 
 
-def test_handle_webhook_stop_with_non_video_metadata_returns_bare_stopped_card() -> None:
+def test_handle_webhook_stop_with_non_video_metadata_returns_bare_stopped_card(_plex_playing: None) -> None:
   payload = {
     'event': 'media.stop',
     'Metadata': {'type': 'track', 'title': 'Some Song'},
@@ -141,6 +248,30 @@ def test_handle_webhook_stop_with_non_video_metadata_returns_bare_stopped_card()
   result = _plex.handle_webhook(payload)
   assert result is not None
   assert result.data['variables'] == {}
+
+
+def test_handle_webhook_stop_when_board_displaced_returns_none(_plex_playing: None) -> None:
+  """stop suppressed when Plex hold has been displaced by other content."""
+  with patch('scheduler.current_hold_tag', return_value=''):
+    result = _plex.handle_webhook({'event': 'media.stop'})
+  assert result is None
+
+
+def test_handle_webhook_stop_when_board_displaced_still_transitions_to_idle(_plex_playing: None) -> None:
+  """State transitions to IDLE even when board check suppresses the message."""
+  with patch('scheduler.current_hold_tag', return_value=''):
+    _plex.handle_webhook({'event': 'media.stop'})
+  assert _plex._state == _plex._State.IDLE
+
+
+def test_handle_webhook_play_after_displaced_stop_fires(_plex_playing: None) -> None:
+  """play always fires — even after a stop was suppressed due to displacement."""
+  with patch('scheduler.current_hold_tag', return_value=''):
+    _plex.handle_webhook({'event': 'media.stop'})
+  # State is now IDLE; new play should fire regardless of board
+  with patch('scheduler.current_hold_tag', return_value=''):
+    result = _plex.handle_webhook(_episode_payload('media.play'))
+  assert isinstance(result, _mod.WebhookMessage)
 
 
 # ---------------------------------------------------------------------------
@@ -276,30 +407,30 @@ def test_handle_webhook_play_has_supersede_tag() -> None:
   assert result.supersede_tag == 'plex'
 
 
-def test_handle_webhook_pause_has_supersede_tag() -> None:
+def test_handle_webhook_pause_has_supersede_tag(_plex_playing: None) -> None:
   result = _plex.handle_webhook(_episode_payload('media.pause'))
   assert result is not None
   assert result.supersede_tag == 'plex'
 
 
-def test_handle_webhook_stop_has_supersede_tag() -> None:
+def test_handle_webhook_stop_has_supersede_tag(_plex_playing: None) -> None:
   result = _plex.handle_webhook({'event': 'media.stop'})
   assert result is not None
   assert result.supersede_tag == 'plex'
 
 
 # ---------------------------------------------------------------------------
-# Duplicate stop suppression
+# Duplicate stop suppression (replaced by state machine)
 # ---------------------------------------------------------------------------
 
 
-def test_handle_webhook_first_stop_returns_message() -> None:
+def test_handle_webhook_first_stop_returns_message(_plex_playing: None) -> None:
   """The first media.stop in a session is always processed."""
   result = _plex.handle_webhook({'event': 'media.stop'})
   assert isinstance(result, _mod.WebhookMessage)
 
 
-def test_handle_webhook_duplicate_stop_returns_none() -> None:
+def test_handle_webhook_duplicate_stop_returns_none(_plex_playing: None) -> None:
   """A second media.stop with no intervening play/resume is silently discarded."""
   _plex.handle_webhook({'event': 'media.stop'})
   result = _plex.handle_webhook({'event': 'media.stop'})
@@ -307,23 +438,21 @@ def test_handle_webhook_duplicate_stop_returns_none() -> None:
 
 
 def test_handle_webhook_stop_after_play_resets_and_fires() -> None:
-  """media.play clears _stop_processed so the next stop is processed normally."""
-  _plex.handle_webhook({'event': 'media.stop'})
+  """media.play resets to PLAYING so the next stop is processed normally."""
   _plex.handle_webhook(_episode_payload('media.play'))
   result = _plex.handle_webhook({'event': 'media.stop'})
   assert isinstance(result, _mod.WebhookMessage)
 
 
 def test_handle_webhook_stop_after_resume_resets_and_fires() -> None:
-  """media.resume clears _stop_processed so the next stop is processed normally."""
-  _plex.handle_webhook({'event': 'media.stop'})
+  """media.resume resets to PLAYING so the next stop is processed normally."""
   _plex.handle_webhook(_episode_payload('media.resume'))
   result = _plex.handle_webhook({'event': 'media.stop'})
   assert isinstance(result, _mod.WebhookMessage)
 
 
-def test_handle_webhook_pause_does_not_set_stop_processed() -> None:
-  """media.pause is informational and must not suppress a subsequent media.stop."""
+def test_handle_webhook_pause_does_not_allow_subsequent_pause(_plex_playing: None) -> None:
+  """media.pause transitions to PAUSED; a second pause is a no-op."""
   _plex.handle_webhook(_episode_payload('media.pause'))
-  result = _plex.handle_webhook({'event': 'media.stop'})
-  assert isinstance(result, _mod.WebhookMessage)
+  result = _plex.handle_webhook(_episode_payload('media.pause'))
+  assert result is None

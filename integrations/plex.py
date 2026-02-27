@@ -17,6 +17,7 @@
 # [plex.schedules.now_playing] or [plex.schedules.paused] section to
 # config.toml — the same override syntax used for scheduled templates.
 
+import enum
 import json
 from pathlib import Path
 from typing import Any
@@ -36,10 +37,17 @@ _STOP_EVENTS = frozenset({'media.stop'})
 # All events this integration handles; others are silently discarded.
 _HANDLED_EVENTS = _PLAY_EVENTS | {_PAUSE_EVENT} | _STOP_EVENTS
 
-# Set after processing a stop event; cleared on play/resume. Prevents a second
-# media.stop (e.g. when the user exits the player after a pause-timeout stop)
-# from interrupting content the board has already moved on to.
-_stop_processed: bool = False
+
+class _State(enum.Enum):
+  IDLE = 'idle'
+  PLAYING = 'playing'
+  PAUSED = 'paused'
+
+
+# Tracks the current Plex playback state. play/resume always transition to
+# PLAYING. pause is only valid from PLAYING. stop is valid from PLAYING or
+# PAUSED. Invalid transitions return None without firing any display update.
+_state: _State = _State.IDLE
 
 
 def _strip_leading_article(title: str) -> str:
@@ -86,10 +94,20 @@ def _load_template_config(template_name: str) -> dict[str, Any]:
 def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
   """Process a Plex webhook event and return a WebhookMessage or None.
 
-  Returns None for unrecognised events, non-video media types, or missing
-  metadata. Errors are logged and return None rather than propagating.
+  Enforces a state machine (IDLE → PLAYING ↔ PAUSED → IDLE):
+  - play/resume: always valid; transition to PLAYING.
+  - pause: only valid from PLAYING; ignored in IDLE or PAUSED.
+  - stop: only valid from PLAYING or PAUSED; ignored in IDLE.
+
+  For pause and stop, also checks whether Plex content is still on the board
+  (via scheduler.current_hold_tag). If the board has moved on to other content,
+  the state still transitions (reflecting reality) but no message is returned —
+  avoiding stale events interrupting unrelated content.
+
+  Returns None for unrecognised events, invalid state transitions, non-video
+  media, board displacement, or missing metadata.
   """
-  global _stop_processed
+  global _state
 
   try:
     event = payload.get('event', '')
@@ -103,10 +121,32 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
     except ImportError:
       pass
 
+    # --- State machine transition and validity check ---
+
     if event in _PLAY_EVENTS:
-      _stop_processed = False
-    elif event in _STOP_EVENTS and _stop_processed:
-      return None
+      _state = _State.PLAYING
+    elif event == _PAUSE_EVENT:
+      if _state != _State.PLAYING:
+        return None
+      _state = _State.PAUSED
+    elif event in _STOP_EVENTS:
+      if _state == _State.IDLE:
+        return None
+      _state = _State.IDLE
+
+    # --- Board displacement check (pause and stop only) ---
+    # play/resume always fires — it initiates a new session regardless of what
+    # is currently on the board. pause and stop are only meaningful if Plex
+    # content is still showing; if the board has moved on, suppress the message
+    # (state has already transitioned above to reflect reality).
+
+    if event not in _PLAY_EVENTS:
+      import scheduler as _sched
+
+      if _sched.current_hold_tag() != 'plex':
+        return None
+
+    # --- Build metadata ---
 
     metadata = payload.get('Metadata')
     media_type = metadata.get('type') if metadata else None
@@ -124,7 +164,6 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
       episode_line = ''
 
     if event in _STOP_EVENTS:
-      _stop_processed = True
       cfg = _load_template_config('stopped')
       has_media = bool(show_name)
       return WebhookMessage(

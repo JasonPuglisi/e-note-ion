@@ -82,10 +82,14 @@ def _post_multipart(
 
 @pytest.fixture(autouse=True)
 def reset_hold_interrupt() -> Generator[None, None, None]:
-  """Clear the hold interrupt event before and after each test."""
+  """Clear the hold interrupt event and current hold tag before and after each test."""
   _mod._hold_interrupt.clear()
+  with _mod._current_hold_lock:
+    _mod._current_hold_supersede_tag = ''
   yield
   _mod._hold_interrupt.clear()
+  with _mod._current_hold_lock:
+    _mod._current_hold_supersede_tag = ''
 
 
 # ---------------------------------------------------------------------------
