@@ -142,12 +142,13 @@ def test_get_public_mode_true(monkeypatch: pytest.MonkeyPatch) -> None:
 # --- get_content_enabled ---
 
 
-def test_get_content_enabled_absent_returns_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_content_enabled_absent_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
   monkeypatch.setattr(_mod, '_config', {})
-  assert _mod.get_content_enabled() == set()
+  assert _mod.get_content_enabled() is None
 
 
-def test_get_content_enabled_empty_list(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_content_enabled_empty_list_returns_empty_set(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Explicit empty list is distinct from absent — returns set(), not None."""
   monkeypatch.setattr(_mod, '_config', {'scheduler': {'content_enabled': []}})
   assert _mod.get_content_enabled() == set()
 

@@ -174,17 +174,20 @@ def get_public_mode() -> bool:
   return get_optional_bool('scheduler', 'public', default=False)
 
 
-def get_content_enabled() -> set[str]:
-  """Return the set of enabled contrib content stems.
+def get_content_enabled() -> set[str] | None:
+  """Return the configured content filter, or None if the key is absent.
 
   Reads [scheduler].content_enabled (a TOML array of strings).
-  Returns {"*"} to enable all, a set of stems for specific files,
-  or an empty set when the key is absent or the list is empty.
+  Returns None when the key is absent (user content loads unconditionally,
+  no contrib content loads). When the key is present, returns a set of stems
+  (possibly empty) that filters both user and contrib directories: {"*"} to
+  enable all, or specific stems such as {"bart", "my_quotes"}.
   """
-  value = _config.get('scheduler', {}).get('content_enabled')
-  if not value:
-    return set()
-  return set(value)
+  scheduler_cfg = _config.get('scheduler', {})
+  if 'content_enabled' not in scheduler_cfg:
+    return None
+  value = scheduler_cfg['content_enabled']
+  return set(value) if value else set()
 
 
 def get_schedule_override(template_id: str) -> dict:

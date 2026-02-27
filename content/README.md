@@ -6,20 +6,29 @@ board. Restart the scheduler to pick up changes.
 ## Directories
 
 - **`contrib/`** — bundled community-contributed content, disabled by default.
-  Enable files by setting `content_enabled` in `config.toml` under `[scheduler]`:
-  ```toml
-  content_enabled = ["bart"]   # enable one file
-  content_enabled = ["bart", "trakt"]  # enable multiple
-  content_enabled = ["*"]      # enable all
-  ```
   To contribute content, open a pull request adding a `.json` file and a
   companion `.md` doc (see template in `content/contrib/TEMPLATE.md`).
 
-- **`user/`** — your personal content. Files placed here are always loaded
-  automatically — no opt-in needed. This directory is git-ignored so personal
-  schedules are never committed to the project repo. To version your personal
-  content, create a private git repository and volume-mount it at
-  `/app/content/user` (Docker) or symlink it to this directory directly.
+- **`user/`** — your personal content. Files here are loaded automatically
+  unless `content_enabled` is set (see below). This directory is git-ignored
+  so personal schedules are never committed to the project repo. To version
+  your personal content, create a private git repository and volume-mount it
+  at `/app/content/user` (Docker) or symlink it to this directory directly.
+
+## Content filter (`content_enabled`)
+
+The `[scheduler].content_enabled` key in `config.toml` controls which files
+are loaded from both directories:
+
+```toml
+# Absent (default): all user content loads, no contrib content loads
+content_enabled = ["*"]              # all user + all contrib
+content_enabled = ["bart", "trakt"]  # only these stems from either directory
+content_enabled = ["my_quotes"]      # only my_quotes.json from content/user/
+```
+
+When the key is absent, user files always load and no contrib files load.
+When the key is set, the filter applies to both `user/` and `contrib/`.
 
 ## Content file format
 
