@@ -82,14 +82,16 @@ def _post_multipart(
 
 @pytest.fixture(autouse=True)
 def reset_hold_interrupt() -> Generator[None, None, None]:
-  """Clear the hold interrupt event and current hold tag before and after each test."""
+  """Clear the hold interrupt event and current hold state before and after each test."""
   _mod._hold_interrupt.clear()
   with _mod._current_hold_lock:
     _mod._current_hold_supersede_tag = ''
+    _mod._current_hold_priority = None
   yield
   _mod._hold_interrupt.clear()
   with _mod._current_hold_lock:
     _mod._current_hold_supersede_tag = ''
+    _mod._current_hold_priority = None
 
 
 # ---------------------------------------------------------------------------
@@ -436,6 +438,116 @@ def test_interrupt_only_sets_hold_interrupt_without_enqueue() -> None:
   )
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = wm
+
+  with patch.object(_mod, '_get_integration', return_value=mock_mod):
+    with patch.object(_mod, 'enqueue') as mock_enqueue:
+      server, port = _start_test_server()
+      try:
+        status, body = _post(port, '/webhook/bart')
+        time.sleep(0.05)
+        assert status == 200
+        assert 'Interrupted' in body
+        mock_enqueue.assert_not_called()
+        assert _mod._hold_interrupt.is_set()
+      finally:
+        server.shutdown()
+
+
+def test_interrupt_blocked_when_current_hold_is_high_priority() -> None:
+  """Webhook interrupt should not fire when the current hold is at or above threshold."""
+  wm = _mod.WebhookMessage(
+    data={'templates': [], 'variables': {}, 'truncation': 'hard'},
+    priority=8,
+    hold=10,
+    timeout=30,
+    interrupt=True,
+  )
+  mock_mod = MagicMock()
+  mock_mod.handle_webhook.return_value = wm
+
+  with _mod._current_hold_lock:
+    _mod._current_hold_priority = 8  # active high-priority hold
+
+  with patch.object(_mod, '_get_integration', return_value=mock_mod):
+    with patch.object(_mod, 'enqueue'):
+      server, port = _start_test_server()
+      try:
+        _post(port, '/webhook/bart')
+        time.sleep(0.05)
+        assert not _mod._hold_interrupt.is_set()
+      finally:
+        server.shutdown()
+
+
+def test_interrupt_allowed_when_current_hold_is_low_priority() -> None:
+  """Webhook interrupt fires when the current hold is below threshold."""
+  wm = _mod.WebhookMessage(
+    data={'templates': [], 'variables': {}, 'truncation': 'hard'},
+    priority=8,
+    hold=10,
+    timeout=30,
+    interrupt=True,
+  )
+  mock_mod = MagicMock()
+  mock_mod.handle_webhook.return_value = wm
+
+  with _mod._current_hold_lock:
+    _mod._current_hold_priority = 7  # active low-priority hold
+
+  with patch.object(_mod, '_get_integration', return_value=mock_mod):
+    with patch.object(_mod, 'enqueue'):
+      server, port = _start_test_server()
+      try:
+        _post(port, '/webhook/bart')
+        time.sleep(0.05)
+        assert _mod._hold_interrupt.is_set()
+      finally:
+        server.shutdown()
+
+
+def test_interrupt_only_blocked_when_current_hold_is_high_priority() -> None:
+  """interrupt_only should not fire the interrupt event when hold is at or above threshold."""
+  wm = _mod.WebhookMessage(
+    data={},
+    priority=8,
+    hold=0,
+    timeout=0,
+    interrupt_only=True,
+  )
+  mock_mod = MagicMock()
+  mock_mod.handle_webhook.return_value = wm
+
+  with _mod._current_hold_lock:
+    _mod._current_hold_priority = 8  # active high-priority hold
+
+  with patch.object(_mod, '_get_integration', return_value=mock_mod):
+    with patch.object(_mod, 'enqueue') as mock_enqueue:
+      server, port = _start_test_server()
+      try:
+        status, body = _post(port, '/webhook/bart')
+        time.sleep(0.05)
+        assert status == 200
+        assert 'Interrupted' in body
+        mock_enqueue.assert_not_called()
+        assert not _mod._hold_interrupt.is_set()
+      finally:
+        server.shutdown()
+
+
+def test_interrupt_only_allowed_when_current_hold_is_low_priority() -> None:
+  """interrupt_only fires the interrupt event when hold is below threshold."""
+  wm = _mod.WebhookMessage(
+    data={},
+    priority=8,
+    hold=0,
+    timeout=0,
+    interrupt_only=True,
+  )
+  mock_mod = MagicMock()
+  mock_mod.handle_webhook.return_value = wm
+
+  with _mod._current_hold_lock:
+    _mod._current_hold_priority = 7  # active low-priority hold
 
   with patch.object(_mod, '_get_integration', return_value=mock_mod):
     with patch.object(_mod, 'enqueue') as mock_enqueue:
