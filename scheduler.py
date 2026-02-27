@@ -206,17 +206,29 @@ _REFRESH_MIN_INTERVAL = 30  # minimum allowed refresh_interval (seconds); preven
 # the current hold short. Cleared by the worker after each hold completes.
 _hold_interrupt = threading.Event()
 
-# Tracks the supersede_tag of the message currently being held by the worker,
-# or '' when the worker is idle. Used by integrations to detect whether their
-# content is still on the board (e.g. to suppress stale stop/pause events).
+# Tracks state of the message currently being held by the worker.
+# supersede_tag is '' and priority is None when the worker is idle.
 _current_hold_lock = threading.Lock()
 _current_hold_supersede_tag: str = ''
+_current_hold_priority: int | None = None
 
 
 def current_hold_tag() -> str:
   """Return the supersede_tag of the message currently being held, or ''."""
   with _current_hold_lock:
     return _current_hold_supersede_tag
+
+
+def _current_hold_is_interruptible() -> bool:
+  """Return True if the current hold's priority is below the interrupt threshold.
+
+  Mirrors the cron-based interrupt gate: only holds with priority below
+  _INTERRUPT_PRIORITY_THRESHOLD can be cut short. High-priority holds always
+  run to completion. Returns True when no hold is active.
+  """
+  with _current_hold_lock:
+    cur = _current_hold_priority
+  return cur is None or cur < _INTERRUPT_PRIORITY_THRESHOLD
 
 
 def _get_min_hold() -> int:
@@ -237,13 +249,15 @@ def _do_hold(
   """Sleep for message.hold seconds, subject to two early-exit conditions:
 
   1. Webhook interrupt (_hold_interrupt event set) — exits immediately at
-     any point, regardless of min_hold.
+     any point, regardless of min_hold. The webhook server only sets this
+     event when the current hold's priority is below
+     _INTERRUPT_PRIORITY_THRESHOLD (mirrors condition 2 below).
   2. Priority-based interruption — after min_hold seconds, if the current
      message's priority is below _INTERRUPT_PRIORITY_THRESHOLD and the
      highest-priority queued item is at or above it, exits early.
 
   High-priority messages (priority >= _INTERRUPT_PRIORITY_THRESHOLD) always
-  run their full hold and are never interrupted.
+  run their full hold and are never interrupted by either path.
 
   If refresh_fn and refresh_interval are provided, refresh_fn() is called
   every refresh_interval seconds during the hold. Errors from refresh_fn are
@@ -379,10 +393,12 @@ def worker() -> None:
     # it early; a stale pre-hold event would otherwise exit the new hold instantly.
     with _current_hold_lock:
       _current_hold_supersede_tag = message.supersede_tag
+      _current_hold_priority = message.priority
     _hold_interrupt.clear()
     _do_hold(message, _get_min_hold(), refresh_fn=_refresh_fn, refresh_interval=refresh_interval)
     with _current_hold_lock:
       _current_hold_supersede_tag = ''
+      _current_hold_priority = None
 
     # Hold expired — if this was a refresh-capable integration message, transfer
     # the refresh fn to idle state so the display keeps updating while the queue
@@ -490,7 +506,8 @@ def _make_webhook_handler(secret: str) -> type:
         return
 
       if result.interrupt_only:
-        _hold_interrupt.set()
+        if _current_hold_is_interruptible():
+          _hold_interrupt.set()
         self._respond(200, 'Interrupted')
         return
 
@@ -503,7 +520,7 @@ def _make_webhook_handler(secret: str) -> type:
         indefinite=result.indefinite,
         supersede_tag=result.supersede_tag,
       )
-      if result.interrupt:
+      if result.interrupt and _current_hold_is_interruptible():
         _hold_interrupt.set()
 
       self._respond(200, 'Enqueued')
