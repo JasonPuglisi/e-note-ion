@@ -7,6 +7,7 @@ import requests
 
 import integrations.bart as bart
 import integrations.vestaboard as vb
+from exceptions import IntegrationDataUnavailableError
 
 # Minimal ETD API response used across multiple tests.
 _FAKE_ETD: dict[str, Any] = {
@@ -139,11 +140,13 @@ def _mock(json_data: dict[str, Any]) -> MagicMock:
 # don't bleed between tests. Tests that specifically exercise cache population
 # set bart._dest_color_cache = None themselves after this fixture runs.
 @pytest.fixture(autouse=True)
-def reset_color_cache() -> Generator[None, None, None]:
-  original = bart._dest_color_cache  # noqa: SLF001
+def reset_caches() -> Generator[None, None, None]:
+  original_color = bart._dest_color_cache  # noqa: SLF001
   bart._dest_color_cache = {}  # noqa: SLF001
+  bart._departures_cache = None  # noqa: SLF001
   yield
-  bart._dest_color_cache = original  # noqa: SLF001
+  bart._dest_color_cache = original_color  # noqa: SLF001
+  bart._departures_cache = None  # noqa: SLF001
 
 
 # --- _build_line ---
@@ -194,7 +197,7 @@ def test_no_service_line_multi_color_uses_first() -> None:
 
 def test_fetch_dest_colors_maps_terminal_to_color() -> None:
   with patch(
-    'integrations.bart.requests.get',
+    'integrations.bart.fetch_with_retry',
     side_effect=[_mock(_FAKE_ROUTES_ONE), _mock(_FAKE_ROUTEINFO_6_DALY)],
   ):
     result = bart._fetch_dest_colors('testkey', 'MLPT')  # noqa: SLF001
@@ -204,7 +207,7 @@ def test_fetch_dest_colors_maps_terminal_to_color() -> None:
 def test_fetch_dest_colors_excludes_routes_not_serving_origin() -> None:
   # Route 1 (YELLOW) has no MLPT — only route 6 (GREEN, DALY) should appear.
   with patch(
-    'integrations.bart.requests.get',
+    'integrations.bart.fetch_with_retry',
     side_effect=[
       _mock(_FAKE_ROUTES_TWO),
       _mock(_FAKE_ROUTEINFO_1_NO_MLPT),
@@ -220,7 +223,7 @@ def test_fetch_dest_colors_handles_multiple_colors_per_dest() -> None:
   # Routes 4 (ORANGE) and 6 (GREEN) both serve BERY from MLPT.
   # Route 4 has a lower number so ORANGE appears first.
   with patch(
-    'integrations.bart.requests.get',
+    'integrations.bart.fetch_with_retry',
     side_effect=[
       _mock(_FAKE_ROUTES_MULTI_COLOR),
       _mock(_FAKE_ROUTEINFO_4_BERY),
@@ -236,7 +239,7 @@ def test_fetch_dest_colors_handles_multiple_colors_per_dest() -> None:
 def test_fetch_dest_colors_raises_on_http_error() -> None:
   mock_fail = MagicMock()
   mock_fail.raise_for_status.side_effect = requests.HTTPError('network error')
-  with patch('integrations.bart.requests.get', return_value=mock_fail):
+  with patch('integrations.bart.fetch_with_retry', return_value=mock_fail):
     with pytest.raises(requests.HTTPError):
       bart._fetch_dest_colors('testkey', 'MLPT')  # noqa: SLF001
 
@@ -259,7 +262,7 @@ def test_get_variables_happy_path(bart_env: None) -> None:
   mock_resp = MagicMock()
   mock_resp.json.return_value = _FAKE_ETD
   mock_resp.raise_for_status.return_value = None
-  with patch('integrations.bart.requests.get', return_value=mock_resp):
+  with patch('integrations.bart.fetch_with_retry', return_value=mock_resp):
     result = bart.get_variables()
   assert result['station'] == [['Milpitas']]
   assert len(result['line1']) == 1
@@ -273,7 +276,7 @@ def test_get_variables_no_service_when_dest_absent(bart_env: None) -> None:
   mock_resp = MagicMock()
   mock_resp.json.return_value = empty_etd
   mock_resp.raise_for_status.return_value = None
-  with patch('integrations.bart.requests.get', return_value=mock_resp):
+  with patch('integrations.bart.fetch_with_retry', return_value=mock_resp):
     result = bart.get_variables()
   assert 'NO SERVICE' in result['line1'][0][0]
 
@@ -299,7 +302,7 @@ def test_get_variables_matches_by_abbreviation_code(bart_env: None) -> None:
   mock_resp = MagicMock()
   mock_resp.json.return_value = _FAKE_ETD
   mock_resp.raise_for_status.return_value = None
-  with patch('integrations.bart.requests.get', return_value=mock_resp):
+  with patch('integrations.bart.fetch_with_retry', return_value=mock_resp):
     result = bart.get_variables()
   assert '[G]' in result['line1'][0][0]
   assert '5' in result['line1'][0][0]
@@ -312,7 +315,7 @@ def test_get_variables_code_matching_is_case_insensitive(monkeypatch: pytest.Mon
   mock_resp = MagicMock()
   mock_resp.json.return_value = _FAKE_ETD
   mock_resp.raise_for_status.return_value = None
-  with patch('integrations.bart.requests.get', return_value=mock_resp):
+  with patch('integrations.bart.fetch_with_retry', return_value=mock_resp):
     result = bart.get_variables()
   assert '[G]' in result['line1'][0][0]
 
@@ -324,7 +327,7 @@ def test_get_variables_unknown_code_shows_no_service(monkeypatch: pytest.MonkeyP
   mock_resp = MagicMock()
   mock_resp.json.return_value = _FAKE_ETD
   mock_resp.raise_for_status.return_value = None
-  with patch('integrations.bart.requests.get', return_value=mock_resp):
+  with patch('integrations.bart.fetch_with_retry', return_value=mock_resp):
     result = bart.get_variables()
   assert 'NO SERVICE' in result['line1'][0][0]
 
@@ -333,7 +336,7 @@ def test_get_variables_line2_absent_when_not_set(bart_env: None) -> None:
   mock_resp = MagicMock()
   mock_resp.json.return_value = _FAKE_ETD
   mock_resp.raise_for_status.return_value = None
-  with patch('integrations.bart.requests.get', return_value=mock_resp):
+  with patch('integrations.bart.fetch_with_retry', return_value=mock_resp):
     result = bart.get_variables()
   assert 'line2' not in result
 
@@ -401,7 +404,7 @@ def test_get_variables_two_lines(monkeypatch: pytest.MonkeyPatch) -> None:
   mock_resp = MagicMock()
   mock_resp.json.return_value = _FAKE_ETD_TWO_DESTS
   mock_resp.raise_for_status.return_value = None
-  with patch('integrations.bart.requests.get', return_value=mock_resp):
+  with patch('integrations.bart.fetch_with_retry', return_value=mock_resp):
     result = bart.get_variables()
   assert 'line1' in result
   assert 'line2' in result
@@ -418,8 +421,8 @@ def test_get_variables_http_error_does_not_leak_key(monkeypatch: pytest.MonkeyPa
   mock_resp.status_code = 401
   mock_resp.reason = 'Unauthorized'
   mock_resp.raise_for_status.side_effect = requests.HTTPError(response=mock_resp)
-  with patch('integrations.bart.requests.get', return_value=mock_resp):
-    with pytest.raises(requests.HTTPError) as exc_info:
+  with patch('integrations.bart.fetch_with_retry', return_value=mock_resp):
+    with pytest.raises(IntegrationDataUnavailableError) as exc_info:
       bart.get_variables()
   assert api_key not in str(exc_info.value)
 
@@ -431,7 +434,7 @@ def test_get_variables_populates_color_cache(bart_env: None) -> None:
   # Override the autouse fixture: start with an unpopulated cache.
   bart._dest_color_cache = None  # noqa: SLF001
   with patch(
-    'integrations.bart.requests.get',
+    'integrations.bart.fetch_with_retry',
     side_effect=[
       _mock(_FAKE_ROUTES_ONE),  # routes call
       _mock(_FAKE_ROUTEINFO_6_DALY),  # routeinfo route 6
@@ -451,7 +454,7 @@ def test_get_variables_routes_api_failure_does_not_crash(bart_env: None, capsys:
   mock_fail = MagicMock()
   mock_fail.raise_for_status.side_effect = requests.HTTPError('network error')
   with patch(
-    'integrations.bart.requests.get',
+    'integrations.bart.fetch_with_retry',
     side_effect=[mock_fail, _mock(empty_etd)],
   ):
     result = bart.get_variables()
@@ -464,7 +467,7 @@ def test_get_variables_uses_cached_colors_on_second_call(bart_env: None) -> None
   # Cache is already populated (autouse sets it to {}). The routes API must
   # NOT be called — only the single ETD request should happen.
   bart._dest_color_cache = {'DALY': ['[G]']}  # noqa: SLF001
-  with patch('integrations.bart.requests.get', return_value=_mock(_FAKE_ETD)) as mock_get:
+  with patch('integrations.bart.fetch_with_retry', return_value=_mock(_FAKE_ETD)) as mock_get:
     bart.get_variables()
   # Only one requests.get call (the ETD); no routes/routeinfo calls.
   assert mock_get.call_count == 1
