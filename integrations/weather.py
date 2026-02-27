@@ -290,8 +290,8 @@ def get_variables() -> dict[str, list[list[str]]]:
     'condition': [[condition]],
     'temp': [[_fmt_temp(current['temperature_2m'], units)]],
     'feels_like': [[_fmt_temp(current['apparent_temperature'], units)]],
-    'high': [[_fmt_temp(daily['temperature_2m_max'][0], units)]],
-    'low': [[_fmt_temp(daily['temperature_2m_min'][0], units)]],
+    'high': [[str(round(daily['temperature_2m_max'][0]))]],
+    'low': [[str(round(daily['temperature_2m_min'][0]))]],
     'wind': [[_fmt_wind(current['wind_speed_10m'], units)]],
     'precip': [[precip]],
   }

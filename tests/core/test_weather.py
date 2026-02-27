@@ -111,8 +111,8 @@ def test_get_variables_imperial_wind_uses_mph(weather_config_imperial: None) -> 
 def test_get_variables_imperial_high_low_format(weather_config_imperial: None) -> None:
   with patch('integrations.weather.requests.get', side_effect=[_mock_geocode(), _mock_forecast(high=75.0, low=59.0)]):
     result = weather.get_variables()
-  assert result['high'][0][0] == '75F'
-  assert result['low'][0][0] == '59F'
+  assert result['high'][0][0] == '75'
+  assert result['low'][0][0] == '59'
 
 
 # --- get_variables: metric ---
@@ -269,6 +269,31 @@ def test_forecast_timeout_raises_unavailable(weather_config_imperial: None) -> N
 
 
 # --- WMO condition mapping ---
+
+
+def test_get_variables_metric_high_low_no_unit(weather_config_metric: None) -> None:
+  with patch(
+    'integrations.weather.requests.get', side_effect=[_mock_geocode('London'), _mock_forecast(high=28.0, low=13.0)]
+  ):
+    result = weather.get_variables()
+  assert result['high'][0][0] == '28'
+  assert result['low'][0][0] == '13'
+
+
+def test_get_variables_high_low_three_digit_fits_note_cols(weather_config_imperial: None) -> None:
+  """Three-digit high/low temps must fit within Note's column width after rendering."""
+  with patch(
+    'integrations.weather.requests.get',
+    side_effect=[_mock_geocode(), _mock_forecast(temp=102.0, high=108.0, low=85.0)],
+  ):
+    result = weather.get_variables()
+  temp = result['temp'][0][0]
+  high = result['high'][0][0]
+  low = result['low'][0][0]
+  rendered = f'{temp} H:{high} L:{low}'
+  assert vb.display_len(rendered) <= vb.VestaboardModel.NOTE.cols, (
+    f'{rendered!r} is {vb.display_len(rendered)} chars, exceeds {vb.VestaboardModel.NOTE.cols}'
+  )
 
 
 def test_wmo_condition_clear() -> None:
