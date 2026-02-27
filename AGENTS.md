@@ -298,13 +298,14 @@ come from GitHub secrets env vars directly.
   - BART: `BART_API_KEY`
   - Vestaboard: `VESTABOARD_VIRTUAL_API_KEY` (use a virtual board, not physical)
   - Trakt: `TRAKT_CLIENT_ID`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`
+  - Discogs: `DISCOGS_TOKEN`
 - CI runs the `integration` job on `main` pushes only; it is advisory
   (`continue-on-error: true`) and not required by the branch ruleset
 - GitHub secrets/vars needed — store as **environment secrets** (or vars) on the
   `integration` environment (Settings → Environments), restricted to the `main`
   branch; this scopes them tighter than repo secrets and prevents any PR branch
   from accessing them even if a workflow runs there:
-  - Secrets: `VESTABOARD_VIRTUAL_API_KEY`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`
+  - Secrets: `VESTABOARD_VIRTUAL_API_KEY`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `DISCOGS_TOKEN`
   - Variables: `TRAKT_CLIENT_ID` (non-sensitive; stored as an environment variable, not a secret)
 - If any integration test is skipped, the pytest session exits with code 5
   (NO_TESTS_COLLECTED), making the advisory job visibly fail rather than silently pass
@@ -329,7 +330,7 @@ prevention here — not just a one-off fix. See #65 for extended notes.
    ```
    gh api repos/JasonPuglisi/e-note-ion/rulesets/13082160 --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'
    ```
-9. **Integration test hygiene** — advisory CI job passing on `main`; GitHub environment secrets/vars present (`BART_API_KEY`, `VESTABOARD_VIRTUAL_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN` as secrets; `TRAKT_CLIENT_ID` as a variable); new integrations have `test_<name>_integration.py` and env vars in `tests/integrations/conftest.py`
+9. **Integration test hygiene** — advisory CI job passing on `main`; GitHub environment secrets/vars present (`BART_API_KEY`, `VESTABOARD_VIRTUAL_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `DISCOGS_TOKEN` as secrets; `TRAKT_CLIENT_ID` as a variable); new integrations have `test_<name>_integration.py` and env vars in `tests/integrations/conftest.py`
 10. **Issue/milestone hygiene**:
     - Every open issue has a milestone (no orphans); scope is right-sized
     - Blocking relationships explicit ("Blocked by #X" in body)
