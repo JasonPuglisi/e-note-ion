@@ -2,7 +2,7 @@
   "templates": {
     "morning_spin": {
       "schedule": {
-        "cron": "0 8 * * *",
+        "cron": "30 8 * * *",
         "hold": 600,
         "timeout": 3600
       },
