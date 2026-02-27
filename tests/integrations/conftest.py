@@ -9,6 +9,7 @@ _INTEGRATION_VARS: list[tuple[str, str]] = [
   ('TRAKT_CLIENT_ID', 'Trakt integration'),
   ('TRAKT_CLIENT_SECRET', 'Trakt integration'),
   ('TRAKT_ACCESS_TOKEN', 'Trakt integration'),
+  ('DISCOGS_TOKEN', 'Discogs integration'),
 ]
 
 _skipped = 0
