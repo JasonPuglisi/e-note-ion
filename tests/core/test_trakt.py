@@ -435,6 +435,7 @@ def test_get_variables_calendar_http_error_does_not_leak_client_id(
 def reset_watching_state() -> None:
   """Clear module-level watching state between tests."""
   trakt._last_watching_vars = None
+  trakt._stop_pending = False
 
 
 def test_get_variables_watching_episode_returns_vars(
@@ -487,9 +488,11 @@ def test_get_variables_watching_204_raises_unavailable(
       trakt.get_variables_watching()
 
 
-def test_get_variables_watching_204_after_playing_returns_violet_stopped_state(
+def test_get_variables_watching_first_204_after_playing_skips(
   config_with_tokens: Path,
 ) -> None:
+  # Regression: #273 — first 204 after watching is debounced to avoid a false
+  # stopped card during back-to-back episode transitions.
   play_response = MagicMock()
   play_response.status_code = 200
   play_response.json.return_value = {
@@ -502,7 +505,30 @@ def test_get_variables_watching_204_after_playing_returns_violet_stopped_state(
 
   with patch('requests.get', side_effect=[play_response, stop_response]):
     trakt.get_variables_watching()
-    result = trakt.get_variables_watching()
+    with pytest.raises(IntegrationDataUnavailableError):
+      trakt.get_variables_watching()  # first 204 — debounced, not shown yet
+
+  assert trakt._stop_pending is True
+
+
+def test_get_variables_watching_second_204_returns_violet_stopped_state(
+  config_with_tokens: Path,
+) -> None:
+  play_response = MagicMock()
+  play_response.status_code = 200
+  play_response.json.return_value = {
+    'type': 'episode',
+    'show': {'title': 'My Show'},
+    'episode': {'season': 1, 'number': 3, 'title': 'Pilot'},
+  }
+  stop_response = MagicMock()
+  stop_response.status_code = 204
+
+  with patch('requests.get', side_effect=[play_response, stop_response, stop_response]):
+    trakt.get_variables_watching()
+    with pytest.raises(IntegrationDataUnavailableError):
+      trakt.get_variables_watching()  # first 204 — skip
+    result = trakt.get_variables_watching()  # second consecutive 204 — emit
 
   assert result['status_line'] == [['[V] NOW PLAYING']]
   assert result['show_name'] == [['MY SHOW']]
@@ -523,11 +549,38 @@ def test_get_variables_watching_state_cleared_after_stopped(
   stop_response = MagicMock()
   stop_response.status_code = 204
 
-  with patch('requests.get', side_effect=[play_response, stop_response, stop_response]):
+  with patch('requests.get', side_effect=[play_response, stop_response, stop_response, stop_response]):
     trakt.get_variables_watching()
-    trakt.get_variables_watching()  # returns violet stopped state, clears cache
+    with pytest.raises(IntegrationDataUnavailableError):
+      trakt.get_variables_watching()  # first 204 — skip
+    trakt.get_variables_watching()  # second 204 — violet indicator, clears cache
     with pytest.raises(IntegrationDataUnavailableError):
       trakt.get_variables_watching()  # no prior state — raises
+
+
+def test_get_variables_watching_play_after_first_204_resets_pending(
+  config_with_tokens: Path,
+) -> None:
+  # Back-to-back: play → first 204 (skip) → play (next episode) → green card.
+  # _stop_pending is reset so a future genuine stop still shows the indicator.
+  play_response = MagicMock()
+  play_response.status_code = 200
+  play_response.json.return_value = {
+    'type': 'episode',
+    'show': {'title': 'My Show'},
+    'episode': {'season': 1, 'number': 3, 'title': 'Pilot'},
+  }
+  stop_response = MagicMock()
+  stop_response.status_code = 204
+
+  with patch('requests.get', side_effect=[play_response, stop_response, play_response]):
+    trakt.get_variables_watching()
+    with pytest.raises(IntegrationDataUnavailableError):
+      trakt.get_variables_watching()  # first 204 — skip
+    result = trakt.get_variables_watching()  # new episode scrobbled
+
+  assert result['status_line'] == [['[G] NOW PLAYING']]
+  assert trakt._stop_pending is False
 
 
 def test_clear_watching_state_resets_cached_vars(config_with_tokens: Path) -> None:
