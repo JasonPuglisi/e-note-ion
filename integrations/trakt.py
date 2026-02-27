@@ -38,6 +38,10 @@ _auth_lock = threading.Lock()
 # Last successfully fetched watching state; used to emit a stopped indicator
 # when a subsequent poll returns 204 (nothing playing).
 _last_watching_vars: dict[str, list[list[str]]] | None = None
+# True after the first 204 following a watching session. The violet stopped
+# indicator is held back until a second consecutive 204 so that back-to-back
+# episode transitions (autoplay gap ~30 s) don't produce a false stopped card.
+_stop_pending: bool = False
 _watching_lock = threading.Lock()
 
 
@@ -286,9 +290,10 @@ def clear_watching_state() -> None:
   Called by plex.py when a Plex event fires, preventing a stale Trakt stopped
   indicator from appearing after Plex has already handled the stop.
   """
-  global _last_watching_vars
+  global _last_watching_vars, _stop_pending
   with _watching_lock:
     _last_watching_vars = None
+    _stop_pending = False
 
 
 def get_variables_watching() -> dict[str, list[list[str]]]:
@@ -296,15 +301,16 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
 
   Returns variables: status_line, show_name, episode_ref, episode_title.
   status_line is '[G] NOW PLAYING' when playing, '[V] NOW PLAYING' on the
-  first poll after playback ends (violet = Trakt brand colour; used as a
-  generic stopped indicator since polling cannot distinguish pause/stop/finish).
+  second consecutive poll that returns 204 after playback ends (violet = Trakt
+  brand colour; the one-poll debounce prevents false stopped cards during
+  back-to-back episode transitions).
   For movies: episode_ref = 'MOVIE', episode_title = ''.
   All values are uppercased.
 
   Raises IntegrationDataUnavailableError if nothing is currently playing and
   no prior state was cached.
   """
-  global _last_watching_vars
+  global _last_watching_vars, _stop_pending
   import config as _config_mod
 
   token = _get_token()
@@ -319,8 +325,17 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
   if r.status_code == 204:
     with _watching_lock:
       last = _last_watching_vars
-      _last_watching_vars = None
-    if last is not None:
+      pending = _stop_pending
+      if last is not None:
+        if pending:
+          # Second consecutive 204 — genuine stop confirmed; emit indicator.
+          _last_watching_vars = None
+          _stop_pending = False
+        else:
+          # First 204 after a watching session — debounce: skip this cycle so
+          # a back-to-back episode transition doesn't produce a false stop card.
+          _stop_pending = True
+    if last is not None and pending:
       stopped = dict(last)
       stopped['status_line'] = [['[V] NOW PLAYING']]
       return stopped
@@ -354,4 +369,5 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
   }
   with _watching_lock:
     _last_watching_vars = result
+    _stop_pending = False
   return result
