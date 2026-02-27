@@ -151,6 +151,26 @@ def test_wrap_lines_does_not_join_separate_lines() -> None:
   assert result[1] == 'LINE TWO'
 
 
+def test_wrap_lines_ellipsis_truncates_instead_of_wrapping() -> None:
+  # With ellipsis strategy a long line must stay on one row, not wrap.
+  # This is the Discogs bug: a long album title was wrapping onto row 3,
+  # pushing the artist name off the board entirely.
+  long_line = 'HOLLOW KNIGHT GODS AND MONSTERS'  # > 15 cols
+  result = vb._wrap_lines([long_line], truncation='ellipsis')  # noqa: SLF001
+  assert len(result) == 1
+  assert vb.display_len(result[0]) <= vb.model.cols
+  assert result[0].endswith('...')
+
+
+def test_wrap_lines_ellipsis_preserves_fixed_layout() -> None:
+  # Three-line fixed layout: long album must not push artist off row 3.
+  lines = ['[Y] MORNING SPIN', 'HOLLOW KNIGHT GODS AND MONSTERS', 'TEAM CHERRY']
+  result = vb._wrap_lines(lines, truncation='ellipsis')  # noqa: SLF001
+  assert result[0] == '[Y] MORNING SPIN'
+  assert result[1].endswith('...')
+  assert result[2] == 'TEAM CHERRY'
+
+
 # --- _expand_format ---
 
 
