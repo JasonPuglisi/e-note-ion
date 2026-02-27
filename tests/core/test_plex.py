@@ -47,6 +47,12 @@ def _empty_config(monkeypatch: pytest.MonkeyPatch) -> None:
   monkeypatch.setattr(_cfg, '_config', {})
 
 
+@pytest.fixture(autouse=True)
+def _reset_stop_processed(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Reset _stop_processed module state before each test."""
+  monkeypatch.setattr(_plex, '_stop_processed', False)
+
+
 # ---------------------------------------------------------------------------
 # play / resume → now_playing
 # ---------------------------------------------------------------------------
@@ -280,3 +286,44 @@ def test_handle_webhook_stop_has_supersede_tag() -> None:
   result = _plex.handle_webhook({'event': 'media.stop'})
   assert result is not None
   assert result.supersede_tag == 'plex'
+
+
+# ---------------------------------------------------------------------------
+# Duplicate stop suppression
+# ---------------------------------------------------------------------------
+
+
+def test_handle_webhook_first_stop_returns_message() -> None:
+  """The first media.stop in a session is always processed."""
+  result = _plex.handle_webhook({'event': 'media.stop'})
+  assert isinstance(result, _mod.WebhookMessage)
+
+
+def test_handle_webhook_duplicate_stop_returns_none() -> None:
+  """A second media.stop with no intervening play/resume is silently discarded."""
+  _plex.handle_webhook({'event': 'media.stop'})
+  result = _plex.handle_webhook({'event': 'media.stop'})
+  assert result is None
+
+
+def test_handle_webhook_stop_after_play_resets_and_fires() -> None:
+  """media.play clears _stop_processed so the next stop is processed normally."""
+  _plex.handle_webhook({'event': 'media.stop'})
+  _plex.handle_webhook(_episode_payload('media.play'))
+  result = _plex.handle_webhook({'event': 'media.stop'})
+  assert isinstance(result, _mod.WebhookMessage)
+
+
+def test_handle_webhook_stop_after_resume_resets_and_fires() -> None:
+  """media.resume clears _stop_processed so the next stop is processed normally."""
+  _plex.handle_webhook({'event': 'media.stop'})
+  _plex.handle_webhook(_episode_payload('media.resume'))
+  result = _plex.handle_webhook({'event': 'media.stop'})
+  assert isinstance(result, _mod.WebhookMessage)
+
+
+def test_handle_webhook_pause_does_not_set_stop_processed() -> None:
+  """media.pause is informational and must not suppress a subsequent media.stop."""
+  _plex.handle_webhook(_episode_payload('media.pause'))
+  result = _plex.handle_webhook({'event': 'media.stop'})
+  assert isinstance(result, _mod.WebhookMessage)
