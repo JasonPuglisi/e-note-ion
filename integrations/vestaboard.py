@@ -407,12 +407,19 @@ def _wrap_lines(
   A word that alone exceeds model.cols is truncated using `truncation`. Lines
   are never joined together — wrapping only splits; short lines pass through
   unchanged.
+
+  Exception: when `truncation` is 'ellipsis', long lines are truncated to one
+  row with '...' rather than wrapped. This preserves fixed-layout templates
+  where each format entry must occupy exactly one row.
   """
   cols = model.cols
   result: list[str] = []
   for line in lines:
     if display_len(line) <= cols:
       result.append(line)
+      continue
+    if truncation == 'ellipsis':
+      result.append(truncate_line(line, cols, 'ellipsis'))
       continue
     words = line.split(' ')
     current: list[str] = []
