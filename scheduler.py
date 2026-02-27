@@ -755,20 +755,30 @@ def load_content(
   public_mode: bool = False,
   content_enabled: set[str] | None = None,
 ) -> None:
-  # Reads JSON files from content/user/ (always) and content/contrib/
-  # (only stems listed in content_enabled, or all if '*' is present).
-  if content_enabled is None:
-    content_enabled = set()
+  # Reads JSON files from content/user/ and content/contrib/.
+  #
+  # When content_enabled is None (key absent from config), user files always
+  # load and no contrib files load — preserving the pre-filter default.
+  #
+  # When content_enabled is a set (key explicitly configured), the filter
+  # applies to both directories: '*' enables all files; specific stems select
+  # individual files from either directory.
+
+  def _enabled(stem: str) -> bool:
+    if content_enabled is None:
+      return True
+    return '*' in content_enabled or stem in content_enabled
 
   user_path = Path('content') / 'user'
   if user_path.is_dir():
     for f in sorted(user_path.glob('*.json')):
-      _load_file(scheduler, f, public_mode)
+      if _enabled(f.stem):
+        _load_file(scheduler, f, public_mode)
 
   contrib_path = Path('content') / 'contrib'
   if contrib_path.is_dir() and content_enabled:
     for f in sorted(contrib_path.glob('*.json')):
-      if '*' in content_enabled or f.stem in content_enabled:
+      if _enabled(f.stem):
         _load_file(scheduler, f, public_mode)
 
 
@@ -826,15 +836,16 @@ def main() -> None:
 
   board_desc = 'Flagship (6×22)' if model == 'flagship' else 'Note (3×15)'
   extras: list[str] = []
-  if content_enabled:
-    if '*' in content_enabled:
-      extras.append('all contrib content')
-    else:
-      extras.append(f'contrib: {", ".join(sorted(content_enabled))}')
+  if content_enabled is None:
+    extras.append('user content only')
+  elif '*' in content_enabled:
+    extras.append('all content')
+  elif content_enabled:
+    extras.append(f'content: {", ".join(sorted(content_enabled))}')
+  else:
+    extras.append('no content loaded')
   if public_mode:
     extras.append('public mode')
-  if not extras:
-    extras.append('user content only')
   version = importlib.metadata.version('e-note-ion')
   print(f'Starting e-note-ion v{version} — {board_desc}, {", ".join(extras)}')
 

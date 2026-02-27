@@ -15,8 +15,11 @@
 # is in a shared or guest-visible space.
 # public = true
 
-# Bundled contrib content to enable. Use ["*"] to enable all, or list specific
-# stems: ["bart", "trakt"]. Omit or leave empty to disable all contrib content.
+# Content filter. When absent, all user content loads and no contrib content
+# loads. When set, the filter applies to both user and contrib directories:
+#   ["*"]              — all user + all contrib
+#   ["bart", "trakt"]  — only these stems from either directory
+#   ["my_quotes"]      — only my_quotes.json from content/user/
 # content_enabled = ["*"]
 
 # Global minimum hold (seconds). Every message is guaranteed to display for at

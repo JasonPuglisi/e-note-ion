@@ -141,7 +141,7 @@ Key `[scheduler]` settings:
 |---|---|---|
 | `model` | `"note"` | Display model: `"note"` (3×15) or `"flagship"` (6×22) |
 | `public` | `false` | Skip templates marked `public = false` (for shared spaces) |
-| `content_enabled` | _(absent)_ | Contrib content to enable: `["*"]` for all, or `["bart", "trakt"]` for specific stems |
+| `content_enabled` | _(absent)_ | Content filter for both `user/` and `contrib/`: absent = all user loads, no contrib; `["*"]` = all user + all contrib; `["bart", "my_quotes"]` = only matching stems from either directory |
 | `timezone` | system TZ | IANA timezone for cron job scheduling (e.g. `"America/Los_Angeles"`) |
 | `min_hold` | `60` | Minimum seconds any message stays on display before a high-priority (≥8) queued message can interrupt it. Set to `0` to disable (not recommended for physical displays). |
 
@@ -155,7 +155,7 @@ cp config.example.toml config.toml  # fill in your API key
 uv run e-note-ion
 ```
 
-Display model, public mode, and enabled contrib content are set in `config.toml`
+Display model, public mode, and content filter are set in `config.toml`
 under `[scheduler]`. See [Configuration](#configuration) for details.
 
 ## Content files
@@ -163,9 +163,10 @@ under `[scheduler]`. See [Configuration](#configuration) for details.
 Content is defined as JSON files in two directories:
 
 - **`content/contrib/`** — bundled community-contributed content, disabled by
-  default. Enable files via `[scheduler].content_enabled` in `config.toml`.
-- **`content/user/`** — personal content, always loaded. Git-ignored; mount
-  your own directory here or symlink to a private repo for versioning.
+  default. Enable via `[scheduler].content_enabled` in `config.toml`.
+- **`content/user/`** — personal content. Loaded automatically when
+  `content_enabled` is absent; filtered alongside contrib when it is set.
+  Git-ignored; mount your own directory here or symlink to a private repo.
 
 See [`content/README.md`](content/README.md) for the full content format
 reference, including template fields, variables, color squares, priority

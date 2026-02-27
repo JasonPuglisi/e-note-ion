@@ -417,6 +417,42 @@ def test_load_content_missing_dirs_dont_raise(
   assert len(sched.get_jobs()) == 0
 
 
+def test_load_content_user_filtered_when_content_enabled_set(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  """When content_enabled is set, user files not matching the filter are skipped."""
+  user_dir = tmp_path / 'content' / 'user'
+  user_dir.mkdir(parents=True)
+  _make_file(user_dir, 'mine.json')
+  monkeypatch.chdir(tmp_path)
+  _mod.load_content(sched, content_enabled={'other'})
+  assert len(sched.get_jobs()) == 0
+
+
+def test_load_content_user_loaded_when_stem_matches(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  """A user file whose stem is listed in content_enabled is loaded."""
+  user_dir = tmp_path / 'content' / 'user'
+  user_dir.mkdir(parents=True)
+  _make_file(user_dir, 'mine.json')
+  monkeypatch.chdir(tmp_path)
+  _mod.load_content(sched, content_enabled={'mine'})
+  assert len(sched.get_jobs()) == 1
+
+
+def test_load_content_user_loaded_when_star(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  """content_enabled={'*'} loads user files alongside contrib."""
+  user_dir = tmp_path / 'content' / 'user'
+  user_dir.mkdir(parents=True)
+  _make_file(user_dir, 'mine.json')
+  monkeypatch.chdir(tmp_path)
+  _mod.load_content(sched, content_enabled={'*'})
+  assert len(sched.get_jobs()) == 1
+
+
 # --- _load_file schedule overrides ---
 
 
@@ -837,7 +873,7 @@ def test_main_note_startup_banner(monkeypatch: pytest.MonkeyPatch, capsys: pytes
     patch('config.load_config'),
     patch('config.get_model', return_value='note'),
     patch('config.get_public_mode', return_value=False),
-    patch('config.get_content_enabled', return_value=set()),
+    patch('config.get_content_enabled', return_value=None),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
@@ -856,7 +892,7 @@ def test_main_version_in_banner(capsys: pytest.CaptureFixture[str]) -> None:
     patch('config.load_config'),
     patch('config.get_model', return_value='note'),
     patch('config.get_public_mode', return_value=False),
-    patch('config.get_content_enabled', return_value=set()),
+    patch('config.get_content_enabled', return_value=None),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
@@ -878,7 +914,7 @@ def test_main_flagship_sets_model_and_banner(
     patch('config.load_config'),
     patch('config.get_model', return_value='flagship'),
     patch('config.get_public_mode', return_value=False),
-    patch('config.get_content_enabled', return_value=set()),
+    patch('config.get_content_enabled', return_value=None),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
@@ -898,7 +934,7 @@ def test_main_public_mode_in_banner(monkeypatch: pytest.MonkeyPatch, capsys: pyt
     patch('config.load_config'),
     patch('config.get_model', return_value='note'),
     patch('config.get_public_mode', return_value=True),
-    patch('config.get_content_enabled', return_value=set()),
+    patch('config.get_content_enabled', return_value=None),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
@@ -926,7 +962,7 @@ def test_main_content_enabled_in_banner(monkeypatch: pytest.MonkeyPatch, capsys:
   ):
     _mod.main()
   out = capsys.readouterr().out
-  assert 'contrib: bart' in out
+  assert 'content: bart' in out
 
 
 def test_main_empty_board_on_startup(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -936,7 +972,7 @@ def test_main_empty_board_on_startup(monkeypatch: pytest.MonkeyPatch, capsys: py
     patch('config.load_config'),
     patch('config.get_model', return_value='note'),
     patch('config.get_public_mode', return_value=False),
-    patch('config.get_content_enabled', return_value=set()),
+    patch('config.get_content_enabled', return_value=None),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', side_effect=vb.EmptyBoardError('no message')),
     patch('threading.Thread'),
@@ -960,7 +996,7 @@ def test_main_passes_timezone_to_scheduler(monkeypatch: pytest.MonkeyPatch) -> N
     patch('config.load_config'),
     patch('config.get_model', return_value='note'),
     patch('config.get_public_mode', return_value=False),
-    patch('config.get_content_enabled', return_value=set()),
+    patch('config.get_content_enabled', return_value=None),
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
