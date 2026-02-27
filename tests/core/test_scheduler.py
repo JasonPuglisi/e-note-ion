@@ -1849,6 +1849,37 @@ def test_known_integrations_covers_all_integration_modules() -> None:
   from pathlib import Path
 
   integrations_dir = Path(importlib.import_module('integrations').__file__).parent  # type: ignore[arg-type]
-  modules = {p.stem for p in integrations_dir.glob('*.py') if p.stem not in ('__init__', 'vestaboard')}
+  modules = {p.stem for p in integrations_dir.glob('*.py') if p.stem not in ('__init__', 'vestaboard', 'http')}
   missing = modules - _mod._KNOWN_INTEGRATIONS
   assert not missing, f'Integrations missing from _KNOWN_INTEGRATIONS: {missing}'
+
+
+def test_worker_logs_warning_on_integration_data_unavailable(capsys: pytest.CaptureFixture[str]) -> None:
+  """IntegrationDataUnavailableError must log a warning rather than silently skipping."""
+  msg = _mod.QueuedMessage(
+    priority=5,
+    seq=0,
+    name='contrib.weather.conditions',
+    scheduled_at=time.monotonic(),
+    data={
+      'templates': [{'format': ['HELLO']}],
+      'variables': {},
+      'truncation': 'hard',
+      'integration': 'weather',
+    },
+    hold=0,
+    timeout=3600,
+  )
+  mock_integration = MagicMock()
+  mock_integration.get_variables.side_effect = IntegrationDataUnavailableError('forecast error 504')
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch.object(_mod, '_get_integration', return_value=mock_integration),
+    patch('integrations.vestaboard.set_state'),
+    patch('time.sleep'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+  output = capsys.readouterr().out
+  assert 'contrib.weather.conditions' in output
+  assert 'forecast error 504' in output

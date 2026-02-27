@@ -6,14 +6,17 @@ import requests
 
 import integrations.bart as bart
 import integrations.vestaboard as vb
+from exceptions import IntegrationDataUnavailableError
 
 
 @pytest.fixture(autouse=True)
-def reset_color_cache() -> Generator[None, None, None]:
-  """Reset the module-level route color cache before each test."""
+def reset_caches() -> Generator[None, None, None]:
+  """Reset module-level caches before each test."""
   bart._dest_color_cache = None
+  bart._departures_cache = None
   yield
   bart._dest_color_cache = None  # type: ignore[assignment]
+  bart._departures_cache = None
 
 
 @pytest.fixture()
@@ -105,7 +108,7 @@ def test_get_variables_missing_station(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_variables_returns_station_and_line1(bart_config: None) -> None:
-  with patch('integrations.bart.requests.get', side_effect=[_mock_routes_empty(), _mock_etd()]):
+  with patch('integrations.bart.fetch_with_retry', side_effect=[_mock_routes_empty(), _mock_etd()]):
     result = bart.get_variables()
   assert 'station' in result
   assert 'line1' in result
@@ -116,28 +119,75 @@ def test_get_variables_no_service_when_dest_not_in_etd(bart_config: None) -> Non
   mock_etd = MagicMock()
   mock_etd.raise_for_status.return_value = None
   mock_etd.json.return_value = {'root': {'station': [{'name': 'Milpitas', 'etd': []}]}}
-  with patch('integrations.bart.requests.get', side_effect=[_mock_routes_empty(), mock_etd]):
+  with patch('integrations.bart.fetch_with_retry', side_effect=[_mock_routes_empty(), mock_etd]):
     result = bart.get_variables()
   assert 'NO SERVICE' in result['line1'][0][0]
 
 
 def test_get_variables_line1_fits_display(bart_config: None) -> None:
-  with patch('integrations.bart.requests.get', side_effect=[_mock_routes_empty(), _mock_etd()]):
+  with patch('integrations.bart.fetch_with_retry', side_effect=[_mock_routes_empty(), _mock_etd()]):
     result = bart.get_variables()
   line = result['line1'][0][0]
   assert vb.display_len(line) <= vb.model.cols
 
 
 def test_get_variables_http_error_does_not_leak_key(bart_config: None) -> None:
-  """HTTPError re-raise must not include the API key in the error message."""
+  """Error on departures fetch must not include the API key in the error message."""
   err_resp = MagicMock()
   err_resp.status_code = 503
   err_resp.reason = 'Service Unavailable'
-  mock_routes = _mock_routes_empty()
-  mock_etd = MagicMock()
-  mock_etd.raise_for_status.side_effect = requests.HTTPError(response=err_resp)
 
-  with patch('integrations.bart.requests.get', side_effect=[mock_routes, mock_etd]):
-    with pytest.raises(requests.HTTPError) as exc_info:
+  with patch(
+    'integrations.bart.fetch_with_retry',
+    side_effect=[_mock_routes_empty(), requests.HTTPError(response=err_resp)],
+  ):
+    with pytest.raises(IntegrationDataUnavailableError) as exc_info:
       bart.get_variables()
   assert 'test-bart-key' not in str(exc_info.value)
+
+
+# --- departures cache ---
+
+
+def test_departures_cache_hit_within_ttl_returns_cached_value(bart_config: None) -> None:
+  """On API failure within TTL, cached departures are returned instead of raising."""
+  with patch('integrations.bart.fetch_with_retry', side_effect=[_mock_routes_empty(), _mock_etd(minutes='05')]):
+    bart.get_variables()
+
+  with patch('integrations.bart.fetch_with_retry', side_effect=[requests.ConnectionError()]):
+    result = bart.get_variables()
+
+  assert '05' in result['line1'][0][0]
+
+
+def test_departures_cache_expired_raises_unavailable(bart_config: None, monkeypatch: pytest.MonkeyPatch) -> None:
+  """On API failure with an expired cache, raises IntegrationDataUnavailableError."""
+  import time
+
+  with patch('integrations.bart.fetch_with_retry', side_effect=[_mock_routes_empty(), _mock_etd()]):
+    bart.get_variables()
+
+  assert bart._departures_cache is not None
+  monkeypatch.setattr(bart._departures_cache, 'cached_at', time.monotonic() - bart._DEPARTURES_CACHE_TTL - 1)
+
+  with patch('integrations.bart.fetch_with_retry', side_effect=[requests.ConnectionError()]):
+    with pytest.raises(IntegrationDataUnavailableError):
+      bart.get_variables()
+
+
+def test_departures_cache_cold_start_raises_unavailable(bart_config: None) -> None:
+  """With no cache and API down, raises IntegrationDataUnavailableError."""
+  with patch(
+    'integrations.bart.fetch_with_retry',
+    side_effect=[_mock_routes_empty(), requests.ConnectionError()],
+  ):
+    with pytest.raises(IntegrationDataUnavailableError):
+      bart.get_variables()
+
+
+def test_departures_cache_updated_on_success(bart_config: None) -> None:
+  """Successful fetch writes to the departures cache."""
+  assert bart._departures_cache is None
+  with patch('integrations.bart.fetch_with_retry', side_effect=[_mock_routes_empty(), _mock_etd()]):
+    bart.get_variables()
+  assert bart._departures_cache is not None

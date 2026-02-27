@@ -316,8 +316,9 @@ def worker() -> None:
         variables,
         message.data.get('truncation', 'hard'),
       )
-    except IntegrationDataUnavailableError:
-      continue  # expected empty state — skip silently
+    except IntegrationDataUnavailableError as e:
+      print(f'[{datetime.now().strftime("%H:%M:%S")}] Skipping {message.name}: {e}')
+      continue
     except vestaboard.DuplicateContentError:
       print(f'Duplicate content for {message.name} — already on board, still holding.')
       # Fall through to _do_hold(): content is already showing; we must still
