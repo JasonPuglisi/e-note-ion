@@ -157,12 +157,52 @@ takes precedence over all other fields — the template is skipped entirely.
 `private = true` marks a template as hidden in public mode even if the JSON
 does not.
 
+## Schedule coordination
+
+Templates that fire on a shared schedule compete for the display queue.
+Follow these guidelines when setting `cron`, `hold`, and `timeout` for a new
+template to keep everything playing nicely together.
+
+### Existing hourly slots
+
+| Slot | What fires | Notes |
+|---|---|---|
+| `:00` every hour | `weather` (priority 5, hold 600s) | Plus `trakt.calendar` every 4h (priority 4) and `aria` at 8am/8pm (priority 9) |
+| `:30` every hour | `calendar` (priority 5, hold 300s) | Plus `discogs` at 8:30am (priority 5) |
+
+**New templates that fire hourly should pick `:00` or `:30` and check what
+else fires there.** Avoid adding a third integration to a slot that already
+has two.
+
+### Pairing `timeout` with `hold`
+
+`timeout` is how long a message can wait in the queue before being discarded.
+Set it long enough to survive the hold of whatever it queues behind:
+
+- A priority-5 template firing at `:00` queues behind `weather` (600s hold).
+  Set `timeout >= 600` — otherwise the message expires before `weather` finishes.
+- A priority-4 template firing alongside a priority-5 template needs
+  `timeout` long enough to outlast both the higher-priority hold *and* any
+  queue drain time. `timeout = 1800` is a safe floor for low-priority hourly
+  content.
+
+Short `timeout` values (≤ 600s) are appropriate only for high-priority,
+time-sensitive content (e.g. BART departures) where a stale message is worse
+than no message.
+
+### Priority reminder
+
+Priority controls queue order, not fire time. Two templates with the same
+cron expression fire at the same instant — priority decides which shows first.
+Don't inflate priority to "win" — see the priority guidelines above.
+
 ## Contrib integrations
 
 | File | Description |
 |---|---|
 | [`bart.json`](contrib/bart.md) | BART real-time departure board |
 | [`discogs.json`](contrib/discogs.md) | Daily vinyl suggestion from your Discogs collection |
+| [`calendar.json`](contrib/calendar.md) | Today's calendar events (ICS and iCloud CalDAV) |
 | [`plex.json`](contrib/plex.md) | Plex Media Server now-playing via webhook |
 | [`trakt.json`](contrib/trakt.md) | Trakt.tv upcoming calendar and now-playing |
 | [`weather.json`](contrib/weather.md) | Current weather conditions via Open-Meteo |

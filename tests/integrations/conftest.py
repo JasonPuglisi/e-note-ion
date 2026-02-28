@@ -4,8 +4,12 @@ from pathlib import Path
 import pytest
 
 _INTEGRATION_VARS: list[tuple[str, str]] = [
-  ('BART_API_KEY', 'BART integration'),
   ('VESTABOARD_VIRTUAL_API_KEY', 'Vestaboard integration'),
+  ('CALENDAR_URL', 'Calendar integration (ICS mode)'),
+  ('CALENDAR_CALDAV_URL', 'Calendar integration (CalDAV mode)'),
+  ('CALENDAR_USERNAME', 'Calendar integration (CalDAV mode)'),
+  ('CALENDAR_PASSWORD', 'Calendar integration (CalDAV mode)'),
+  ('BART_API_KEY', 'BART integration'),
   ('TRAKT_CLIENT_ID', 'Trakt integration'),
   ('TRAKT_CLIENT_SECRET', 'Trakt integration'),
   ('TRAKT_ACCESS_TOKEN', 'Trakt integration'),
