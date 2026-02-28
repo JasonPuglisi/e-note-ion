@@ -1,8 +1,9 @@
 # plex.json
 
 Plex Media Server integration — shows what you are currently watching on the
-board using Plex webhooks. Displays "NOW PLAYING" when playback starts or
-resumes, "PAUSED" when playback is paused, and clears when playback stops.
+board using Plex webhooks. Shows "NOW PLAYING" when playback starts, resumes,
+pauses, or stops — the color square signals the state (green for playing,
+yellow for paused, red for stopped).
 
 Unlike cron-scheduled templates, these templates are triggered entirely by
 incoming Plex webhook events. No content is shown when Plex is idle.
@@ -123,15 +124,31 @@ Only video media is displayed — music and photo events return no message.
 **Note (3×15):**
 
 ```
-[O] NOW PLAYING
+[G] NOW PLAYING        ← playing (green)
+SHOW NAME
+S3E3 EPISODE TITLE
+
+[Y] NOW PLAYING        ← paused (yellow)
+SHOW NAME
+S3E3 EPISODE TITLE
+
+[R] NOW PLAYING        ← stopped (red, brief 60s card)
 SHOW NAME
 S3E3 EPISODE TITLE
 ```
 
-- Row 1: `[O]` (orange, Plex brand color) + mode label
+- Row 1: color square (data-driven, see below) + `NOW PLAYING`
 - Row 2: Show name (for episodes) or movie title (for movies)
 - Row 3: Season/episode reference + episode title (e.g. `S3E3 BEEF`), truncated
   with ellipsis if too long. For movies, row 3 is blank.
+
+Color indicates playback state:
+
+| State | Color | Hold |
+|---|---|---|
+| Playing | `[G]` green | Indefinite (until paused/stopped) |
+| Paused | `[Y]` yellow | Indefinite (until resumed/stopped) |
+| Stopped | `[R]` red | 60 seconds |
 
 Leading articles are stripped from episode titles only. Show names and
 movie titles are preserved as-is: "THE BEAR" stays "THE BEAR", but the

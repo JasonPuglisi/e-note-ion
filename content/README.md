@@ -115,6 +115,11 @@ fetch current variable values:
 }
 ```
 
+By default the worker calls `get_variables()` on the integration module. To
+call a different function, add `"integration_fn": "<function_name>"` to the
+template — useful when one integration exposes multiple data sources (e.g.
+Trakt's `get_variables_calendar` and `get_variables_watching`).
+
 ### Priority guidelines
 
 Priority determines which message is shown first when multiple jobs fire at

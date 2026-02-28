@@ -93,8 +93,12 @@ jobs:
         run: uv run pytest -m integration -v
         env:
           BART_API_KEY: ${{ secrets.BART_API_KEY }}
-          VESTABOARD_VIRTUAL_API_KEY: ${{ secrets.VESTABOARD_VIRTUAL_API_KEY }}
+          CALENDAR_URL: ${{ secrets.CALENDAR_URL }}
+          CALENDAR_CALDAV_URL: ${{ secrets.CALENDAR_CALDAV_URL }}
+          CALENDAR_USERNAME: ${{ secrets.CALENDAR_USERNAME }}
+          CALENDAR_PASSWORD: ${{ secrets.CALENDAR_PASSWORD }}
+          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
           TRAKT_CLIENT_ID: ${{ vars.TRAKT_CLIENT_ID }}
           TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
           TRAKT_ACCESS_TOKEN: ${{ secrets.TRAKT_ACCESS_TOKEN }}
-          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+          VESTABOARD_VIRTUAL_API_KEY: ${{ secrets.VESTABOARD_VIRTUAL_API_KEY }}

@@ -119,7 +119,7 @@ token = "your-discogs-personal-access-token"
 # folder_id = "0"
 
 # [discogs.schedules.morning_spin]
-# cron = "0 9 * * *"
+# cron = "30 8 * * *"
 # hold = 600
 # timeout = 3600
 # priority = 5
