@@ -72,7 +72,10 @@ integrations/discogs.py     # Daily vinyl suggestion from Discogs collection
 integrations/trakt.py       # Trakt.tv calendar and now-playing (OAuth device flow)
 integrations/plex.py        # Plex Media Server now-playing via webhook
 content/
+  README.md                 # Content author reference: JSON format, priority, schedule coordination
+  DESIGN.md                 # Visual/design conventions: layout, color, tone, character set
   contrib/                  # Bundled community content (disabled by default)
+    TEMPLATE.md             # Sidecar doc template for new integrations
     weather.json            # Current weather conditions
     weather.md              # Sidecar doc: configuration and data sources
     calendar.json           # Today's calendar events (ICS and iCloud CalDAV)
@@ -86,6 +89,8 @@ content/
     plex.json               # Plex Media Server now-playing (webhook-only)
     plex.md                 # Sidecar doc: Plex Pass requirement and webhook setup
   user/                     # Personal content (always loaded, git-ignored)
+docs/
+  webhook-reverse-proxy.md  # Webhook TLS setup guide (Tailscale Funnel, reverse proxy)
 .env.example                # Template for local integration test secrets (copy to .env, fill in, git-ignored)
 Dockerfile                  # Single-stage image using ghcr.io/astral-sh/uv
 .github/workflows/
@@ -167,6 +172,11 @@ static `variables` dict. When the job fires, the worker calls
 dynamic data (e.g. real-time API responses) to populate `{variable}`
 placeholders in the format. The `variables` key is optional when an
 integration is present.
+
+Add `"integration_fn": "<function_name>"` to call a function other than
+`get_variables` on the integration module. This lets a single integration
+expose multiple data sources (e.g. Trakt's `get_variables_calendar` and
+`get_variables_watching`).
 
 Color squares can be embedded in format strings and integration output using
 short tags: `[R]` `[O]` `[Y]` `[G]` `[B]` `[V]` `[W]` `[K]` (red, orange,

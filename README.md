@@ -202,6 +202,7 @@ uv run pyright
 uv run bandit -c pyproject.toml -r .
 uv run pip-audit
 uv run pre-commit run pretty-format-json --all-files
+uv run pytest
 ```
 
 All checks are also enforced as pre-commit hooks.
