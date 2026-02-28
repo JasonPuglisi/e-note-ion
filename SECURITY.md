@@ -10,8 +10,8 @@ steps to reproduce, and any potential impact.
 
 ## API Key Handling
 
-This project requires a Vestaboard Read/Write API key via the `VESTABOARD_API_KEY`
-environment variable. Keep this key out of version control and never include it
-in content JSON files or Docker image builds. When running with Docker, pass it
-at runtime via `-e VESTABOARD_API_KEY=...` or an env file, not in the `Dockerfile`
-or image layers.
+This project stores secrets (Vestaboard API key, integration credentials) in
+`config.toml`, which is git-ignored. Never commit `config.toml` or include
+secrets in content JSON files or Docker image builds. When running with Docker,
+mount `config.toml` at runtime via `-v /path/to/config.toml:/app/config.toml`,
+not baked into the image.
