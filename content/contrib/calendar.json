@@ -1,0 +1,22 @@
+{
+  "templates": {
+    "today": {
+      "schedule": {
+        "cron": "30 * * * *",
+        "hold": 300,
+        "timeout": 1800
+      },
+      "priority": 5,
+      "truncation": "ellipsis",
+      "integration": "calendar",
+      "templates": [
+        {
+          "format": [
+            "TODAY",
+            "{events}"
+          ]
+        }
+      ]
+    }
+  }
+}

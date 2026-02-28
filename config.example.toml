@@ -18,7 +18,7 @@
 # Content filter. When absent, all user content loads and no contrib content
 # loads. When set, the filter applies to both user and contrib directories:
 #   ["*"]              — all user + all contrib
-#   ["bart", "trakt"]  — only these stems from either directory
+#   ["calendar", "weather"]  — only these stems from either directory
 #   ["my_quotes"]      — only my_quotes.json from content/user/
 # content_enabled = ["*"]
 
@@ -28,9 +28,65 @@
 # displays — flaps need time to settle). Default: 60.
 # min_hold = 60
 
+# ── Schedule overrides ─────────────────────────────────────────────────────────
+# Override schedule fields or visibility for any named template without editing
+# JSON. Section name: [<integration>.schedules.<template-name>]. All fields are
+# optional; unspecified fields use the template's JSON default.
+#
+# Common fields (apply to every integration):
+#   cron = "..."       — change when the template fires
+#   hold = 300         — seconds to display before advancing
+#   timeout = 1800     — seconds before discarding if not yet shown
+#   priority = 5       — 0–10; higher number runs first
+#   disabled = true    — skip this template entirely (overrides all other fields)
+#   private = true     — hide in public mode (overrides the template's private field)
+
 [vestaboard]
 # Read/Write API key from https://store.vestaboard.com/pages/read-write-api
 api_key = "your-vestaboard-read-write-api-key"
+
+[weather]
+# City to display weather for. Geocoded via Open-Meteo on first call; no API
+# key required.
+city = "San Francisco"
+
+# Unit system: "imperial" (°F, mph, default) or "metric" (°C, km/h).
+# units = "imperial"
+
+# [weather.schedules.conditions]
+# cron = "0 * * * *"
+# hold = 600
+# timeout = 1800
+# priority = 5
+
+[calendar]
+# Fetch today's events from ICS feeds and/or a private iCloud account.
+# Both modes can be active simultaneously — events are merged and sorted.
+
+# ICS mode — public/secret-address feeds (any number of URLs).
+# Google Calendar: Settings → calendar → "Secret address in iCal format"
+# iCloud: share calendar → enable "Public Calendar" → copy link (replace webcal:// with https://)
+# urls = [
+#   "https://calendar.google.com/calendar/ical/.../basic.ics",
+# ]
+
+# Optional: Vestaboard color letter per URL, parallel to urls.
+# Options: R (red), O (orange), Y (yellow), G (green), B (blue), V (violet), W (white), K (black)
+# iCloud feeds auto-detect calendar color from the feed — omit to use it.
+# colors = ["B", "G"]
+
+# CalDAV mode — private iCloud calendars.
+# Requires an app-specific password from appleid.apple.com (not your Apple ID password).
+# caldav_url = "https://caldav.icloud.com/"
+# username = "you@icloud.com"
+# password = "xxxx-xxxx-xxxx-xxxx"
+# calendar_names = ["Work", "Personal"]  # optional; default: all calendars
+
+# [calendar.schedules.today]
+# cron = "30 * * * *"
+# hold = 300
+# timeout = 1800
+# priority = 5
 
 [bart]
 # Free API key — register at https://api.bart.gov/api/register.aspx
@@ -46,36 +102,12 @@ line1_dest = "DALY"
 # Second departure line (optional — remove or leave blank for one line).
 # line2_dest = "BERY"
 
-# ── Schedule overrides (optional) ─────────────────────────────────────────────
-# Override cron, hold, timeout, or priority for a named template without
-# editing JSON. All fields are optional; unspecified fields use the template
-# default.
-
 # [bart.schedules.departures]
 # cron = "*/5 7-9 * * 1-5"
 # hold = 290
 # timeout = 60
 # priority = 8
 # refresh_interval = 60  # re-fetch departure times every 60s during the hold (min 30)
-# disabled = true        # skip this template entirely (all other fields ignored)
-# private = true         # hide in public mode (overrides the template's private field)
-
-[weather]
-# City to display weather for. Geocoded via Open-Meteo on first call; no API
-# key required.
-city = "San Francisco"
-
-# Unit system: "imperial" (°F, mph, default) or "metric" (°C, km/h).
-# units = "imperial"
-
-# ── Schedule overrides (optional) ─────────────────────────────────────────────
-# [weather.schedules.conditions]
-# cron = "0 * * * *"
-# hold = 600
-# timeout = 1800
-# priority = 5
-# disabled = true  # skip this template entirely (all other fields ignored)
-# private = true   # hide in public mode (overrides the template's private field)
 
 [discogs]
 # Personal access token (read-only) — generate at https://www.discogs.com/settings/developers
@@ -86,14 +118,26 @@ token = "your-discogs-personal-access-token"
 # List your folders at https://www.discogs.com/users/<username>/collection
 # folder_id = "0"
 
-# ── Schedule overrides (optional) ─────────────────────────────────────────────
 # [discogs.schedules.morning_spin]
 # cron = "0 9 * * *"
 # hold = 600
 # timeout = 3600
 # priority = 5
-# disabled = true  # skip this template entirely (all other fields ignored)
-# private = true   # hide in public mode (overrides the template's private field)
+
+[trakt]
+# OAuth credentials — create an application at https://trakt.tv/oauth/applications/new
+# Set Redirect URI to: urn:ietf:wg:oauth:2.0:oob
+client_id = "your-trakt-client-id"
+client_secret = "your-trakt-client-secret"
+
+# Written by the auth flow — do not edit manually.
+# Start the container, check logs for auth instructions, then approve in a browser.
+# access_token = "..."
+# refresh_token = "..."
+# expires_at = 1234567890
+
+# Optional: number of days ahead to show in the calendar (default 7, max 33)
+# calendar_days = 7
 
 [webhook]
 # Optional: enable the HTTP webhook listener so external systems (Plex,
@@ -114,18 +158,3 @@ token = "your-discogs-personal-access-token"
 # Unraid: the template maps container port 8080 → host port 32800 by default.
 # Requires a TLS-terminating reverse proxy for external webhook sources.
 # bind = "0.0.0.0"
-
-[trakt]
-# OAuth credentials — create an application at https://trakt.tv/oauth/applications/new
-# Set Redirect URI to: urn:ietf:wg:oauth:2.0:oob
-client_id = "your-trakt-client-id"
-client_secret = "your-trakt-client-secret"
-
-# Written by the auth flow — do not edit manually.
-# Start the container, check logs for auth instructions, then approve in a browser.
-# access_token = "..."
-# refresh_token = "..."
-# expires_at = 1234567890
-
-# Optional: number of days ahead to show in the calendar (default 7, max 33)
-# calendar_days = 7
