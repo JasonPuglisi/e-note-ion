@@ -1,7 +1,7 @@
 # discogs.json
 
 Daily vinyl suggestion from your Discogs collection. Picks a random record
-each morning at 8am and displays the album title and artist.
+each morning at 8:30am and displays the album title and artist.
 
 ## Configuration
 

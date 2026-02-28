@@ -222,7 +222,12 @@ Required keys:
 | Key | Where to get it |
 |---|---|
 | `VESTABOARD_VIRTUAL_API_KEY` | [web.vestaboard.com](https://web.vestaboard.com) → Developer → Virtual Boards |
+| `CALENDAR_URL` | Google/iCloud: secret-address `.ics` URL (see `content/contrib/calendar.md`) |
+| `CALENDAR_CALDAV_URL` | `https://caldav.icloud.com/` for iCloud CalDAV |
+| `CALENDAR_USERNAME` | Apple ID email address |
+| `CALENDAR_PASSWORD` | App-specific password from [appleid.apple.com](https://appleid.apple.com) |
 | `BART_API_KEY` | [api.bart.gov/api/register.aspx](https://api.bart.gov/api/register.aspx) |
+| `DISCOGS_TOKEN` | [discogs.com/settings/developers](https://www.discogs.com/settings/developers) |
 | `TRAKT_CLIENT_ID` | [trakt.tv/oauth/applications](https://trakt.tv/oauth/applications) → your app |
 | `TRAKT_CLIENT_SECRET` | same app page |
 | `TRAKT_ACCESS_TOKEN` | run Trakt auth flow once and copy from `config.toml` |

@@ -167,7 +167,7 @@ template to keep everything playing nicely together.
 
 | Slot | What fires | Notes |
 |---|---|---|
-| `:00` every hour | `weather` (priority 5, hold 600s) | Plus `trakt.calendar` every 4h (priority 4) and `aria` at 8am/8pm (priority 9) |
+| `:00` every hour | `weather` (priority 5, hold 600s) | Plus `trakt.calendar` every 4h (priority 4) |
 | `:30` every hour | `calendar` (priority 5, hold 300s) | Plus `discogs` at 8:30am (priority 5) |
 
 **New templates that fire hourly should pick `:00` or `:30` and check what
@@ -200,9 +200,9 @@ Don't inflate priority to "win" — see the priority guidelines above.
 
 | File | Description |
 |---|---|
+| [`weather.json`](contrib/weather.md) | Current weather conditions via Open-Meteo |
+| [`calendar.json`](contrib/calendar.md) | Today's calendar events (ICS and iCloud CalDAV) |
 | [`bart.json`](contrib/bart.md) | BART real-time departure board |
 | [`discogs.json`](contrib/discogs.md) | Daily vinyl suggestion from your Discogs collection |
-| [`calendar.json`](contrib/calendar.md) | Today's calendar events (ICS and iCloud CalDAV) |
-| [`plex.json`](contrib/plex.md) | Plex Media Server now-playing via webhook |
 | [`trakt.json`](contrib/trakt.md) | Trakt.tv upcoming calendar and now-playing |
-| [`weather.json`](contrib/weather.md) | Current weather conditions via Open-Meteo |
+| [`plex.json`](contrib/plex.md) | Plex Media Server now-playing via webhook |
