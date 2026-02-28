@@ -64,17 +64,27 @@ exceptions.py               # Custom exception types (IntegrationDataUnavailable
 config.toml                 # Runtime config with API keys (git-ignored; copy from config.example.toml)
 config.example.toml         # Config template committed to the repo
 integrations/vestaboard.py  # Vestaboard API client (get_state, set_state)
+integrations/http.py        # Shared HTTP helper with retry logic
+integrations/weather.py     # Current weather via Open-Meteo (no API key required)
+integrations/calendar.py    # Today's calendar events (ICS feeds + iCloud CalDAV)
 integrations/bart.py        # BART real-time departures integration
-integrations/plex.py        # Plex Media Server now-playing via webhook
+integrations/discogs.py     # Daily vinyl suggestion from Discogs collection
 integrations/trakt.py       # Trakt.tv calendar and now-playing (OAuth device flow)
+integrations/plex.py        # Plex Media Server now-playing via webhook
 content/
   contrib/                  # Bundled community content (disabled by default)
+    weather.json            # Current weather conditions
+    weather.md              # Sidecar doc: configuration and data sources
+    calendar.json           # Today's calendar events (ICS and iCloud CalDAV)
+    calendar.md             # Sidecar doc: ICS and CalDAV configuration
     bart.json               # BART real-time departure board
     bart.md                 # Sidecar doc: configuration and data sources
-    plex.json               # Plex Media Server now-playing (webhook-only)
-    plex.md                 # Sidecar doc: Plex Pass requirement and webhook setup
+    discogs.json            # Daily vinyl suggestion from Discogs collection
+    discogs.md              # Sidecar doc: configuration and API details
     trakt.json              # Trakt.tv calendar and now-playing
     trakt.md                # Sidecar doc: OAuth setup and data sources
+    plex.json               # Plex Media Server now-playing (webhook-only)
+    plex.md                 # Sidecar doc: Plex Pass requirement and webhook setup
   user/                     # Personal content (always loaded, git-ignored)
 .env.example                # Template for local integration test secrets (copy to .env, fill in, git-ignored)
 Dockerfile                  # Single-stage image using ghcr.io/astral-sh/uv
@@ -332,7 +342,7 @@ prevention here — not just a one-off fix. See #65 for extended notes.
    ```
    gh api repos/JasonPuglisi/e-note-ion/rulesets/13082160 --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'
    ```
-9. **Integration test hygiene** — advisory CI job passing on `main`; GitHub environment secrets/vars present (`BART_API_KEY`, `VESTABOARD_VIRTUAL_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `DISCOGS_TOKEN`, `ICAL_URL`, `ICAL_CALDAV_URL`, `ICAL_USERNAME`, `ICAL_PASSWORD` as secrets; `TRAKT_CLIENT_ID` as a variable); new integrations have `test_<name>_integration.py` and env vars in `tests/integrations/conftest.py`
+9. **Integration test hygiene** — advisory CI job passing on `main`; GitHub environment secrets/vars present (`VESTABOARD_VIRTUAL_API_KEY`, `CALENDAR_URL`, `CALENDAR_CALDAV_URL`, `CALENDAR_USERNAME`, `CALENDAR_PASSWORD`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `DISCOGS_TOKEN` as secrets; `TRAKT_CLIENT_ID` as a variable); new integrations have `test_<name>_integration.py` and env vars in `tests/integrations/conftest.py`
 10. **Issue/milestone hygiene**:
     - Every open issue has a milestone (no orphans); scope is right-sized
     - Blocking relationships explicit ("Blocked by #X" in body)
