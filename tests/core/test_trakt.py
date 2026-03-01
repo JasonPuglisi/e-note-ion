@@ -19,6 +19,7 @@ def reset_trakt_state() -> None:
   """Reset module-level state between tests."""
   trakt._auth_started = False
   trakt._calendar_cache = None
+  trakt._next_up_cache = None
   trakt._last_watching_vars = None
   trakt._stop_pending = False
 
@@ -756,3 +757,161 @@ def test_watching_network_error_raises_unavailable(config_with_tokens: Path) -> 
   with patch('integrations.trakt.fetch_with_retry', side_effect=requests.ConnectionError()):
     with pytest.raises(IntegrationDataUnavailableError, match='watching request failed'):
       trakt.get_variables_watching()
+
+
+# --- get_variables_next_up ---
+
+
+_WATCHED_SHOWS_RESPONSE = [
+  {
+    'show': {'title': 'Breaking Bad', 'ids': {'trakt': 1}},
+    'last_watched_at': '2099-01-01T00:00:00.000Z',
+  },
+  {
+    'show': {'title': 'The Wire', 'ids': {'trakt': 2}},
+    'last_watched_at': '2099-01-02T00:00:00.000Z',
+  },
+]
+
+_PROGRESS_WITH_NEXT = {
+  'next_episode': {
+    'season': 3,
+    'number': 1,
+    'title': 'Box Cutter',
+  }
+}
+
+_PROGRESS_COMPLETED = {'next_episode': None}
+
+
+def _mock_watched_ok(shows: list | None = None) -> MagicMock:
+  r = MagicMock()
+  r.status_code = 200
+  r.raise_for_status.return_value = None
+  r.json.return_value = shows if shows is not None else _WATCHED_SHOWS_RESPONSE
+  return r
+
+
+def _mock_progress_ok(data: dict) -> MagicMock:
+  r = MagicMock()
+  r.status_code = 200
+  r.raise_for_status.return_value = None
+  r.json.return_value = data
+  return r
+
+
+def test_get_variables_next_up_returns_expected_vars(config_with_tokens: Path) -> None:
+  watched = _mock_watched_ok([_WATCHED_SHOWS_RESPONSE[0]])
+  progress = _mock_progress_ok(_PROGRESS_WITH_NEXT)
+
+  with patch('integrations.trakt.fetch_with_retry', side_effect=[watched, progress]):
+    result = trakt.get_variables_next_up()
+
+  assert result['show_name'] == [['BREAKING BAD']]
+  assert result['episode_ref'] == [['S3E1']]
+  assert result['episode_title'] == [['BOX CUTTER']]
+
+
+def test_get_variables_next_up_skips_completed_show_tries_next(config_with_tokens: Path) -> None:
+  watched = _mock_watched_ok(_WATCHED_SHOWS_RESPONSE)
+  progress_done = _mock_progress_ok(_PROGRESS_COMPLETED)
+  progress_next = _mock_progress_ok(_PROGRESS_WITH_NEXT)
+
+  with patch('integrations.trakt.fetch_with_retry', side_effect=[watched, progress_done, progress_next]):
+    result = trakt.get_variables_next_up()
+
+  assert result['show_name'] == [['THE WIRE']]
+  assert result['episode_ref'] == [['S3E1']]
+
+
+def test_get_variables_next_up_all_completed_raises_unavailable(config_with_tokens: Path) -> None:
+  shows = [
+    {'show': {'title': f'Show {i}', 'ids': {'trakt': i}}, 'last_watched_at': '2099-01-01T00:00:00.000Z'}
+    for i in range(5)
+  ]
+  watched = _mock_watched_ok(shows)
+  progress_done = _mock_progress_ok(_PROGRESS_COMPLETED)
+
+  with patch('integrations.trakt.fetch_with_retry', side_effect=[watched] + [progress_done] * 5):
+    with pytest.raises(IntegrationDataUnavailableError, match='No next episode'):
+      trakt.get_variables_next_up()
+
+
+def test_get_variables_next_up_empty_watched_list_raises_unavailable(config_with_tokens: Path) -> None:
+  watched = _mock_watched_ok([])
+
+  with patch('integrations.trakt.fetch_with_retry', return_value=watched):
+    with pytest.raises(IntegrationDataUnavailableError, match='No watched shows'):
+      trakt.get_variables_next_up()
+
+
+def test_get_variables_next_up_watched_api_error_raises_unavailable(config_with_tokens: Path) -> None:
+  with patch('integrations.trakt.fetch_with_retry', side_effect=requests.ConnectionError()):
+    with pytest.raises(IntegrationDataUnavailableError, match='next-up watched request failed'):
+      trakt.get_variables_next_up()
+
+
+def test_get_variables_next_up_progress_api_error_raises_unavailable(config_with_tokens: Path) -> None:
+  watched = _mock_watched_ok([_WATCHED_SHOWS_RESPONSE[0]])
+
+  with patch('integrations.trakt.fetch_with_retry', side_effect=[watched, requests.ConnectionError()]):
+    with pytest.raises(IntegrationDataUnavailableError, match='next-up progress request failed'):
+      trakt.get_variables_next_up()
+
+
+def test_get_variables_next_up_long_show_name_truncated(config_with_tokens: Path) -> None:
+  long_title = 'Star Trek The Next Generation'
+  shows = [{'show': {'title': long_title, 'ids': {'trakt': 1}}, 'last_watched_at': '2099-01-01T00:00:00.000Z'}]
+  watched = _mock_watched_ok(shows)
+  progress = _mock_progress_ok(_PROGRESS_WITH_NEXT)
+
+  with patch('integrations.trakt.fetch_with_retry', side_effect=[watched, progress]):
+    result = trakt.get_variables_next_up()
+
+  show_name = result['show_name'][0][0]
+  upper = long_title.upper()
+  assert vb.display_len(show_name) <= vb.model.cols
+  assert upper.startswith(show_name)
+  assert show_name == upper or upper[len(show_name)] == ' '
+
+
+def test_get_variables_next_up_does_not_leak_credentials(config_with_tokens: Path) -> None:
+  mock_response = MagicMock()
+  mock_response.status_code = 401
+  mock_response.reason = 'Unauthorized'
+  mock_response.raise_for_status.side_effect = requests.HTTPError(response=mock_response)
+
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_response):
+    with pytest.raises(IntegrationDataUnavailableError) as exc_info:
+      trakt.get_variables_next_up()
+
+  assert 'test-id' not in str(exc_info.value)
+  assert 'test-access' not in str(exc_info.value)
+
+
+def test_next_up_cache_hit_on_api_failure(config_with_tokens: Path) -> None:
+  watched = _mock_watched_ok([_WATCHED_SHOWS_RESPONSE[0]])
+  progress = _mock_progress_ok(_PROGRESS_WITH_NEXT)
+
+  with patch('integrations.trakt.fetch_with_retry', side_effect=[watched, progress]):
+    trakt.get_variables_next_up()
+
+  with patch('integrations.trakt.fetch_with_retry', side_effect=requests.ConnectionError()):
+    result = trakt.get_variables_next_up()
+
+  assert result['show_name'] == [['BREAKING BAD']]
+
+
+def test_next_up_cache_expired_raises_unavailable(config_with_tokens: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  watched = _mock_watched_ok([_WATCHED_SHOWS_RESPONSE[0]])
+  progress = _mock_progress_ok(_PROGRESS_WITH_NEXT)
+
+  with patch('integrations.trakt.fetch_with_retry', side_effect=[watched, progress]):
+    trakt.get_variables_next_up()
+
+  assert trakt._next_up_cache is not None
+  monkeypatch.setattr(trakt._next_up_cache, 'cached_at', time.monotonic() - trakt._NEXT_UP_CACHE_TTL - 1)
+
+  with patch('integrations.trakt.fetch_with_retry', side_effect=requests.ConnectionError()):
+    with pytest.raises(IntegrationDataUnavailableError):
+      trakt.get_variables_next_up()

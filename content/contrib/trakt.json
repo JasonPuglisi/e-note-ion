@@ -2,7 +2,7 @@
   "templates": {
     "calendar": {
       "schedule": {
-        "cron": "0 */4 * * *",
+        "cron": "0 0,8,16 * * *",
         "hold": 1200,
         "timeout": 1800
       },
@@ -17,6 +17,27 @@
             "[V] NEXT AIRING",
             "{show_name}",
             "{episode_ref} {air_day} {air_time}"
+          ]
+        }
+      ]
+    },
+    "next_up": {
+      "schedule": {
+        "cron": "0 4,12,20 * * *",
+        "hold": 1200,
+        "timeout": 1800
+      },
+      "priority": 4,
+      "private": true,
+      "truncation": "ellipsis",
+      "integration": "trakt",
+      "integration_fn": "get_variables_next_up",
+      "templates": [
+        {
+          "format": [
+            "[V] ON DECK",
+            "{show_name}",
+            "{episode_ref} {episode_title}"
           ]
         }
       ]

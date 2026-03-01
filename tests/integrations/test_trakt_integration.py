@@ -72,3 +72,24 @@ def test_get_variables_watching_live(require_env: None, monkeypatch: pytest.Monk
     assert 'episode_title' in result
   except IntegrationDataUnavailableError:
     pass  # nothing playing — valid outcome
+
+
+@pytest.mark.integration
+@pytest.mark.require_env('TRAKT_CLIENT_ID', 'TRAKT_CLIENT_SECRET', 'TRAKT_ACCESS_TOKEN')
+def test_get_variables_next_up_live(require_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+  """get_variables_next_up() returns valid vars or raises DataUnavailable — both are correct."""
+  _patch_config(monkeypatch)
+  trakt._auth_started = False
+  trakt._next_up_cache = None
+
+  try:
+    result = trakt.get_variables_next_up()
+    assert 'show_name' in result
+    assert 'episode_ref' in result
+    assert 'episode_title' in result
+    for key in result:
+      assert len(result[key]) == 1
+      assert len(result[key][0]) == 1
+      assert isinstance(result[key][0][0], str)
+  except IntegrationDataUnavailableError:
+    pass  # user may have no shows in progress — valid outcome

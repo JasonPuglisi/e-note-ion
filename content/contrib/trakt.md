@@ -1,8 +1,10 @@
 # trakt.json
 
-Trakt.tv integration — shows the next upcoming episode from your calendar and
-what you are currently watching. Calendar updates every 4 hours; now-playing
-polls every 3 minutes and only shows when something is actively playing.
+Trakt.tv integration — shows the next upcoming episode from your calendar,
+the next unwatched episode for your most recently watched show, and what you
+are currently watching. Calendar and on-deck alternate every 4 hours (3 fires
+each per day); now-playing polls every 3 minutes and only shows when something
+is actively playing.
 
 ## Configuration
 
@@ -106,8 +108,10 @@ review new discussions periodically for anything that may affect this integratio
 
 This integration uses:
 - `GET /calendars/my/shows/{date}/{days}` — episodes airing in the next N days
+- `GET /users/me/watched/shows` — shows sorted by most recently watched
+- `GET /shows/{trakt_id}/progress/watched` — next unwatched episode for a show
 - `GET /users/me/watching` — currently playing episode or movie
 
-Both endpoints are available on all Trakt accounts (no VIP required).
+All endpoints are available on all Trakt accounts (no VIP required).
 
 Authoritative API docs: https://trakt.docs.apiary.io
