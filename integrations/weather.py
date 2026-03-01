@@ -22,7 +22,7 @@ from typing import Any
 import requests
 
 from exceptions import IntegrationDataUnavailableError
-from integrations.http import CacheEntry, fetch_with_retry
+from integrations.http import CacheEntry, fetch_with_retry, user_agent
 
 _GEOCODING_URL = 'https://geocoding-api.open-meteo.com/v1/search'
 _FORECAST_URL = 'https://api.open-meteo.com/v1/forecast'
@@ -170,7 +170,7 @@ def _geocode(city_query: str, country_code: str | None) -> tuple[float, float, s
   if country_code:
     params['countryCode'] = country_code
   try:
-    r = fetch_with_retry('GET', _GEOCODING_URL, params=params, timeout=10)
+    r = fetch_with_retry('GET', _GEOCODING_URL, params=params, headers={'User-Agent': user_agent()}, timeout=10)
   except requests.RequestException as e:
     print(f'Weather: geocoding request failed — {e}')
     raise IntegrationDataUnavailableError(f'Weather: geocoding request failed — {e}') from None
@@ -250,6 +250,7 @@ def get_variables() -> dict[str, list[list[str]]]:
     r = fetch_with_retry(
       'GET',
       _FORECAST_URL,
+      headers={'User-Agent': user_agent()},
       params={
         'latitude': lat,
         'longitude': lon,

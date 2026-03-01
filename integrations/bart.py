@@ -21,7 +21,7 @@ import requests
 
 import integrations.vestaboard as vestaboard
 from exceptions import IntegrationDataUnavailableError
-from integrations.http import CacheEntry, fetch_with_retry
+from integrations.http import CacheEntry, fetch_with_retry, user_agent
 
 _API_BASE = 'https://api.bart.gov/api'
 
@@ -61,6 +61,7 @@ def _fetch_dest_colors(api_key: str, origin: str) -> dict[str, list[str]]:
     'GET',
     f'{_API_BASE}/route.aspx',
     params={'cmd': 'routes', 'key': api_key, 'json': 'y'},
+    headers={'User-Agent': user_agent()},
     timeout=10,
   )
   r.raise_for_status()
@@ -80,6 +81,7 @@ def _fetch_dest_colors(api_key: str, origin: str) -> dict[str, list[str]]:
       'GET',
       f'{_API_BASE}/route.aspx',
       params={'cmd': 'routeinfo', 'route': route['number'], 'key': api_key, 'json': 'y'},
+      headers={'User-Agent': user_agent()},
       timeout=10,
     )
     ri.raise_for_status()
@@ -172,6 +174,7 @@ def get_variables() -> dict[str, list[list[str]]]:
       'GET',
       f'{_API_BASE}/etd.aspx',
       params={'cmd': 'etd', 'orig': station, 'key': api_key, 'json': 'y'},
+      headers={'User-Agent': user_agent()},
       timeout=10,
     )
     r.raise_for_status()

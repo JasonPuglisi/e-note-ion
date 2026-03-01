@@ -3,7 +3,14 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 import requests
 
-from integrations.http import CacheEntry, fetch_with_retry
+import integrations.http as http_mod
+from integrations.http import CacheEntry, fetch_with_retry, user_agent
+
+
+@pytest.fixture(autouse=True)
+def reset_ua_cache() -> None:
+  """Reset the user_agent cache so each test starts clean."""
+  http_mod._ua_cache = None
 
 
 def _mock_response(status_code: int, reason: str = '') -> MagicMock:
@@ -122,3 +129,27 @@ def test_cache_entry_is_invalid_after_ttl(monkeypatch: pytest.MonkeyPatch) -> No
   entry = CacheEntry({'x': [['v']]})
   monkeypatch.setattr('integrations.http.time.monotonic', lambda: entry.cached_at + 61)
   assert not entry.is_valid(60)
+
+
+# --- user_agent ---
+
+
+def test_user_agent_format() -> None:
+  with patch('integrations.http.importlib.metadata.version', return_value='1.2.3'):
+    result = user_agent()
+  assert result == 'e-note-ion/1.2.3'
+
+
+def test_user_agent_dev_fallback() -> None:
+  import importlib.metadata as _meta
+
+  with patch('integrations.http.importlib.metadata.version', side_effect=_meta.PackageNotFoundError):
+    result = user_agent()
+  assert result == 'e-note-ion/dev'
+
+
+def test_user_agent_cached() -> None:
+  with patch('integrations.http.importlib.metadata.version', return_value='1.0.0') as mock_ver:
+    user_agent()
+    user_agent()
+  mock_ver.assert_called_once()
