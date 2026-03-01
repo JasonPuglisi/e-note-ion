@@ -301,6 +301,7 @@ def worker() -> None:
   # sequentially and never overlap. After sending a message, sleeps for
   # `hold` seconds before pulling the next one, giving the physical flaps
   # time to settle and the content time to be read.
+  global _current_hold_supersede_tag, _current_hold_priority
   _idle_refresh_fn: Callable[[], None] | None = None
   _idle_refresh_interval: int | None = None
   _idle_last_refresh: float = 0.0
@@ -332,6 +333,15 @@ def worker() -> None:
       f' | priority: {message.priority}'
       f' | hold: {hold_desc}'
     )
+    # Set hold tracking before the set_state API call so that concurrent webhook
+    # events (e.g. Plex pause arriving while now_playing is being sent to the
+    # board) see the correct tag immediately rather than waiting ~1–2s for the
+    # API round-trip to complete. Restored to '' in each exception path that
+    # skips _do_hold so we never leave a stale tag when nothing is on the board.
+    with _current_hold_lock:
+      _current_hold_supersede_tag = message.supersede_tag
+      _current_hold_priority = message.priority
+
     try:
       variables = message.data['variables']
       if 'integration' in message.data:
@@ -343,6 +353,9 @@ def worker() -> None:
         message.data.get('truncation', 'hard'),
       )
     except IntegrationDataUnavailableError as e:
+      with _current_hold_lock:
+        _current_hold_supersede_tag = ''
+        _current_hold_priority = None
       print(f'[{datetime.now().strftime("%H:%M:%S")}] Skipping {message.name}: {e}')
       continue
     except vestaboard.DuplicateContentError:
@@ -350,6 +363,9 @@ def worker() -> None:
       # Fall through to _do_hold(): content is already showing; we must still
       # hold it so lower-priority queued messages cannot preempt it.
     except vestaboard.BoardLockedError as e:
+      with _current_hold_lock:
+        _current_hold_supersede_tag = ''
+        _current_hold_priority = None
       print(f'Board locked: {e}. Retrying in {_LOCK_RETRY_DELAY}s.')
       time.sleep(_LOCK_RETRY_DELAY)
       # Re-enqueue if the message hasn't exceeded its timeout.
@@ -357,6 +373,9 @@ def worker() -> None:
         _queue.put(message)
       continue
     except Exception as e:
+      with _current_hold_lock:
+        _current_hold_supersede_tag = ''
+        _current_hold_priority = None
       print(f'Error sending to board: {e}')
       continue
 
@@ -387,14 +406,16 @@ def worker() -> None:
 
       _refresh_fn = _do_refresh
 
-    # Clear any interrupt that was set before this hold began — e.g. the webhook
-    # interrupt that caused the previous hold to exit and triggered enqueueing of
-    # this very message. Only interrupts that arrive *during* the hold should end
-    # it early; a stale pre-hold event would otherwise exit the new hold instantly.
-    with _current_hold_lock:
-      _current_hold_supersede_tag = message.supersede_tag
-      _current_hold_priority = message.priority
+    # Clear any interrupt that fired before this hold began (e.g. the webhook
+    # interrupt that preempted the previous hold and triggered enqueueing of
+    # this message) so it cannot exit the new hold instantly. But if a same-tag
+    # message arrived during the set_state API call above, re-fire the interrupt
+    # so _do_hold exits immediately and the worker processes the newer event.
     _hold_interrupt.clear()
+    if message.supersede_tag:
+      with _queue.mutex:
+        if any(m.supersede_tag == message.supersede_tag for m in _queue.queue):
+          _hold_interrupt.set()
     _do_hold(message, _get_min_hold(), refresh_fn=_refresh_fn, refresh_interval=refresh_interval)
     with _current_hold_lock:
       _current_hold_supersede_tag = ''
