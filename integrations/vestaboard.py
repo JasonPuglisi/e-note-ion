@@ -14,6 +14,7 @@
 import json
 import random
 import re
+import unicodedata
 from enum import Enum
 from typing import Literal
 
@@ -272,8 +273,13 @@ def get_state(color: VestaboardColor = VestaboardColor.BLACK) -> VestaboardState
 
 
 def _encode_char(ch: str) -> int:
-  """Map a single character to its Vestaboard code (0 = blank if unknown)."""
-  return _CHAR_CODES.get(ch.upper(), 0)
+  """Map a single character to its Vestaboard code (0 = blank if unknown).
+
+  Accented and diacritic characters are normalized via NFKD decomposition
+  before lookup: ï → i, é → e, ñ → n, ü → u, etc.
+  """
+  normalized = unicodedata.normalize('NFKD', ch).encode('ascii', 'ignore').decode('ascii')
+  return _CHAR_CODES.get((normalized or ch).upper(), 0)
 
 
 def _encode_line(text: str) -> list[int]:

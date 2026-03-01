@@ -66,6 +66,47 @@ def test_encode_line_unknown_char_is_blank() -> None:
   assert result[0] == 0
 
 
+# --- _encode_char: unicode normalization ---
+
+
+def test_encode_line_accented_lowercase() -> None:
+  # ï (U+00EF) → NFKD → i + combining diaeresis → i → I (code 9)
+  result = vb._encode_line('ï')  # noqa: SLF001
+  assert result[0] == 9  # I
+
+
+def test_encode_line_accented_uppercase() -> None:
+  # Ï (U+00CF) — as produced by .upper() on ï — should also normalize to I
+  result = vb._encode_line('Ï')  # noqa: SLF001
+  assert result[0] == 9  # I
+
+
+def test_encode_line_accented_e() -> None:
+  result = vb._encode_line('é')  # noqa: SLF001
+  assert result[0] == 5  # E
+
+
+def test_encode_line_accented_n() -> None:
+  result = vb._encode_line('ñ')  # noqa: SLF001
+  assert result[0] == 14  # N
+
+
+def test_encode_line_accented_word() -> None:
+  # 'ANAÏS' should encode with no blank tiles — regression test for Anaïs Mitchell
+  result = vb._encode_line('ANAÏS')  # noqa: SLF001
+  assert result[0] == 1  # A
+  assert result[1] == 14  # N
+  assert result[2] == 1  # A
+  assert result[3] == 9  # I (from Ï)
+  assert result[4] == 19  # S
+
+
+def test_encode_line_combining_mark_standalone() -> None:
+  # A bare combining diaeresis (U+0308) with no base letter → blank (code 0), no crash
+  result = vb._encode_line('\u0308')  # noqa: SLF001
+  assert result[0] == 0
+
+
 def test_encode_line_padded_to_cols() -> None:
   result = vb._encode_line('A')  # noqa: SLF001
   assert len(result) == vb.model.cols
