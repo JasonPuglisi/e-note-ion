@@ -3,7 +3,7 @@
     "calendar": {
       "schedule": {
         "cron": "0 */4 * * *",
-        "hold": 3600,
+        "hold": 1200,
         "timeout": 1800
       },
       "priority": 4,

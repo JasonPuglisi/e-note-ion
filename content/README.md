@@ -173,7 +173,7 @@ template to keep everything playing nicely together.
 | Slot | Integration | Pri | Hold | Timeout | Notes |
 |---|---|---|---|---|---|
 | `:00` every hour | `weather` | 5 | 600s | 1800s | |
-| `:00` every 4h | `trakt.calendar` | 4 | 3600s | 1800s | Private; queues behind weather |
+| `:00` every 4h | `trakt.calendar` | 4 | 1200s | 1800s | Private; queues behind weather |
 | `:30` every hour | `calendar` | 5 | 300s | 1800s | |
 | `8:30` daily | `discogs` | 5 | 600s | 3600s | Queues behind calendar at :30 |
 | `*/5` 07–09 Mon–Fri | `bart` | 8 | 290s | 60s | Refresh 60s; dominates mornings |
@@ -186,9 +186,8 @@ When two templates share a slot, their **combined holds** determine how long
 that slot occupies the display. Keep the total under 30 minutes to avoid
 bleeding into the next slot:
 
-- `:00` worst case (every 4h): weather 600s + trakt.calendar 3600s = 4200s
-  (70 min). This pushes past `:30`, delaying `calendar` by ~40 min. Calendar's
-  1800s timeout keeps it alive, but it arrives late.
+- `:00` worst case (every 4h): weather 600s + trakt.calendar 1200s = 1800s
+  (30 min). Finishes exactly at `:30` — no bleed into the calendar slot.
 - `:30` worst case (8:30am): calendar 300s + discogs 600s = 900s (15 min).
   Finishes by :45 — no bleed into the next hour.
 - **Weekday mornings 07–09**: BART (priority 8, 290s hold, refresh) fires
