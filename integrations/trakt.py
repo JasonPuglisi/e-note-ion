@@ -51,6 +51,13 @@ _watching_lock = threading.Lock()
 _calendar_cache: CacheEntry | None = None
 _CALENDAR_CACHE_TTL = 3600  # 1 hour
 
+# Cache for next-up data (last show in progress from watch history).
+_next_up_cache: CacheEntry | None = None
+_NEXT_UP_CACHE_TTL = 3600  # 1 hour
+
+# Max number of recently-watched shows to probe for a next episode.
+_NEXT_UP_MAX_SHOWS = 5
+
 
 # --- Token management ---
 
@@ -397,3 +404,81 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
     _last_watching_vars = result
     _stop_pending = False
   return result
+
+
+def get_variables_next_up() -> dict[str, list[list[str]]]:
+  """Fetch the next unwatched episode for the most recently watched show.
+
+  Calls /users/me/watched/shows (sorted by last_watched_at desc), then probes
+  /shows/{id}/progress/watched for each show in order until one has a
+  non-null next_episode. Returns at most _NEXT_UP_MAX_SHOWS API round-trips.
+
+  Returns variables: show_name, episode_ref (e.g. S3E1), episode_title.
+  All values are uppercased.
+
+  Raises IntegrationDataUnavailableError if no in-progress show is found or
+  if the API is unreachable and the cache is expired / cold.
+  """
+  import config as _config_mod
+
+  global _next_up_cache
+
+  token = _get_token()
+  client_id = _config_mod.get('trakt', 'client_id')
+
+  try:
+    r = fetch_with_retry(
+      'GET',
+      f'{_TRAKT_API_BASE}/users/me/watched/shows',
+      headers=_request_headers(token, client_id),
+      timeout=10,
+    )
+    r.raise_for_status()
+  except requests.RequestException as e:
+    if isinstance(e, requests.HTTPError):
+      msg = f'Trakt watched/shows API error: {e.response.status_code} {e.response.reason}'
+    else:
+      msg = str(e)
+    print(f'Trakt: next-up watched request failed — {msg}')
+    if _next_up_cache is not None and _next_up_cache.is_valid(_NEXT_UP_CACHE_TTL):
+      return _next_up_cache.value
+    raise IntegrationDataUnavailableError(f'Trakt: next-up watched request failed — {msg}') from None
+
+  shows = r.json()[:_NEXT_UP_MAX_SHOWS]
+  if not shows:
+    raise IntegrationDataUnavailableError('No watched shows found')
+
+  for entry in shows:
+    trakt_id = entry['show']['ids']['trakt']
+    try:
+      r2 = fetch_with_retry(
+        'GET',
+        f'{_TRAKT_API_BASE}/shows/{trakt_id}/progress/watched',
+        headers=_request_headers(token, client_id),
+        timeout=10,
+      )
+      r2.raise_for_status()
+    except requests.RequestException as e:
+      if isinstance(e, requests.HTTPError):
+        msg = f'Trakt progress API error: {e.response.status_code} {e.response.reason}'
+      else:
+        msg = str(e)
+      print(f'Trakt: next-up progress request failed — {msg}')
+      if _next_up_cache is not None and _next_up_cache.is_valid(_NEXT_UP_CACHE_TTL):
+        return _next_up_cache.value
+      raise IntegrationDataUnavailableError(f'Trakt: next-up progress request failed — {msg}') from None
+
+    ep = r2.json().get('next_episode')
+    if ep is not None:
+      show_name = _vb.truncate_line(entry['show']['title'].upper(), _vb.model.cols, 'word')
+      episode_ref = _format_episode_ref(ep['season'], ep['number'])
+      episode_title = _strip_leading_article((ep.get('title') or '').upper())
+      result = {
+        'show_name': [[show_name]],
+        'episode_ref': [[episode_ref]],
+        'episode_title': [[episode_title]],
+      }
+      _next_up_cache = CacheEntry(result)
+      return result
+
+  raise IntegrationDataUnavailableError('No next episode found in watched shows')
