@@ -750,6 +750,155 @@ def test_worker_clears_stale_hold_interrupt_before_hold() -> None:
   assert hold_calls == [False], '_hold_interrupt must be cleared before _do_hold is called'
 
 
+def test_worker_sets_hold_tag_before_set_state() -> None:
+  # Regression: board displacement checks in concurrent webhook handlers
+  # (e.g. Plex pause arriving while now_playing is being sent to the board)
+  # need current_hold_tag() to return the correct tag during the set_state
+  # API call, not only after it completes.
+  msg = _mod.QueuedMessage(
+    priority=8,
+    seq=0,
+    name='webhook.plex',
+    scheduled_at=time.monotonic(),
+    data={'templates': [{'format': ['NOW PLAYING']}], 'variables': {}, 'truncation': 'hard'},
+    hold=14400,
+    timeout=30,
+    indefinite=True,
+    supersede_tag='plex',
+  )
+
+  tag_during_set_state: list[str] = []
+
+  def _fake_set_state(*_args: Any, **_kwargs: Any) -> None:
+    tag_during_set_state.append(_mod.current_hold_tag())
+    raise KeyboardInterrupt()  # stop worker after this call
+
+  with (
+    patch.object(_mod, 'pop_valid_message', return_value=msg),
+    patch('integrations.vestaboard.set_state', side_effect=_fake_set_state),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+
+  assert tag_during_set_state == ['plex'], 'current_hold_tag() must return the message supersede_tag during set_state'
+
+
+def test_worker_clears_hold_tag_on_integration_data_unavailable() -> None:
+  msg = _mod.QueuedMessage(
+    priority=8,
+    seq=0,
+    name='webhook.plex',
+    scheduled_at=time.monotonic(),
+    data={'templates': [{'format': ['NOW PLAYING']}], 'variables': {}, 'truncation': 'hard'},
+    hold=14400,
+    timeout=30,
+    supersede_tag='plex',
+  )
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch('integrations.vestaboard.set_state', side_effect=IntegrationDataUnavailableError('no data')),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+
+  assert _mod.current_hold_tag() == '', 'tag must be cleared when set_state raises IntegrationDataUnavailableError'
+
+
+def test_worker_clears_hold_tag_on_board_locked() -> None:
+  msg = _mod.QueuedMessage(
+    priority=8,
+    seq=0,
+    name='webhook.plex',
+    scheduled_at=time.monotonic(),
+    data={'templates': [{'format': ['NOW PLAYING']}], 'variables': {}, 'truncation': 'hard'},
+    hold=14400,
+    timeout=30,
+    supersede_tag='plex',
+  )
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch('integrations.vestaboard.set_state', side_effect=vb.BoardLockedError('locked')),
+    patch('time.sleep'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+
+  assert _mod.current_hold_tag() == '', 'tag must be cleared when set_state raises BoardLockedError'
+
+
+def test_worker_clears_hold_tag_on_generic_exception() -> None:
+  msg = _mod.QueuedMessage(
+    priority=8,
+    seq=0,
+    name='webhook.plex',
+    scheduled_at=time.monotonic(),
+    data={'templates': [{'format': ['NOW PLAYING']}], 'variables': {}, 'truncation': 'hard'},
+    hold=14400,
+    timeout=30,
+    supersede_tag='plex',
+  )
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch('integrations.vestaboard.set_state', side_effect=RuntimeError('boom')),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+
+  assert _mod.current_hold_tag() == '', 'tag must be cleared when set_state raises a generic exception'
+
+
+def test_worker_refires_interrupt_when_same_tag_message_queued_during_set_state() -> None:
+  # Regression: if a Plex pause event arrives while now_playing is being sent
+  # to the board (set_state in flight), the pause message is enqueued and its
+  # interrupt is set. The worker then calls _hold_interrupt.clear() before
+  # starting _do_hold, discarding the pause interrupt. The fix re-fires the
+  # interrupt when a same-tag message is already in the queue at that point.
+  now_playing = _mod.QueuedMessage(
+    priority=8,
+    seq=0,
+    name='webhook.plex',
+    scheduled_at=time.monotonic(),
+    data={'templates': [{'format': ['NOW PLAYING']}], 'variables': {}, 'truncation': 'hard'},
+    hold=14400,
+    timeout=30,
+    indefinite=True,
+    supersede_tag='plex',
+  )
+  paused = _mod.QueuedMessage(
+    priority=8,
+    seq=1,
+    name='webhook.plex',
+    scheduled_at=time.monotonic(),
+    data={'templates': [{'format': ['PAUSED']}], 'variables': {}, 'truncation': 'hard'},
+    hold=14400,
+    timeout=30,
+    indefinite=True,
+    supersede_tag='plex',
+  )
+
+  interrupt_state_at_hold: list[bool] = []
+
+  def _fake_do_hold(m: Any, min_hold: Any, **kw: Any) -> None:
+    interrupt_state_at_hold.append(_mod._hold_interrupt.is_set())
+    raise KeyboardInterrupt()
+
+  def _fake_set_state(*_args: Any, **_kwargs: Any) -> None:
+    # Simulate pause arriving during the set_state API call.
+    _mod._queue.put(paused)
+
+  with (
+    patch.object(_mod, 'pop_valid_message', return_value=now_playing),
+    patch('integrations.vestaboard.set_state', side_effect=_fake_set_state),
+    patch.object(_mod, '_do_hold', side_effect=_fake_do_hold),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+
+  assert interrupt_state_at_hold == [True], (
+    '_hold_interrupt must be re-fired when a same-tag message is queued during set_state'
+  )
+
+
 # --- _load_file (public key missing) ---
 
 
