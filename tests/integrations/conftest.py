@@ -55,9 +55,13 @@ def _integration_env_summary() -> None:
 
 
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
-  """Track integration tests skipped due to missing env vars."""
+  """Track integration tests skipped due to missing env vars.
+
+  Only setup-phase skips (from the require_env fixture) are counted — call-phase
+  skips (e.g. "no events today") are intentional and must not trigger exit code 5.
+  """
   global _skipped
-  if report.skipped and report.when in ('setup', 'call'):
+  if report.skipped and report.when == 'setup':
     _skipped += 1
 
 
