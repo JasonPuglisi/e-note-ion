@@ -168,16 +168,47 @@ Templates that fire on a shared schedule compete for the display queue.
 Follow these guidelines when setting `cron`, `hold`, and `timeout` for a new
 template to keep everything playing nicely together.
 
-### Existing hourly slots
+### Existing schedule map
 
-| Slot | What fires | Notes |
-|---|---|---|
-| `:00` every hour | `weather` (priority 5, hold 600s) | Plus `trakt.calendar` every 4h (priority 4) |
-| `:30` every hour | `calendar` (priority 5, hold 300s) | Plus `discogs` at 8:30am (priority 5) |
+| Slot | Integration | Pri | Hold | Timeout | Notes |
+|---|---|---|---|---|---|
+| `:00` every hour | `weather` | 5 | 600s | 1800s | |
+| `:00` every 4h | `trakt.calendar` | 4 | 3600s | 1800s | Private; queues behind weather |
+| `:30` every hour | `calendar` | 5 | 300s | 1800s | |
+| `8:30` daily | `discogs` | 5 | 600s | 3600s | Queues behind calendar at :30 |
+| `*/5` 07–09 Mon–Fri | `bart` | 8 | 290s | 60s | Refresh 60s; dominates mornings |
+| `*/3` always | `trakt.watching` | 7 | 180s | 120s | Refresh 30s; no-op when idle |
+| webhook only | `plex` | 8 | indef | 30s | Private; interrupts on state change |
 
-**New templates that fire hourly should pick `:00` or `:30` and check what
-else fires there.** Avoid adding a third integration to a slot that already
+### Hold budget
+
+When two templates share a slot, their **combined holds** determine how long
+that slot occupies the display. Keep the total under 30 minutes to avoid
+bleeding into the next slot:
+
+- `:00` worst case (every 4h): weather 600s + trakt.calendar 3600s = 4200s
+  (70 min). This pushes past `:30`, delaying `calendar` by ~40 min. Calendar's
+  1800s timeout keeps it alive, but it arrives late.
+- `:30` worst case (8:30am): calendar 300s + discogs 600s = 900s (15 min).
+  Finishes by :45 — no bleed into the next hour.
+- **Weekday mornings 07–09**: BART (priority 8, 290s hold, refresh) fires
+  every 5 min and effectively owns the display. Lower-priority templates
+  survive via their timeouts and show in gaps between BART refreshes.
+
+When adding a new template, sum its hold with every template that shares
+its cron slot and check whether the total bleeds into adjacent slots.
+
+### Picking a slot for new templates
+
+**Hourly templates** should fire at `:00` or `:30` — pick whichever has the
+smaller hold budget. Avoid adding a third integration to a slot that already
 has two.
+
+**Sub-hourly templates** (e.g. every 5 min) are fine but should use a short
+`timeout` so stale messages drop rather than accumulate.
+
+**New slots** (`:15`, `:45`) are available if neither existing slot has room,
+but check that an upstream hold doesn't bleed into your chosen minute.
 
 ### Pairing `timeout` with `hold`
 
@@ -185,7 +216,8 @@ has two.
 Set it long enough to survive the hold of whatever it queues behind:
 
 - A priority-5 template firing at `:00` queues behind `weather` (600s hold).
-  Set `timeout >= 600` — otherwise the message expires before `weather` finishes.
+  Set `timeout >= 600` — otherwise the message expires before `weather`
+  finishes.
 - A priority-4 template firing alongside a priority-5 template needs
   `timeout` long enough to outlast both the higher-priority hold *and* any
   queue drain time. `timeout = 1800` is a safe floor for low-priority hourly
