@@ -461,12 +461,74 @@ def test_interrupt_blocked_when_current_hold_is_high_priority() -> None:
     hold=10,
     timeout=30,
     interrupt=True,
+    # no supersede_tag — different-source message respects priority threshold
   )
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = wm
 
   with _mod._current_hold_lock:
     _mod._current_hold_priority = 8  # active high-priority hold
+    _mod._current_hold_supersede_tag = 'plex'  # different source
+
+  with patch.object(_mod, '_get_integration', return_value=mock_mod):
+    with patch.object(_mod, 'enqueue'):
+      server, port = _start_test_server()
+      try:
+        _post(port, '/webhook/bart')
+        time.sleep(0.05)
+        assert not _mod._hold_interrupt.is_set()
+      finally:
+        server.shutdown()
+
+
+def test_interrupt_bypasses_threshold_when_same_supersede_tag() -> None:
+  """Same-tag supersede interrupts even when the current hold is at or above threshold.
+
+  Ensures Plex play→pause→stop transitions always cut through each other's
+  indefinite holds regardless of the priority ceiling.
+  """
+  wm = _mod.WebhookMessage(
+    data={'templates': [], 'variables': {}, 'truncation': 'hard'},
+    priority=8,
+    hold=10,
+    timeout=30,
+    interrupt=True,
+    supersede_tag='plex',
+  )
+  mock_mod = MagicMock()
+  mock_mod.handle_webhook.return_value = wm
+
+  with _mod._current_hold_lock:
+    _mod._current_hold_priority = 8  # active high-priority hold — same source
+    _mod._current_hold_supersede_tag = 'plex'
+
+  with patch.object(_mod, '_get_integration', return_value=mock_mod):
+    with patch.object(_mod, 'enqueue'):
+      server, port = _start_test_server()
+      try:
+        _post(port, '/webhook/bart')
+        time.sleep(0.05)
+        assert _mod._hold_interrupt.is_set()
+      finally:
+        server.shutdown()
+
+
+def test_interrupt_blocked_for_different_tag_high_priority_hold() -> None:
+  """Different-tag message respects normal threshold when current hold is high priority."""
+  wm = _mod.WebhookMessage(
+    data={'templates': [], 'variables': {}, 'truncation': 'hard'},
+    priority=8,
+    hold=10,
+    timeout=30,
+    interrupt=True,
+    supersede_tag='trakt',
+  )
+  mock_mod = MagicMock()
+  mock_mod.handle_webhook.return_value = wm
+
+  with _mod._current_hold_lock:
+    _mod._current_hold_priority = 8  # active high-priority hold — different source
+    _mod._current_hold_supersede_tag = 'plex'
 
   with patch.object(_mod, '_get_integration', return_value=mock_mod):
     with patch.object(_mod, 'enqueue'):

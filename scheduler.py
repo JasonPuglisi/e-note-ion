@@ -520,8 +520,13 @@ def _make_webhook_handler(secret: str) -> type:
         indefinite=result.indefinite,
         supersede_tag=result.supersede_tag,
       )
-      if result.interrupt and _current_hold_is_interruptible():
-        _hold_interrupt.set()
+      if result.interrupt:
+        # Same-tag supersede always interrupts regardless of priority threshold —
+        # a source's own state transitions (e.g. Plex play→pause→stop) must always
+        # cut through the prior hold from that same source.
+        same_tag = bool(result.supersede_tag) and result.supersede_tag == current_hold_tag()
+        if same_tag or _current_hold_is_interruptible():
+          _hold_interrupt.set()
 
       self._respond(200, 'Enqueued')
 
