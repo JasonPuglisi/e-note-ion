@@ -23,14 +23,13 @@
 # Optional config.toml keys:
 #   folder_id — Collection folder ID (default: '0' = all releases)
 
-import importlib.metadata
 import random
 from typing import Any
 
 import requests
 
 from exceptions import IntegrationDataUnavailableError
-from integrations.http import CacheEntry, fetch_with_retry
+from integrations.http import CacheEntry, fetch_with_retry, user_agent
 
 _API_BASE = 'https://api.discogs.com'
 _PER_PAGE = 50
@@ -45,20 +44,11 @@ _collection_cache: CacheEntry | None = None
 _COLLECTION_CACHE_TTL = 24 * 3600  # 24 hours
 
 
-def _user_agent() -> str:
-  """Return the User-Agent string for outbound requests."""
-  try:
-    version = importlib.metadata.version('e-note-ion')
-  except importlib.metadata.PackageNotFoundError:
-    version = 'dev'
-  return f'e-note-ion/{version}'
-
-
 def _headers(token: str) -> dict[str, str]:
   """Build request headers including auth and User-Agent."""
   return {
     'Authorization': f'Discogs token={token}',
-    'User-Agent': _user_agent(),
+    'User-Agent': user_agent(),
   }
 
 

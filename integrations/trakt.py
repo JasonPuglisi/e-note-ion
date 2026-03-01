@@ -28,7 +28,7 @@ import requests
 
 import integrations.vestaboard as _vb
 from exceptions import IntegrationDataUnavailableError
-from integrations.http import CacheEntry, fetch_with_retry
+from integrations.http import CacheEntry, fetch_with_retry, user_agent
 
 _TRAKT_API_BASE = 'https://api.trakt.tv'
 
@@ -87,7 +87,7 @@ def _refresh_token() -> None:
       'redirect_uri': 'urn:ietf:wg:oauth:2.0:oob',
       'grant_type': 'refresh_token',
     },
-    headers={'Content-Type': 'application/json'},
+    headers={'Content-Type': 'application/json', 'User-Agent': user_agent()},
     timeout=10,
   )
   try:
@@ -127,6 +127,7 @@ def _request_headers(access_token: str, client_id: str) -> dict[str, str]:
     'Authorization': f'Bearer {access_token}',
     'trakt-api-version': '2',
     'trakt-api-key': client_id,
+    'User-Agent': user_agent(),
   }
 
 
@@ -144,7 +145,7 @@ def _run_auth_flow() -> None:
     r = requests.post(
       f'{_TRAKT_API_BASE}/oauth/device/code',
       json={'client_id': client_id},
-      headers={'Content-Type': 'application/json'},
+      headers={'Content-Type': 'application/json', 'User-Agent': user_agent()},
       timeout=10,
     )
     r.raise_for_status()
@@ -166,7 +167,7 @@ def _run_auth_flow() -> None:
       r = requests.post(
         f'{_TRAKT_API_BASE}/oauth/device/token',
         json={'code': device_code, 'client_id': client_id, 'client_secret': client_secret},
-        headers={'Content-Type': 'application/json'},
+        headers={'Content-Type': 'application/json', 'User-Agent': user_agent()},
         timeout=10,
       )
       if r.status_code == 200:

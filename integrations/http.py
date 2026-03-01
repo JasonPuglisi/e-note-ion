@@ -5,11 +5,31 @@
 # fetch_with_retry: wraps requests.request with exponential backoff on
 # transient failures (5xx responses and network-level errors).
 
+import importlib.metadata
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
 import requests
+
+_ua_cache: str | None = None
+
+
+def user_agent() -> str:
+  """Return the User-Agent string for outbound requests.
+
+  Returns 'e-note-ion/{version}', falling back to 'e-note-ion/dev' when the
+  package metadata is unavailable (e.g. source install without pip install -e).
+  The result is cached after the first call.
+  """
+  global _ua_cache
+  if _ua_cache is None:
+    try:
+      version = importlib.metadata.version('e-note-ion')
+    except importlib.metadata.PackageNotFoundError:
+      version = 'dev'
+    _ua_cache = f'e-note-ion/{version}'
+  return _ua_cache
 
 
 def fetch_with_retry(
