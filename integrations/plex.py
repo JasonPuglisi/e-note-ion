@@ -19,6 +19,7 @@
 
 import enum
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -109,10 +110,15 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
   """
   global _state
 
+  def _log(msg: str) -> None:
+    print(f'[{datetime.now().strftime("%H:%M:%S")}] [plex] {msg}')
+
   try:
     event = payload.get('event', '')
     if event not in _HANDLED_EVENTS:
       return None
+
+    _log(f'{event} (state={_state.value})')
 
     try:
       import integrations.trakt as _trakt
@@ -127,10 +133,12 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
       _state = _State.PLAYING
     elif event == _PAUSE_EVENT:
       if _state != _State.PLAYING:
+        _log(f'discarding {event}: state={_state.value}, expected playing')
         return None
       _state = _State.PAUSED
     elif event in _STOP_EVENTS:
       if _state == _State.IDLE:
+        _log(f'discarding {event}: state=idle')
         return None
       _state = _State.IDLE
 
@@ -143,7 +151,9 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
     if event not in _PLAY_EVENTS:
       import scheduler as _sched
 
-      if _sched.current_hold_tag() != 'plex':
+      hold_tag = _sched.current_hold_tag()
+      if hold_tag != 'plex':
+        _log(f'discarding {event}: board tag={hold_tag!r}, expected "plex"')
         return None
 
     # --- Build metadata ---
@@ -160,12 +170,14 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
       show_name = _vb.truncate_line(metadata['title'].upper(), _vb.model.cols, 'word')
       episode_line = ''
     else:
+      _log(f'no displayable metadata (type={media_type!r})')
       show_name = ''
       episode_line = ''
 
     if event in _STOP_EVENTS:
       cfg = _load_template_config('stopped')
       has_media = bool(show_name)
+      _log(f'enqueueing stopped (has_media={has_media})')
       return WebhookMessage(
         data={
           'templates': cfg['templates'],
@@ -180,9 +192,11 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
       )
 
     if not show_name:
+      _log(f'discarding {event}: no show_name (media_type={media_type!r})')
       return None
 
     template_name = 'paused' if event == _PAUSE_EVENT else 'now_playing'
+    _log(f'enqueueing {template_name}: {show_name!r}')
     cfg = _load_template_config(template_name)
 
     return WebhookMessage(
