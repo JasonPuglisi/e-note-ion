@@ -1883,3 +1883,80 @@ def test_worker_logs_warning_on_integration_data_unavailable(capsys: pytest.Capt
   output = capsys.readouterr().out
   assert 'contrib.weather.conditions' in output
   assert 'forecast error 504' in output
+
+
+# --- load_content warnings ---
+
+
+def test_load_content_warns_on_malformed_json(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  user_dir = tmp_path / 'content' / 'user'
+  user_dir.mkdir(parents=True)
+  (user_dir / 'bad.json').write_text('{ not valid json }')
+  monkeypatch.chdir(tmp_path)
+  _mod.load_content(sched)  # must not raise
+  assert len(sched.get_jobs()) == 0
+  output = capsys.readouterr().out
+  assert 'Warning: failed to load' in output
+  assert 'bad.json' in output
+
+
+def test_load_content_warns_on_unknown_stem(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  contrib_dir = tmp_path / 'content' / 'contrib'
+  contrib_dir.mkdir(parents=True)
+  monkeypatch.chdir(tmp_path)
+  _mod.load_content(sched, content_enabled={'nonexistent'})
+  output = capsys.readouterr().out
+  assert "Warning: content file not found for enabled stem 'nonexistent'" in output
+
+
+def test_load_content_star_no_stem_warnings(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  contrib_dir = tmp_path / 'content' / 'contrib'
+  contrib_dir.mkdir(parents=True)
+  monkeypatch.chdir(tmp_path)
+  _mod.load_content(sched, content_enabled={'*'})
+  output = capsys.readouterr().out
+  assert 'content file not found' not in output
+
+
+def test_load_content_warns_on_duplicate_stem(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+  user_dir = tmp_path / 'content' / 'user'
+  contrib_dir = tmp_path / 'content' / 'contrib'
+  user_dir.mkdir(parents=True)
+  contrib_dir.mkdir(parents=True)
+  _make_file(user_dir, 'weather.json')
+  _make_file(contrib_dir, 'weather.json')
+  monkeypatch.chdir(tmp_path)
+  _mod.load_content(sched, content_enabled={'weather'})
+  output = capsys.readouterr().out
+  assert 'Warning: weather.json exists in both content/user/ and content/contrib/' in output
+  # Both files must still be loaded
+  assert len(sched.get_jobs()) == 2
+
+
+def test_load_file_warns_and_skips_unknown_integration(
+  sched: BackgroundScheduler, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+  content = {
+    'templates': {
+      'test': {
+        'integration': 'notreal',
+        'schedule': {'cron': '0 8 * * *', 'hold': 60, 'timeout': 120},
+        'priority': 5,
+      }
+    }
+  }
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(content))
+  _mod._load_file(sched, f, False)
+  assert len(sched.get_jobs()) == 0
+  output = capsys.readouterr().out
+  assert 'Warning: skipping template' in output
+  assert 'notreal' in output
