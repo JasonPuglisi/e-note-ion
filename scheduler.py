@@ -693,7 +693,13 @@ def _load_file(
       'truncation': truncation,
     }
     if 'integration' in template:
-      data['integration'] = template['integration']
+      integration_name = template['integration']
+      try:
+        _get_integration(integration_name)
+      except (ValueError, RuntimeError) as e:
+        print(f'Warning: skipping template {stem}.{template_name!r} — {e}')
+        continue
+      data['integration'] = integration_name
     if 'integration_fn' in template:
       data['integration_fn'] = template['integration_fn']
     schedule = template['schedule']
@@ -808,17 +814,39 @@ def load_content(
       return True
     return '*' in content_enabled or stem in content_enabled
 
+  user_stems: set[str] = set()
+  contrib_stems: set[str] = set()
+
   user_path = Path('content') / 'user'
   if user_path.is_dir():
     for f in sorted(user_path.glob('*.json')):
       if _enabled(f.stem):
-        _load_file(scheduler, f, public_mode)
+        user_stems.add(f.stem)
+        try:
+          _load_file(scheduler, f, public_mode)
+        except Exception as e:  # noqa: BLE001
+          print(f'Warning: failed to load {f}: {e}')
 
   contrib_path = Path('content') / 'contrib'
   if contrib_path.is_dir() and content_enabled:
     for f in sorted(contrib_path.glob('*.json')):
       if _enabled(f.stem):
-        _load_file(scheduler, f, public_mode)
+        contrib_stems.add(f.stem)
+        try:
+          _load_file(scheduler, f, public_mode)
+        except Exception as e:  # noqa: BLE001
+          print(f'Warning: failed to load {f}: {e}')
+
+  for stem in sorted(user_stems & contrib_stems):
+    print(
+      f'Warning: {stem}.json exists in both content/user/ and content/contrib/ '
+      f'— both loaded; rename the user file if this is unintentional'
+    )
+
+  if content_enabled and '*' not in content_enabled:
+    found = user_stems | contrib_stems
+    for stem in sorted(content_enabled - found):
+      print(f'Warning: content file not found for enabled stem {stem!r} — check [scheduler] enabled in config.toml')
 
 
 def _validate_startup() -> None:
