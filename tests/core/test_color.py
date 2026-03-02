@@ -82,6 +82,24 @@ def test_dominant_color_tag_bw_image_maps_to_white_or_black() -> None:
   assert tag != '[V]'
 
 
+def test_dominant_color_tag_light_blue_maps_to_blue() -> None:
+  # Pale/light blue — this was the original bug: Euclidean RGB matched [W]
+  # because pale blue is closer to (220,220,220) than to the dark navy (30,80,185).
+  # Hue-based matching puts it at ~220° → [B] at 240°.
+  tag = color_mod.dominant_color_tag(_png_bytes(150, 170, 210))
+  assert tag == '[B]'
+
+
+def test_dominant_color_tag_light_red_maps_to_red() -> None:
+  tag = color_mod.dominant_color_tag(_png_bytes(220, 120, 120))
+  assert tag == '[R]'
+
+
+def test_dominant_color_tag_light_green_maps_to_green() -> None:
+  tag = color_mod.dominant_color_tag(_png_bytes(120, 200, 130))
+  assert tag == '[G]'
+
+
 # --- fetch_cover_color ---
 
 
