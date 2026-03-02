@@ -618,10 +618,11 @@ def _start_webhook_server() -> None:
   if not secret:
     secret = secrets.token_urlsafe(32)
     _config_mod.write_section_values('webhook', {'secret': secret})
-    logger.info(
-      'Webhook secret generated and saved to config.toml:\n  %s\n'
-      'Copy this into your webhook sender (Plex, Shortcuts, etc.).',
-      secret,
+    # Print directly to stdout so the secret is never captured by log
+    # handlers that might persist output to a file or monitoring system.
+    print(  # noqa: T201
+      f'Webhook secret generated and saved to config.toml:\n  {secret}\n'
+      'Copy this into your webhook sender (Plex, Shortcuts, etc.).'
     )
 
   handler = _make_webhook_handler(secret)
