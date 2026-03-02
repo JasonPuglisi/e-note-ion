@@ -241,4 +241,5 @@ Don't inflate priority to "win" — see the priority guidelines above.
 | [`bart.json`](contrib/bart.md) | BART real-time departure board |
 | [`discogs.json`](contrib/discogs.md) | Daily vinyl suggestion from your Discogs collection |
 | [`trakt.json`](contrib/trakt.md) | Trakt.tv upcoming calendar and now-playing |
+| [`morning_night.json`](contrib/morning_night.md) | Good morning and good night messages with moon phase visual |
 | [`plex.json`](contrib/plex.md) | Plex Media Server now-playing via webhook |
