@@ -63,7 +63,7 @@ schedule and display settings.
 
 | Field | Description |
 |---|---|
-| `cron` | Standard 5-field cron expression |
+| `cron` | Standard 5-field cron expression. **Use named days for `day_of_week`** (e.g. `mon-fri`, not `1-5`): APScheduler numbers weekdays from Monday (0=Mon … 6=Sun), opposite to Unix cron (0=Sun). Numeric values will silently fire on the wrong days. |
 | `hold` | Seconds the message stays on display before the next update |
 | `timeout` | Seconds the message can wait in the queue before being discarded |
 | `priority` | Integer 0–10; higher number runs first when multiple messages are queued simultaneously |
@@ -148,7 +148,7 @@ Override schedule fields or visibility for any named template directly in
 
 ```toml
 [bart.schedules.departures]
-cron = "*/5 6-9 * * 1-5"  # extend window to start at 6am
+cron = "*/5 6-9 * * mon-fri"  # extend window to start at 6am
 hold = 180
 timeout = 90
 priority = 9
