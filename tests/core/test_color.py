@@ -61,6 +61,27 @@ def test_dominant_color_tag_returns_string() -> None:
   assert tag.startswith('[') and tag.endswith(']')
 
 
+def test_dominant_color_tag_grey_maps_to_white() -> None:
+  # Mid-grey is achromatic with luminance >= 128 → [W], not [V].
+  tag = color_mod.dominant_color_tag(_png_bytes(128, 128, 128))
+  assert tag == '[W]'
+
+
+def test_dominant_color_tag_dark_grey_maps_to_black() -> None:
+  # Dark grey (passes near-black filter at 25) is achromatic with low luminance → [K].
+  tag = color_mod.dominant_color_tag(_png_bytes(60, 60, 60))
+  assert tag == '[K]'
+
+
+def test_dominant_color_tag_bw_image_maps_to_white_or_black() -> None:
+  # A B&W image (black silhouette on white bg): black pixels filtered,
+  # white pixels filtered, grey midtones (if any) map achromatic.
+  # Use a known mid-grey to confirm achromatic path, not [V].
+  tag = color_mod.dominant_color_tag(_png_bytes(150, 150, 150))
+  assert tag in ('[W]', '[K]')
+  assert tag != '[V]'
+
+
 # --- fetch_cover_color ---
 
 
@@ -132,3 +153,11 @@ def test_fetch_cover_color_custom_fallback() -> None:
   with patch('integrations.color.fetch_with_retry', side_effect=requests.Timeout()):
     tag = color_mod.fetch_cover_color('https://example.com/cover.jpg', fallback='[G]')
   assert tag == '[G]'
+
+
+def test_fetch_cover_color_substitutes_black_with_white() -> None:
+  # [K] returned by dominant_color_tag must be swapped to [W] for black board visibility.
+  png = _png_bytes(60, 60, 60)  # dark grey → dominant_color_tag returns [K]
+  with patch('integrations.color.fetch_with_retry', return_value=_mock_response(png)):
+    tag = color_mod.fetch_cover_color('https://example.com/cover.jpg')
+  assert tag == '[W]'
