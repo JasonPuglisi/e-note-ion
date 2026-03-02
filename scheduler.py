@@ -279,11 +279,19 @@ def _do_hold(
     interrupted = _hold_interrupt.wait(timeout=next_wake)
     _hold_interrupt.clear()
     if interrupted:
+      print(
+        f'[{datetime.now().strftime("%H:%M:%S")}] [hold] {message.name}'
+        f' interrupted at {time.monotonic() - hold_start:.1f}s'
+      )
       break
 
     if message.priority < _INTERRUPT_PRIORITY_THRESHOLD and elapsed >= min_hold:
       with _queue.mutex:
         if _queue.queue and _queue.queue[0].priority >= _INTERRUPT_PRIORITY_THRESHOLD:
+          print(
+            f'[{datetime.now().strftime("%H:%M:%S")}] [hold] {message.name}'
+            f' preempted by higher-priority message at {time.monotonic() - hold_start:.1f}s'
+          )
           break
 
     if refresh_fn and refresh_interval:
@@ -415,11 +423,16 @@ def worker() -> None:
     if message.supersede_tag:
       with _queue.mutex:
         if any(m.supersede_tag == message.supersede_tag for m in _queue.queue):
+          print(
+            f'[{datetime.now().strftime("%H:%M:%S")}] [hold] {message.name}'
+            f' re-firing interrupt: same-tag message queued during set_state'
+          )
           _hold_interrupt.set()
     _do_hold(message, _get_min_hold(), refresh_fn=_refresh_fn, refresh_interval=refresh_interval)
     with _current_hold_lock:
       _current_hold_supersede_tag = ''
       _current_hold_priority = None
+    print(f'[{datetime.now().strftime("%H:%M:%S")}] [hold] {message.name} hold ended, tag cleared')
 
     # Hold expired — if this was a refresh-capable integration message, transfer
     # the refresh fn to idle state so the display keeps updating while the queue
@@ -528,6 +541,10 @@ def _make_webhook_handler(secret: str) -> type:
 
       if result.interrupt_only:
         if _current_hold_is_interruptible():
+          print(
+            f'[{datetime.now().strftime("%H:%M:%S")}] [webhook] {integration_name}'
+            f' interrupt_only — firing hold interrupt'
+          )
           _hold_interrupt.set()
         self._respond(200, 'Interrupted')
         return
@@ -547,6 +564,11 @@ def _make_webhook_handler(secret: str) -> type:
         # cut through the prior hold from that same source.
         same_tag = bool(result.supersede_tag) and result.supersede_tag == current_hold_tag()
         if same_tag or _current_hold_is_interruptible():
+          reason = 'same-tag' if same_tag else 'interruptible hold'
+          print(
+            f'[{datetime.now().strftime("%H:%M:%S")}] [webhook] {integration_name}'
+            f' interrupt ({reason}) — firing hold interrupt'
+          )
           _hold_interrupt.set()
 
       self._respond(200, 'Enqueued')
