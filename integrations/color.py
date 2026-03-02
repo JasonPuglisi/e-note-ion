@@ -13,10 +13,10 @@
 #   3. Compute the arithmetic mean of the remaining pixels in RGB space.
 #   4. Check HSV saturation of the average color. If below _SATURATION_THRESHOLD
 #      the image is achromatic (grey/B&W); map directly to [W] or [K] by
-#      luminance rather than running palette matching (which would otherwise
-#      spuriously return [V] for mid-grey).
-#   5. For chromatic colors, find the nearest palette entry by Euclidean
-#      distance in RGB space and return its tag.
+#      luminance (ITU-R BT.601).
+#   5. For chromatic colors, compute the HSV hue angle and find the nearest
+#      entry in _CHROMATIC_PALETTE by circular hue distance. Hue matching is
+#      invariant to lightness, so pale blue and deep navy both map to [B].
 #
 # If the image cannot be decoded, the request fails, or all pixels are filtered,
 # the caller-supplied fallback tag is returned instead.
@@ -31,17 +31,17 @@ from integrations.http import fetch_with_retry, user_agent
 
 logger = logging.getLogger(__name__)
 
-# (R, G, B, tag) for the 8 Vestaboard color squares.
-# Palette values are approximate midpoints of each color's visual range.
-_PALETTE: list[tuple[int, int, int, str]] = [
-  (190, 30, 45, '[R]'),  # red
-  (220, 120, 30, '[O]'),  # orange
-  (220, 185, 30, '[Y]'),  # yellow
-  (30, 140, 60, '[G]'),  # green
-  (30, 80, 185, '[B]'),  # blue
-  (110, 40, 160, '[V]'),  # violet
-  (220, 220, 220, '[W]'),  # white
-  (30, 30, 30, '[K]'),  # black
+# (hue_degrees, tag) for the 6 chromatic Vestaboard color squares.
+# Matching is by circular hue distance, so all lightness variants of a hue
+# (pale blue, sky blue, deep navy) map to the same tag.
+# [W] and [K] are achromatic and handled separately by luminance.
+_CHROMATIC_PALETTE: list[tuple[float, str]] = [
+  (0.0, '[R]'),  # red
+  (30.0, '[O]'),  # orange
+  (60.0, '[Y]'),  # yellow
+  (120.0, '[G]'),  # green
+  (240.0, '[B]'),  # blue
+  (275.0, '[V]'),  # violet
 ]
 
 # Maximum image size to read (bytes). Cover art thumbnails are well under 500 KB;
@@ -105,13 +105,21 @@ def dominant_color_tag(image_bytes: bytes, *, fallback: str = '[Y]') -> str:
     # Achromatic: choose [W] or [K] by perceived luminance (ITU-R BT.601).
     luminance = (avg_r * 299 + avg_g * 587 + avg_b * 114) // 1000
     tag = '[W]' if luminance >= 128 else '[K]'
+    logger.debug('color: avg RGB (%d,%d,%d) sat=%.2f lum=%d → %s', avg_r, avg_g, avg_b, saturation, luminance, tag)
   else:
+    # Chromatic: compute HSV hue and match by circular distance.
+    delta = max_c - min_c
+    if max_c == avg_r:
+      hue = 60.0 * (((avg_g - avg_b) / delta) % 6)
+    elif max_c == avg_g:
+      hue = 60.0 * ((avg_b - avg_r) / delta + 2)
+    else:
+      hue = 60.0 * ((avg_r - avg_g) / delta + 4)
     tag = min(
-      _PALETTE,
-      key=lambda entry: (entry[0] - avg_r) ** 2 + (entry[1] - avg_g) ** 2 + (entry[2] - avg_b) ** 2,
-    )[3]
-
-  logger.debug('color: avg RGB (%d, %d, %d) sat=%.2f → %s', avg_r, avg_g, avg_b, saturation, tag)
+      _CHROMATIC_PALETTE,
+      key=lambda entry: min(abs(entry[0] - hue), 360 - abs(entry[0] - hue)),
+    )[1]
+    logger.debug('color: avg RGB (%d, %d, %d) sat=%.2f hue=%.1f → %s', avg_r, avg_g, avg_b, saturation, hue, tag)
   return tag
 
 
