@@ -15,6 +15,7 @@
 # Optional config.toml keys:
 #   line2_dest — Second destination abbreviation code (optional)
 
+import logging
 from typing import Any
 
 import requests
@@ -22,6 +23,8 @@ import requests
 import integrations.vestaboard as vestaboard
 from exceptions import IntegrationDataUnavailableError
 from integrations.http import CacheEntry, fetch_with_retry, user_agent
+
+logger = logging.getLogger(__name__)
 
 _API_BASE = 'https://api.bart.gov/api'
 
@@ -165,9 +168,12 @@ def get_variables() -> dict[str, list[list[str]]]:
   if _dest_color_cache is None:
     try:
       _dest_color_cache = _fetch_dest_colors(api_key, station)
+      logger.debug('BART: built color cache with %d destination(s)', len(_dest_color_cache))
     except Exception as e:  # noqa: BLE001
-      print(f'Warning: could not build BART color cache: {e}')
+      logger.warning('could not build BART color cache: %s', e)
       _dest_color_cache = {}
+  else:
+    logger.debug('BART: color cache hit (%d destination(s))', len(_dest_color_cache))
 
   try:
     r = fetch_with_retry(
@@ -183,8 +189,9 @@ def get_variables() -> dict[str, list[list[str]]]:
       msg = f'BART API error: {e.response.status_code} {e.response.reason}'
     else:
       msg = str(e)
-    print(f'BART: departures request failed — {msg}')
+    logger.warning('BART: departures request failed — %s', msg)
     if _departures_cache is not None and _departures_cache.is_valid(_DEPARTURES_CACHE_TTL):
+      logger.debug('BART: serving stale departures cache')
       return _departures_cache.value
     raise IntegrationDataUnavailableError(f'BART: departures request failed — {msg}') from None
   data = r.json()
@@ -208,5 +215,6 @@ def get_variables() -> dict[str, list[list[str]]]:
         break
     variables[f'line{i}'] = [[line_value]]
 
+  logger.debug('BART: fetched departures for %s (dest filters: %s)', station, dest_filters)
   _departures_cache = CacheEntry(variables)
   return variables

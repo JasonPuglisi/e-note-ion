@@ -23,6 +23,7 @@
 # Optional config.toml keys:
 #   folder_id — Collection folder ID (default: '0' = all releases)
 
+import logging
 import random
 from typing import Any
 
@@ -30,6 +31,8 @@ import requests
 
 from exceptions import IntegrationDataUnavailableError
 from integrations.http import CacheEntry, fetch_with_retry, user_agent
+
+logger = logging.getLogger(__name__)
 
 _API_BASE = 'https://api.discogs.com'
 _PER_PAGE = 50
@@ -61,6 +64,7 @@ def _resolve_username(token: str) -> str:
   global _username_cache
 
   if _username_cache is not None:
+    logger.debug('Discogs: username cache hit (%r)', _username_cache)
     return _username_cache
 
   try:
@@ -79,6 +83,7 @@ def _resolve_username(token: str) -> str:
     raise IntegrationDataUnavailableError('Discogs: identity response missing username')
 
   _username_cache = username
+  logger.debug('Discogs: resolved username %r', username)
   return username
 
 
@@ -181,7 +186,7 @@ def get_variables() -> dict[str, list[list[str]]]:
       msg = f'Discogs API error: {e.response.status_code} {e.response.reason}'
     else:
       msg = str(e)
-    print(f'Discogs: collection request failed — {msg}')
+    logger.warning('Discogs: collection request failed — %s', msg)
     if _collection_cache is not None and _collection_cache.is_valid(_COLLECTION_CACHE_TTL):
       return _collection_cache.value
     raise IntegrationDataUnavailableError(f'Discogs: collection request failed — {msg}') from None
@@ -190,5 +195,6 @@ def get_variables() -> dict[str, list[list[str]]]:
     'album': [[_format_album(release)]],
     'artist': [[_format_artist(release)]],
   }
+  logger.debug('Discogs: selected record %r by %r (offset=%d)', result['album'][0][0], result['artist'][0][0], offset)
   _collection_cache = CacheEntry(result)
   return result

@@ -19,12 +19,14 @@
 
 import enum
 import json
-from datetime import datetime
+import logging
 from pathlib import Path
 from typing import Any
 
 import integrations.vestaboard as _vb
 from scheduler import WebhookMessage
+
+logger = logging.getLogger(__name__)
 
 _PLEX_JSON_PATH = Path(__file__).parent.parent / 'content' / 'contrib' / 'plex.json'
 
@@ -110,15 +112,12 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
   """
   global _state
 
-  def _log(msg: str) -> None:
-    print(f'[{datetime.now().strftime("%H:%M:%S")}] [plex] {msg}')
-
   try:
     event = payload.get('event', '')
     if event not in _HANDLED_EVENTS:
       return None
 
-    _log(f'{event} (state={_state.value})')
+    logger.debug('plex: %s (state=%s)', event, _state.value)
 
     try:
       import integrations.trakt as _trakt
@@ -133,12 +132,12 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
       _state = _State.PLAYING
     elif event == _PAUSE_EVENT:
       if _state != _State.PLAYING:
-        _log(f'discarding {event}: state={_state.value}, expected playing')
+        logger.debug('plex: discarding %s: state=%s, expected playing', event, _state.value)
         return None
       _state = _State.PAUSED
     elif event in _STOP_EVENTS:
       if _state == _State.IDLE:
-        _log(f'discarding {event}: state=idle')
+        logger.debug('plex: discarding %s: state=idle', event)
         return None
       _state = _State.IDLE
 
@@ -153,7 +152,7 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
 
       hold_tag = _sched.current_hold_tag()
       if hold_tag != 'plex':
-        _log(f'discarding {event}: board tag={hold_tag!r}, expected "plex"')
+        logger.debug('plex: discarding %s: board tag=%r, expected "plex"', event, hold_tag)
         return None
 
     # --- Build metadata ---
@@ -170,14 +169,14 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
       show_name = _vb.truncate_line(metadata['title'].upper(), _vb.model.cols, 'word')
       episode_line = ''
     else:
-      _log(f'no displayable metadata (type={media_type!r})')
+      logger.debug('plex: no displayable metadata (type=%r)', media_type)
       show_name = ''
       episode_line = ''
 
     if event in _STOP_EVENTS:
       cfg = _load_template_config('stopped')
       has_media = bool(show_name)
-      _log(f'enqueueing stopped (has_media={has_media})')
+      logger.debug('plex: enqueueing stopped (has_media=%s)', has_media)
       return WebhookMessage(
         data={
           'templates': cfg['templates'],
@@ -192,11 +191,11 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
       )
 
     if not show_name:
-      _log(f'discarding {event}: no show_name (media_type={media_type!r})')
+      logger.debug('plex: discarding %s: no show_name (media_type=%r)', event, media_type)
       return None
 
     template_name = 'paused' if event == _PAUSE_EVENT else 'now_playing'
-    _log(f'enqueueing {template_name}: {show_name!r}')
+    logger.debug('plex: enqueueing %s: %r', template_name, show_name)
     cfg = _load_template_config(template_name)
 
     return WebhookMessage(
@@ -216,5 +215,5 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
       supersede_tag='plex',
     )
   except Exception as e:  # noqa: BLE001
-    print(f'Plex webhook error: {e}')
+    logger.error('Plex webhook error: %s', e)
     return None

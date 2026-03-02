@@ -20,6 +20,7 @@
 # Optional config.toml keys:
 #   calendar_days — lookahead window in days (default 7, max 33)
 
+import logging
 import threading
 import time
 from datetime import datetime, timezone
@@ -29,6 +30,8 @@ import requests
 import integrations.vestaboard as _vb
 from exceptions import IntegrationDataUnavailableError
 from integrations.http import CacheEntry, fetch_with_retry, user_agent
+
+logger = logging.getLogger(__name__)
 
 _TRAKT_API_BASE = 'https://api.trakt.tv'
 
@@ -81,6 +84,7 @@ def _refresh_token() -> None:
   """Exchange the current refresh token for a new access/refresh token pair."""
   import config as _config_mod
 
+  logger.debug('Trakt: refreshing access token')
   client_id = _config_mod.get('trakt', 'client_id')
   client_secret = _config_mod.get('trakt', 'client_secret')
   refresh_token = _config_mod.get('trakt', 'refresh_token')
@@ -102,6 +106,7 @@ def _refresh_token() -> None:
   except requests.HTTPError as e:
     raise requests.HTTPError(f'Trakt token refresh failed: {e.response.status_code} {e.response.reason}') from None
   _store_tokens(r.json())
+  logger.debug('Trakt: token refreshed successfully')
 
 
 def _get_token() -> str:
@@ -120,7 +125,9 @@ def _get_token() -> str:
   if expires_at_str:
     try:
       expires_at = int(expires_at_str)
-      if expires_at - time.time() < 3600:
+      secs_remaining = expires_at - time.time()
+      if secs_remaining < 3600:
+        logger.debug('Trakt: access token expires in %.0fs — triggering refresh', secs_remaining)
         _refresh_token()
         access_token = _config_mod.get_optional('trakt', 'access_token')
     except ValueError:
@@ -164,7 +171,7 @@ def _run_auth_flow() -> None:
     interval: int = data.get('interval', 5)
     expires_in: int = data.get('expires_in', 600)
 
-    print(f'Trakt auth required. Go to {verification_url} and enter: {user_code}')
+    logger.info('Trakt auth required. Go to %s and enter: %s', verification_url, user_code)
 
     deadline = time.time() + expires_in
     poll_interval = interval
@@ -179,22 +186,24 @@ def _run_auth_flow() -> None:
       )
       if r.status_code == 200:
         _store_tokens(r.json())
-        print('Trakt auth successful. Tokens saved to config.toml.')
+        logger.info('Trakt auth successful. Tokens saved to config.toml.')
         return
       elif r.status_code == 400:
+        logger.debug('Trakt: auth pending — waiting for user approval (poll_interval=%ds)', poll_interval)
         continue  # pending — user hasn't approved yet
       elif r.status_code == 410:
-        print('Error: Trakt auth code expired — restart the container to try again.')
+        logger.error('Trakt auth code expired — restart the container to try again.')
         return
       elif r.status_code == 418:
-        print('Error: Trakt auth denied — restart the container to try again.')
+        logger.error('Trakt auth denied — restart the container to try again.')
         return
       elif r.status_code == 429:
         poll_interval = poll_interval * 2  # back off on rate limit
+        logger.debug('Trakt: auth rate-limited — backing off to %ds', poll_interval)
 
-    print('Error: Trakt auth timed out — restart the container to try again.')
+    logger.error('Trakt auth timed out — restart the container to try again.')
   except Exception as e:  # noqa: BLE001
-    print(f'Error during Trakt auth: {e}')
+    logger.error('Error during Trakt auth: %s', e)
 
 
 def preflight() -> None:
@@ -210,8 +219,10 @@ def _ensure_authenticated() -> None:
   global _auth_started
   with _auth_lock:
     if _auth_started:
+      logger.debug('Trakt: auth flow already in progress — not starting another')
       return
     _auth_started = True
+  logger.debug('Trakt: starting auth background thread')
   threading.Thread(target=_run_auth_flow, daemon=True, name='trakt-auth').start()
 
 
@@ -269,7 +280,7 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
       msg = f'Trakt calendar API error: {e.response.status_code} {e.response.reason}'
     else:
       msg = str(e)
-    print(f'Trakt: calendar request failed — {msg}')
+    logger.warning('Trakt: calendar request failed — %s', msg)
     if _calendar_cache is not None and _calendar_cache.is_valid(_CALENDAR_CACHE_TTL):
       return _calendar_cache.value
     raise IntegrationDataUnavailableError(f'Trakt: calendar request failed — {msg}') from None
@@ -307,6 +318,7 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
     'air_time': [[air_time]],
     'episode_title': [[episode_title]],
   }
+  logger.debug('Trakt: fetched calendar — next episode: %s %s (%s)', show_name, episode_ref, air_day)
   _calendar_cache = CacheEntry(result)
   return result
 
@@ -321,6 +333,7 @@ def clear_watching_state() -> None:
   with _watching_lock:
     _last_watching_vars = None
     _stop_pending = False
+  logger.debug('Trakt: watching state cleared (Plex event received)')
 
 
 def get_variables_watching() -> dict[str, list[list[str]]]:
@@ -360,11 +373,13 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
       if last is not None:
         if pending:
           # Second consecutive 204 — genuine stop confirmed; emit indicator.
+          logger.debug('Trakt: second consecutive 204 — emitting stopped indicator')
           _last_watching_vars = None
           _stop_pending = False
         else:
           # First 204 after a watching session — debounce: skip this cycle so
           # a back-to-back episode transition doesn't produce a false stop card.
+          logger.debug('Trakt: first 204 after watching session — debouncing stop')
           _stop_pending = True
     if last is not None and pending:
       stopped = dict(last)
@@ -400,6 +415,7 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
     'episode_ref': [[episode_ref]],
     'episode_title': [[episode_title]],
   }
+  logger.debug('Trakt: watching %s %r (%s)', media_type, show_name, episode_ref)
   with _watching_lock:
     _last_watching_vars = result
     _stop_pending = False
@@ -439,7 +455,7 @@ def get_variables_next_up() -> dict[str, list[list[str]]]:
       msg = f'Trakt watched/shows API error: {e.response.status_code} {e.response.reason}'
     else:
       msg = str(e)
-    print(f'Trakt: next-up watched request failed — {msg}')
+    logger.warning('Trakt: next-up watched request failed — %s', msg)
     if _next_up_cache is not None and _next_up_cache.is_valid(_NEXT_UP_CACHE_TTL):
       return _next_up_cache.value
     raise IntegrationDataUnavailableError(f'Trakt: next-up watched request failed — {msg}') from None
@@ -463,7 +479,7 @@ def get_variables_next_up() -> dict[str, list[list[str]]]:
         msg = f'Trakt progress API error: {e.response.status_code} {e.response.reason}'
       else:
         msg = str(e)
-      print(f'Trakt: next-up progress request failed — {msg}')
+      logger.warning('Trakt: next-up progress request failed — %s', msg)
       if _next_up_cache is not None and _next_up_cache.is_valid(_NEXT_UP_CACHE_TTL):
         return _next_up_cache.value
       raise IntegrationDataUnavailableError(f'Trakt: next-up progress request failed — {msg}') from None
@@ -478,6 +494,7 @@ def get_variables_next_up() -> dict[str, list[list[str]]]:
         'episode_ref': [[episode_ref]],
         'episode_title': [[episode_title]],
       }
+      logger.debug('Trakt: next up — %s %s', show_name, episode_ref)
       _next_up_cache = CacheEntry(result)
       return result
 

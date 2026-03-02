@@ -227,7 +227,7 @@ def test_auth_thread_writes_tokens_on_success(
   assert 'access_token = "new-access"' in text
 
 
-def test_auth_thread_logs_error_on_expired(config_without_tokens: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_auth_thread_logs_error_on_expired(config_without_tokens: Path, caplog: pytest.LogCaptureFixture) -> None:
   code_response = MagicMock()
   code_response.status_code = 200
   code_response.json.return_value = {
@@ -245,11 +245,10 @@ def test_auth_thread_logs_error_on_expired(config_without_tokens: Path, capsys: 
     with patch('time.sleep'):
       trakt._run_auth_flow()
 
-  out = capsys.readouterr().out
-  assert 'expired' in out.lower()
+  assert 'expired' in caplog.text.lower()
 
 
-def test_auth_thread_logs_error_on_denied(config_without_tokens: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_auth_thread_logs_error_on_denied(config_without_tokens: Path, caplog: pytest.LogCaptureFixture) -> None:
   code_response = MagicMock()
   code_response.status_code = 200
   code_response.json.return_value = {
@@ -267,8 +266,7 @@ def test_auth_thread_logs_error_on_denied(config_without_tokens: Path, capsys: p
     with patch('time.sleep'):
       trakt._run_auth_flow()
 
-  out = capsys.readouterr().out
-  assert 'denied' in out.lower()
+  assert 'denied' in caplog.text.lower()
 
 
 # --- _format_episode_ref ---

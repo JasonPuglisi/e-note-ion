@@ -8,6 +8,11 @@
 # to display times in a specific timezone regardless of the host's TZ setting.
 # timezone = "America/Los_Angeles"
 
+# Logging level: "DEBUG", "INFO" (default), "WARNING", "ERROR", "CRITICAL".
+# Set to "DEBUG" to see per-integration cache hits, retry attempts, and
+# detailed state transitions.
+# log_level = "DEBUG"
+
 # Display model: "note" (3×15, default) or "flagship" (6×22)
 # model = "flagship"
 
