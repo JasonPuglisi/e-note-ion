@@ -216,7 +216,10 @@ _current_hold_priority: int | None = None
 def current_hold_tag() -> str:
   """Return the supersede_tag of the message currently being held, or ''."""
   with _current_hold_lock:
-    return _current_hold_supersede_tag
+    tag = _current_hold_supersede_tag
+  ts = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+  print(f'[{ts}] [tag] current_hold_tag()={tag!r} pri={_current_hold_priority!r}')
+  return tag
 
 
 def _current_hold_is_interruptible() -> bool:
@@ -349,6 +352,10 @@ def worker() -> None:
     with _current_hold_lock:
       _current_hold_supersede_tag = message.supersede_tag
       _current_hold_priority = message.priority
+    print(
+      f'[{datetime.now().strftime("%H:%M:%S.%f")[:-3]}] [tag] set tag={message.supersede_tag!r}'
+      f' priority={message.priority!r}'
+    )
 
     try:
       variables = message.data['variables']
@@ -364,6 +371,7 @@ def worker() -> None:
       with _current_hold_lock:
         _current_hold_supersede_tag = ''
         _current_hold_priority = None
+      print(f'[{datetime.now().strftime("%H:%M:%S.%f")[:-3]}] [tag] cleared (IntegrationDataUnavailableError)')
       print(f'[{datetime.now().strftime("%H:%M:%S")}] Skipping {message.name}: {e}')
       continue
     except vestaboard.DuplicateContentError:
@@ -374,6 +382,7 @@ def worker() -> None:
       with _current_hold_lock:
         _current_hold_supersede_tag = ''
         _current_hold_priority = None
+      print(f'[{datetime.now().strftime("%H:%M:%S.%f")[:-3]}] [tag] cleared (BoardLockedError)')
       print(f'Board locked: {e}. Retrying in {_LOCK_RETRY_DELAY}s.')
       time.sleep(_LOCK_RETRY_DELAY)
       # Re-enqueue if the message hasn't exceeded its timeout.
@@ -384,6 +393,7 @@ def worker() -> None:
       with _current_hold_lock:
         _current_hold_supersede_tag = ''
         _current_hold_priority = None
+      print(f'[{datetime.now().strftime("%H:%M:%S.%f")[:-3]}] [tag] cleared (Exception: {type(e).__name__})')
       print(f'Error sending to board: {e}')
       continue
 
