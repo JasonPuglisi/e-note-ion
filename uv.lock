@@ -183,7 +183,7 @@ wheels = [
 
 [[package]]
 name = "e-note-ion"
-version = "0.25.8"
+version = "0.25.9"
 source = { editable = "." }
 dependencies = [
     { name = "apscheduler" },
