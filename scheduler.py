@@ -52,6 +52,17 @@ if __name__ == '__main__':
 
 logger = logging.getLogger('scheduler')
 
+
+class _IndentedFormatter(logging.Formatter):
+  # Prefix width for 'HH:MM:SS LEVELNAM ' (asctime=8, space=1, levelname-8=8, space=1)
+  _PREFIX_WIDTH = 18
+
+  def format(self, record: logging.LogRecord) -> str:
+    msg = super().format(record)
+    indent = ' ' * self._PREFIX_WIDTH
+    return msg.replace('\n', '\n' + indent)
+
+
 # Allowlist of valid integration names. Must be extended when a new integration
 # is added to integrations/.
 _KNOWN_INTEGRATIONS: frozenset[str] = frozenset({'bart', 'calendar', 'discogs', 'moon', 'plex', 'trakt', 'weather'})
@@ -950,11 +961,14 @@ def _validate_startup() -> None:
 
 
 def main() -> None:
-  logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s %(levelname)-8s %(message)s',
-    datefmt='%H:%M:%S',
+  _handler = logging.StreamHandler()
+  _handler.setFormatter(
+    _IndentedFormatter(
+      fmt='%(asctime)s %(levelname)-8s %(message)s',
+      datefmt='%H:%M:%S',
+    )
   )
+  logging.basicConfig(level=logging.INFO, handlers=[_handler])
   _validate_startup()
   _config_mod.load_config()
 
