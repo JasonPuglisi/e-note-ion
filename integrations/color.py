@@ -11,8 +11,12 @@
 #   2. Filter out near-white (all channels > 230) and near-black (all channels
 #      < 25) pixels — these are background/border artifacts that skew the result.
 #   3. Compute the arithmetic mean of the remaining pixels in RGB space.
-#   4. Find the nearest Vestaboard palette entry by Euclidean distance in RGB.
-#   5. Return the corresponding color tag string (e.g. '[R]').
+#   4. Check HSV saturation of the average color. If below _SATURATION_THRESHOLD
+#      the image is achromatic (grey/B&W); map directly to [W] or [K] by
+#      luminance rather than running palette matching (which would otherwise
+#      spuriously return [V] for mid-grey).
+#   5. For chromatic colors, find the nearest palette entry by Euclidean
+#      distance in RGB space and return its tag.
 #
 # If the image cannot be decoded, the request fails, or all pixels are filtered,
 # the caller-supplied fallback tag is returned instead.
@@ -47,6 +51,9 @@ _MAX_IMAGE_BYTES = 2 * 1024 * 1024  # 2 MB
 # Pixel brightness thresholds for background filtering.
 _NEAR_WHITE = 230  # all channels above this → skip
 _NEAR_BLACK = 25  # all channels below this → skip
+
+# HSV saturation below this threshold → treat as achromatic (grey/B&W).
+_SATURATION_THRESHOLD = 0.15
 
 # Known Discogs placeholder image indicators.
 _PLACEHOLDER_SUFFIXES = ('spacer.gif', 'placeholder.gif')
@@ -89,12 +96,22 @@ def dominant_color_tag(image_bytes: bytes, *, fallback: str = '[Y]') -> str:
   avg_g = sum(g for _, g, _ in filtered) // n
   avg_b = sum(b for _, _, b in filtered) // n
 
-  tag = min(
-    _PALETTE,
-    key=lambda entry: (entry[0] - avg_r) ** 2 + (entry[1] - avg_g) ** 2 + (entry[2] - avg_b) ** 2,
-  )[3]
+  # Compute HSV saturation to detect achromatic (grey/B&W) images.
+  max_c = max(avg_r, avg_g, avg_b)
+  min_c = min(avg_r, avg_g, avg_b)
+  saturation = (max_c - min_c) / max_c if max_c > 0 else 0.0
 
-  logger.debug('color: avg RGB (%d, %d, %d) → %s', avg_r, avg_g, avg_b, tag)
+  if saturation < _SATURATION_THRESHOLD:
+    # Achromatic: choose [W] or [K] by perceived luminance (ITU-R BT.601).
+    luminance = (avg_r * 299 + avg_g * 587 + avg_b * 114) // 1000
+    tag = '[W]' if luminance >= 128 else '[K]'
+  else:
+    tag = min(
+      _PALETTE,
+      key=lambda entry: (entry[0] - avg_r) ** 2 + (entry[1] - avg_g) ** 2 + (entry[2] - avg_b) ** 2,
+    )[3]
+
+  logger.debug('color: avg RGB (%d, %d, %d) sat=%.2f → %s', avg_r, avg_g, avg_b, saturation, tag)
   return tag
 
 
@@ -144,4 +161,14 @@ def fetch_cover_color(url: str, *, fallback: str = '[Y]') -> str:
     logger.debug('color: image fetch failed — %s', e)
     return fallback
 
-  return dominant_color_tag(image_bytes, fallback=fallback)
+  tag = dominant_color_tag(image_bytes, fallback=fallback)
+
+  # [K] (black) is invisible on a black board (the default). Substitute [W]
+  # so the color square is always visible. When board_color config is added
+  # (#287), read it here and skip this substitution for white boards (where
+  # [W] should instead be swapped to [K]).
+  if tag == '[K]':
+    logger.debug('color: substituting [K] → [W] for black board visibility')
+    tag = '[W]'
+
+  return tag
