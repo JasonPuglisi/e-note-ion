@@ -1990,7 +1990,7 @@ def test_known_integrations_covers_all_integration_modules() -> None:
   from pathlib import Path
 
   integrations_dir = Path(importlib.import_module('integrations').__file__).parent  # type: ignore[arg-type]
-  modules = {p.stem for p in integrations_dir.glob('*.py') if p.stem not in ('__init__', 'vestaboard', 'http')}
+  modules = {p.stem for p in integrations_dir.glob('*.py') if p.stem not in ('__init__', 'vestaboard', 'http', 'color')}
   missing = modules - _mod._KNOWN_INTEGRATIONS
   assert not missing, f'Integrations missing from _KNOWN_INTEGRATIONS: {missing}'
 

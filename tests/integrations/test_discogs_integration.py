@@ -32,9 +32,9 @@ def test_get_variables_returns_artist_and_album(require_env: None, monkeypatch: 
 
   result = discogs.get_variables()
 
-  assert set(result.keys()) == {'album', 'artist'}
+  assert set(result.keys()) == {'album', 'artist', 'color'}
 
-  for key in ('album', 'artist'):
+  for key in ('album', 'artist', 'color'):
     assert len(result[key]) == 1, f'{key}: expected 1 option'
     assert len(result[key][0]) == 1, f'{key}: expected 1 line'
     assert result[key][0][0], f'{key}: value is empty'

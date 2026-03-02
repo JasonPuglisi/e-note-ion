@@ -12,7 +12,7 @@
       "templates": [
         {
           "format": [
-            "[Y] MORNING SPIN",
+            "{color} MORNING SPIN",
             "{album}",
             "{artist}"
           ]

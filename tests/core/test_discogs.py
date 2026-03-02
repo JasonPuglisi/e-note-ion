@@ -18,6 +18,13 @@ def reset_caches() -> Generator[None, None, None]:
   discogs._collection_cache = None
 
 
+@pytest.fixture(autouse=True)
+def mock_fetch_cover_color() -> Generator[None, None, None]:
+  """Patch fetch_cover_color for all tests; override in color-specific tests."""
+  with patch('integrations.discogs.fetch_cover_color', return_value='[Y]'):
+    yield
+
+
 @pytest.fixture()
 def discogs_config(monkeypatch: pytest.MonkeyPatch) -> None:
   """Patch config with Discogs settings."""
@@ -48,11 +55,16 @@ def _mock_page(
   return mock
 
 
-def _release(title: str = 'Test Album', artist: str = 'Test Artist') -> dict[str, Any]:
+def _release(
+  title: str = 'Test Album',
+  artist: str = 'Test Artist',
+  cover_image: str = '',
+) -> dict[str, Any]:
   return {
     'basic_information': {
       'title': title,
       'artists': [{'name': artist}],
+      'cover_image': cover_image,
     }
   }
 
@@ -68,7 +80,7 @@ def test_get_variables_returns_expected_keys(discogs_config: None) -> None:
       side_effect=[_mock_identity(), _mock_page([release], total=1)],
     ):
       result = discogs.get_variables()
-  assert set(result.keys()) == {'album', 'artist'}
+  assert set(result.keys()) == {'album', 'artist', 'color'}
 
 
 # --- identity resolution ---
@@ -298,3 +310,47 @@ def test_user_agent_header_sent(discogs_config: None) -> None:
     headers = call.kwargs['headers']
     assert 'User-Agent' in headers
     assert headers['User-Agent'].startswith('e-note-ion/')
+
+
+# --- color ---
+
+
+def test_get_variables_color_tag_in_result(discogs_config: None) -> None:
+  """color key is present and holds a single tag value."""
+  release = _release(cover_image='https://example.com/cover.jpg')
+  with patch('integrations.discogs.random.randint', return_value=0):
+    with patch(
+      'integrations.discogs.fetch_with_retry',
+      side_effect=[_mock_identity(), _mock_page([release], total=1)],
+    ):
+      with patch('integrations.discogs.fetch_cover_color', return_value='[B]'):
+        result = discogs.get_variables()
+  assert result['color'] == [['[B]']]
+
+
+def test_get_variables_color_fallback_when_no_cover(discogs_config: None) -> None:
+  """When cover_image is absent, color falls back to yellow without calling fetch_cover_color."""
+  release = _release()  # no cover_image
+  with patch('integrations.discogs.random.randint', return_value=0):
+    with patch(
+      'integrations.discogs.fetch_with_retry',
+      side_effect=[_mock_identity(), _mock_page([release], total=1)],
+    ):
+      with patch('integrations.discogs.fetch_cover_color') as mock_color:
+        result = discogs.get_variables()
+  mock_color.assert_not_called()
+  assert result['color'] == [['[Y]']]
+
+
+def test_get_variables_color_cached(discogs_config: None) -> None:
+  """Color tag is persisted in _collection_cache alongside album/artist."""
+  release = _release(cover_image='https://example.com/cover.jpg')
+  with patch('integrations.discogs.random.randint', return_value=0):
+    with patch(
+      'integrations.discogs.fetch_with_retry',
+      side_effect=[_mock_identity(), _mock_page([release], total=1)],
+    ):
+      with patch('integrations.discogs.fetch_cover_color', return_value='[G]'):
+        discogs.get_variables()
+  assert discogs._collection_cache is not None
+  assert discogs._collection_cache.value['color'] == [['[G]']]
