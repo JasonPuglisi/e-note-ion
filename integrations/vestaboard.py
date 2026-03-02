@@ -15,6 +15,7 @@ import json
 import logging
 import random
 import re
+import time
 import unicodedata
 from enum import Enum
 from typing import Literal
@@ -472,6 +473,9 @@ def _build_grid(lines: list[str]) -> list[list[int]]:
 
 # --- Writing ---
 
+_RATE_LIMIT_RETRIES = 3  # retries after the initial attempt (4 total)
+_RATE_LIMIT_BACKOFF = 5.0  # base delay in seconds; doubles each attempt
+
 
 class BoardLockedError(Exception):
   """Raised when the Vestaboard returns 423 (rate-limited or quiet hours)."""
@@ -503,12 +507,29 @@ def set_state(
   lines = _wrap_lines(lines, truncation)
   grid = _build_grid(lines)
   logger.debug(render_grid(grid))
-  r = requests.post(_HOST, json=grid, headers=_get_headers(), timeout=10)
-  if r.status_code == 409:
-    raise DuplicateContentError('board already shows this content')
-  if r.status_code == 423:
-    raise BoardLockedError('board is locked (rate-limited or quiet hours)')
-  try:
-    r.raise_for_status()
-  except requests.HTTPError as e:
-    raise requests.HTTPError(f'Vestaboard API error: {e.response.status_code} {e.response.reason}') from None
+  for attempt in range(1 + _RATE_LIMIT_RETRIES):
+    r = requests.post(_HOST, json=grid, headers=_get_headers(), timeout=10)
+    if r.status_code == 409:
+      raise DuplicateContentError('board already shows this content')
+    if r.status_code == 423:
+      raise BoardLockedError('board is locked (rate-limited or quiet hours)')
+    if r.status_code == 429:
+      if attempt < _RATE_LIMIT_RETRIES:
+        delay = _RATE_LIMIT_BACKOFF * 2**attempt
+        logger.warning(
+          'Rate limited (429); retrying in %.0fs (attempt %d/%d)',
+          delay,
+          attempt + 1,
+          _RATE_LIMIT_RETRIES,
+        )
+        time.sleep(delay)
+        continue
+      raise requests.HTTPError(
+        f'Vestaboard API error: 429 Too Many Requests (exhausted {_RATE_LIMIT_RETRIES} retries)',
+        response=r,
+      )
+    try:
+      r.raise_for_status()
+    except requests.HTTPError as e:
+      raise requests.HTTPError(f'Vestaboard API error: {e.response.status_code} {e.response.reason}') from None
+    return

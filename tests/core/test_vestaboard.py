@@ -1,4 +1,5 @@
 import json
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -514,6 +515,57 @@ def test_set_state_passes_auth_header(monkeypatch: pytest.MonkeyPatch) -> None:
     vb.set_state([{'format': ['HELLO']}], {})
   _, kwargs = mock_post.call_args
   assert kwargs['headers']['X-Vestaboard-Read-Write-Key'] == 'sentinel-key'
+
+
+def test_set_state_retries_on_429_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  rate_limited = MagicMock()
+  rate_limited.status_code = 429
+  ok = MagicMock()
+  ok.status_code = 200
+  ok.raise_for_status.return_value = None
+  with (
+    patch('integrations.vestaboard.requests.post', side_effect=[rate_limited, ok]) as mock_post,
+    patch('integrations.vestaboard.time.sleep') as mock_sleep,
+  ):
+    vb.set_state([{'format': ['HELLO']}], {})
+  assert mock_post.call_count == 2
+  mock_sleep.assert_called_once_with(vb._RATE_LIMIT_BACKOFF)  # noqa: SLF001
+
+
+def test_set_state_raises_after_exhausted_429_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  rate_limited = MagicMock()
+  rate_limited.status_code = 429
+  with (
+    patch('integrations.vestaboard.requests.post', return_value=rate_limited) as mock_post,
+    patch('integrations.vestaboard.time.sleep'),
+  ):
+    with pytest.raises(requests.HTTPError, match='429 Too Many Requests'):
+      vb.set_state([{'format': ['HELLO']}], {})
+  assert mock_post.call_count == vb._RATE_LIMIT_RETRIES + 1  # noqa: SLF001
+
+
+def test_set_state_logs_warning_on_429_retry(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  rate_limited = MagicMock()
+  rate_limited.status_code = 429
+  ok = MagicMock()
+  ok.status_code = 200
+  ok.raise_for_status.return_value = None
+  with (
+    patch('integrations.vestaboard.requests.post', side_effect=[rate_limited, ok]),
+    patch('integrations.vestaboard.time.sleep'),
+    caplog.at_level(logging.WARNING, logger='integrations.vestaboard'),
+  ):
+    vb.set_state([{'format': ['HELLO']}], {})
+  assert any('Rate limited' in r.message for r in caplog.records)
 
 
 # --- _expand_format (random selection) ---
