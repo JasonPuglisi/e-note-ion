@@ -6,11 +6,14 @@
 # transient failures (5xx responses and network-level errors).
 
 import importlib.metadata
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 _ua_cache: str | None = None
 
@@ -58,7 +61,9 @@ def fetch_with_retry(
 
   for attempt in range(retries):
     if attempt > 0:
-      time.sleep(backoff * 2 ** (attempt - 1))
+      delay = backoff * 2 ** (attempt - 1)
+      logger.debug('retry attempt %d/%d for %s %s (backoff=%.1fs)', attempt + 1, retries, method, url, delay)
+      time.sleep(delay)
     try:
       r = requests.request(method, url, **kwargs)
       if r.status_code >= 500:

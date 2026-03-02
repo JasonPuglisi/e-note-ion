@@ -20,6 +20,7 @@ import heapq
 import importlib
 import importlib.metadata
 import json
+import logging
 import secrets
 import sys
 import threading
@@ -49,6 +50,8 @@ from exceptions import IntegrationDataUnavailableError
 if __name__ == '__main__':
   sys.modules.setdefault('scheduler', sys.modules['__main__'])
 
+logger = logging.getLogger('scheduler')
+
 # Allowlist of valid integration names. Must be extended when a new integration
 # is added to integrations/.
 _KNOWN_INTEGRATIONS: frozenset[str] = frozenset({'bart', 'calendar', 'discogs', 'moon', 'plex', 'trakt', 'weather'})
@@ -61,6 +64,7 @@ def _get_integration(name: str) -> Any:
   if name not in _KNOWN_INTEGRATIONS:
     raise ValueError(f'Unknown integration: {name!r}')
   if name not in _integrations:
+    logger.debug('loading integration %r', name)
     try:
       _integrations[name] = importlib.import_module(f'integrations.{name}')
     except ImportError as e:
@@ -68,6 +72,8 @@ def _get_integration(name: str) -> Any:
         f'Integration {name!r} is missing dependencies. '
         f'Install them with: pip install -r integrations/{name}.requirements.txt'
       ) from e
+  else:
+    logger.debug('integration %r already cached', name)
   return _integrations[name]
 
 
@@ -156,9 +162,12 @@ def enqueue(
     with _queue.mutex:
       before = len(_queue.queue)
       _queue.queue[:] = [m for m in _queue.queue if m.supersede_tag != supersede_tag]
-      if len(_queue.queue) < before:
+      removed = before - len(_queue.queue)
+      if removed:
         heapq.heapify(_queue.queue)
+        logger.debug('supersede removed %d queued message(s) with tag %r', removed, supersede_tag)
 
+  logger.debug('enqueued %s (priority=%d, seq=%d, hold=%ds, timeout=%ds)', name, priority, seq, hold, timeout)
   _queue.put(msg)
 
 
@@ -192,7 +201,7 @@ def pop_valid_message() -> QueuedMessage | None:
     if waited <= m.timeout:
       valid.append(m)
     else:
-      print(f'Discarding {m.name} (waited {waited:.1f}s, timeout={m.timeout}s)')
+      logger.warning('Discarding %s (waited %.1fs, timeout=%ds)', m.name, waited, m.timeout)
 
   if not valid:
     return None
@@ -290,18 +299,16 @@ def _do_hold(
     interrupted = _hold_interrupt.wait(timeout=next_wake)
     _hold_interrupt.clear()
     if interrupted:
-      print(
-        f'[{datetime.now().strftime("%H:%M:%S")}] [hold] {message.name}'
-        f' interrupted at {time.monotonic() - hold_start:.1f}s'
-      )
+      logger.debug('[hold] %s interrupted at %.1fs', message.name, time.monotonic() - hold_start)
       break
 
     if message.priority < _INTERRUPT_PRIORITY_THRESHOLD and elapsed >= min_hold:
       with _queue.mutex:
         if _queue.queue and _queue.queue[0].priority >= _INTERRUPT_PRIORITY_THRESHOLD:
-          print(
-            f'[{datetime.now().strftime("%H:%M:%S")}] [hold] {message.name}'
-            f' preempted by higher-priority message at {time.monotonic() - hold_start:.1f}s'
+          logger.debug(
+            '[hold] %s preempted by higher-priority message at %.1fs',
+            message.name,
+            time.monotonic() - hold_start,
           )
           break
 
@@ -312,7 +319,7 @@ def _do_hold(
         try:
           refresh_fn()
         except Exception as e:  # noqa: BLE001
-          print(f'Refresh error for {message.name}: {e}')
+          logger.warning('Refresh error for %s: %s', message.name, e)
 
 
 def worker() -> None:
@@ -338,7 +345,7 @@ def worker() -> None:
           try:
             _idle_refresh_fn()
           except Exception as e:  # noqa: BLE001
-            print(f'Idle refresh error: {e}')
+            logger.warning('Idle refresh error: %s', e)
 
     message = pop_valid_message()
     if message is None:
@@ -346,11 +353,12 @@ def worker() -> None:
 
     scheduled = datetime.fromtimestamp(time.time() - (time.monotonic() - message.scheduled_at))
     hold_desc = f'{message.hold}s (indefinite)' if message.indefinite else f'{message.hold}s'
-    print(
-      f'[{datetime.now().strftime("%H:%M:%S")}] Sending {message.name}'
-      f' | scheduled: {scheduled.strftime("%H:%M:%S")}'
-      f' | priority: {message.priority}'
-      f' | hold: {hold_desc}'
+    logger.info(
+      'Sending %s | scheduled: %s | priority: %d | hold: %s',
+      message.name,
+      scheduled.strftime('%H:%M:%S'),
+      message.priority,
+      hold_desc,
     )
     # Set hold tracking before the set_state API call so that concurrent webhook
     # events (e.g. Plex pause arriving while now_playing is being sent to the
@@ -375,17 +383,17 @@ def worker() -> None:
       with _current_hold_lock:
         _current_hold_supersede_tag = ''
         _current_hold_priority = None
-      print(f'[{datetime.now().strftime("%H:%M:%S")}] Skipping {message.name}: {e}')
+      logger.warning('Skipping %s: %s', message.name, e)
       continue
     except vestaboard.DuplicateContentError:
-      print(f'Duplicate content for {message.name} — already on board, still holding.')
+      logger.warning('Duplicate content for %s — already on board, still holding.', message.name)
       # Fall through to _do_hold(): content is already showing; we must still
       # hold it so lower-priority queued messages cannot preempt it.
     except vestaboard.BoardLockedError as e:
       with _current_hold_lock:
         _current_hold_supersede_tag = ''
         _current_hold_priority = None
-      print(f'Board locked: {e}. Retrying in {_LOCK_RETRY_DELAY}s.')
+      logger.warning('Board locked: %s. Retrying in %ds.', e, _LOCK_RETRY_DELAY)
       time.sleep(_LOCK_RETRY_DELAY)
       # Re-enqueue if the message hasn't exceeded its timeout.
       if time.monotonic() - message.scheduled_at <= message.timeout:
@@ -395,7 +403,7 @@ def worker() -> None:
       with _current_hold_lock:
         _current_hold_supersede_tag = ''
         _current_hold_priority = None
-      print(f'Error sending to board: {e}')
+      logger.error('Error sending to board: %s', e)
       continue
 
     # New message successfully sent (or DuplicateContentError fell through) —
@@ -434,16 +442,13 @@ def worker() -> None:
     if message.supersede_tag:
       with _queue.mutex:
         if any(m.supersede_tag == message.supersede_tag for m in _queue.queue):
-          print(
-            f'[{datetime.now().strftime("%H:%M:%S")}] [hold] {message.name}'
-            f' re-firing interrupt: same-tag message queued during set_state'
-          )
+          logger.debug('[hold] %s re-firing interrupt: same-tag message queued during set_state', message.name)
           _hold_interrupt.set()
     _do_hold(message, _get_min_hold(), refresh_fn=_refresh_fn, refresh_interval=refresh_interval)
     with _current_hold_lock:
       _current_hold_supersede_tag = ''
       _current_hold_priority = None
-    print(f'[{datetime.now().strftime("%H:%M:%S")}] [hold] {message.name} hold ended, tag cleared')
+    logger.debug('[hold] %s hold ended, tag cleared', message.name)
 
     # Hold expired — if this was a refresh-capable integration message, transfer
     # the refresh fn to idle state so the display keeps updating while the queue
@@ -483,7 +488,7 @@ def _make_webhook_handler(secret: str) -> type:
       query_secret = parse_qs(parsed.query).get('secret', [''])[0]
       provided = header_secret or query_secret
       if not secrets.compare_digest(provided, self._secret):
-        print(f'Webhook: rejected request for {integration_name!r} — invalid or missing secret')
+        logger.warning('Webhook: rejected request for %r — invalid or missing secret', integration_name)
         self._respond(401, 'Unauthorized')
         return
 
@@ -542,7 +547,7 @@ def _make_webhook_handler(secret: str) -> type:
       try:
         result: WebhookMessage | None = mod.handle_webhook(payload)
       except Exception as e:  # noqa: BLE001
-        print(f'Webhook error in {integration_name!r}: {e}')
+        logger.error('Webhook error in %r: %s', integration_name, e)
         self._respond(500, 'Internal error')
         return
 
@@ -552,10 +557,7 @@ def _make_webhook_handler(secret: str) -> type:
 
       if result.interrupt_only:
         if _current_hold_is_interruptible():
-          print(
-            f'[{datetime.now().strftime("%H:%M:%S")}] [webhook] {integration_name}'
-            f' interrupt_only — firing hold interrupt'
-          )
+          logger.debug('[webhook] %s interrupt_only — firing hold interrupt', integration_name)
           _hold_interrupt.set()
         self._respond(200, 'Interrupted')
         return
@@ -576,10 +578,7 @@ def _make_webhook_handler(secret: str) -> type:
         same_tag = bool(result.supersede_tag) and result.supersede_tag == current_hold_tag()
         if same_tag or _current_hold_is_interruptible():
           reason = 'same-tag' if same_tag else 'interruptible hold'
-          print(
-            f'[{datetime.now().strftime("%H:%M:%S")}] [webhook] {integration_name}'
-            f' interrupt ({reason}) — firing hold interrupt'
-          )
+          logger.debug('[webhook] %s interrupt (%s) — firing hold interrupt', integration_name, reason)
           _hold_interrupt.set()
 
       self._respond(200, 'Enqueued')
@@ -610,7 +609,7 @@ def _start_webhook_server() -> None:
     port = int(_config_mod.get_optional('webhook', 'port', '8080'))
   except ValueError:
     port_raw = _config_mod.get_optional('webhook', 'port', '8080')
-    print(f'Warning: invalid webhook port {port_raw!r}, defaulting to 8080')
+    logger.warning('invalid webhook port %r, defaulting to 8080', port_raw)
     port = 8080
 
   bind = _config_mod.get_optional('webhook', 'bind', '127.0.0.1')
@@ -619,16 +618,15 @@ def _start_webhook_server() -> None:
   if not secret:
     secret = secrets.token_urlsafe(32)
     _config_mod.write_section_values('webhook', {'secret': secret})
-    print(
-      f'Webhook secret generated and saved to config.toml:\n'
-      f'  {secret}\n'
-      f'Copy this into your webhook sender (Plex, Shortcuts, etc.).'
+    logger.info(
+      'Webhook secret generated and saved to config.toml. '
+      'Copy the secret value from [webhook] into your webhook sender (Plex, Shortcuts, etc.).'
     )
 
   handler = _make_webhook_handler(secret)
   server = HTTPServer((bind, port), handler)
   threading.Thread(target=server.serve_forever, daemon=True).start()
-  print(f'Webhook listener started on {bind}:{port}')
+  logger.info('Webhook listener started on %s:%d', bind, port)
 
 
 # --- Scheduler ---
@@ -655,9 +653,13 @@ def _coerce_bool(val: object, label: str) -> bool | None:
   if isinstance(val, str):
     lower = val.strip().lower()
     if lower in ('true', 'false'):
-      print(f'Warning: {label} should be a TOML boolean (true/false without quotes), not a string; treating as {lower}')
+      logger.warning(
+        '%s should be a TOML boolean (true/false without quotes), not a string; treating as %s',
+        label,
+        lower,
+      )
       return lower == 'true'
-  print(f'Warning: ignoring invalid {label}: {val!r}')
+  logger.warning('ignoring invalid %s: %r', label, val)
   return None
 
 
@@ -751,7 +753,7 @@ def _load_file(
       try:
         _get_integration(integration_name)
       except (ValueError, RuntimeError) as e:
-        print(f'Warning: skipping template {stem}.{template_name!r} — {e}')
+        logger.warning('skipping template %s.%r — %s', stem, template_name, e)
         continue
       data['integration'] = integration_name
     if 'integration_fn' in template:
@@ -789,13 +791,13 @@ def _load_file(
         if isinstance(val, int) and val >= _REFRESH_MIN_INTERVAL:
           effective[field] = val
         else:
-          print(f'Warning: ignoring invalid refresh_interval override for {job_id}: {val!r}')
+          logger.warning('ignoring invalid refresh_interval override for %s: %r', job_id, val)
     if 'priority' in override:
       val = override['priority']
       if isinstance(val, int) and 0 <= val <= 10:
         priority = val
       else:
-        print(f'Warning: ignoring invalid priority override for {job_id}: {val!r}')
+        logger.warning('ignoring invalid priority override for %s: %r', job_id, val)
     effective_jobs.append((job_id, priority, data, effective))
 
   max_name = max((len(job_id[len(stem) + 1 :]) for job_id, *_ in effective_jobs), default=0)
@@ -806,7 +808,7 @@ def _load_file(
   max_timeout = max((len(str(effective['timeout'])) + 1 for _, _, _, effective in effective_jobs), default=0)
 
   if effective_jobs or webhook_only_jobs or disabled_jobs:
-    print(f'Loaded {content_file.parent.name}/{content_file.name}:')
+    logger.info('Loaded %s/%s:', content_file.parent.name, content_file.name)
   for job_id, priority, data, effective in effective_jobs:
     template_name = job_id[len(stem) + 1 :]
     # Propagate effective refresh_interval (may have been set or overridden) into data.
@@ -822,12 +824,13 @@ def _load_file(
       id=job_id,
       **parse_cron(effective['cron']),  # type: ignore[arg-type]
     )
-    print(
-      f'  · {template_name.ljust(max_name)}'
-      f'  {f"cron={chr(34)}{effective['cron']}{chr(34)}".ljust(max_cron + 7)}'
-      f'  {f"priority={priority}".ljust(max_priority + 9)}'
-      f'  {f"hold={effective['hold']}s".ljust(max_hold + 5)}'
-      f'  {f"timeout={effective['timeout']}s".ljust(max_timeout + 8)}'
+    logger.info(
+      '  · %s  %s  %s  %s  %s',
+      template_name.ljust(max_name),
+      f'cron="{effective["cron"]}"'.ljust(max_cron + 7),
+      f'priority={priority}'.ljust(max_priority + 9),
+      f'hold={effective["hold"]}s'.ljust(max_hold + 5),
+      f'timeout={effective["timeout"]}s'.ljust(max_timeout + 8),
     )
 
   if webhook_only_jobs:
@@ -837,16 +840,17 @@ def _load_file(
     max_wh_priority = max((len(str(priority)) for _, priority, _, _ in webhook_only_jobs), default=0)
     for job_id, priority, _, schedule in webhook_only_jobs:
       template_name = job_id[len(stem) + 1 :]
-      print(
-        f'  · {template_name.ljust(max_wh_name)}'
-        f'  {"webhook=true".ljust(12)}'
-        f'  {f"priority={priority}".ljust(max_wh_priority + 9)}'
-        f'  {f"hold={schedule['hold']}s".ljust(max_wh_hold + 5)}'
-        f'  {f"timeout={schedule['timeout']}s".ljust(max_wh_timeout + 8)}'
+      logger.info(
+        '  · %s  %s  %s  %s  %s',
+        template_name.ljust(max_wh_name),
+        'webhook=true'.ljust(12),
+        f'priority={priority}'.ljust(max_wh_priority + 9),
+        f'hold={schedule["hold"]}s'.ljust(max_wh_hold + 5),
+        f'timeout={schedule["timeout"]}s'.ljust(max_wh_timeout + 8),
       )
 
   for template_name in disabled_jobs:
-    print(f'  · {template_name}  disabled')
+    logger.info('  · %s  disabled', template_name)
 
 
 def load_content(
@@ -879,7 +883,7 @@ def load_content(
         try:
           _load_file(scheduler, f, public_mode)
         except Exception as e:  # noqa: BLE001
-          print(f'Warning: failed to load {f}: {e}')
+          logger.warning('failed to load %s: %s', f, e)
 
   contrib_path = Path('content') / 'contrib'
   if contrib_path.is_dir() and content_enabled:
@@ -889,18 +893,19 @@ def load_content(
         try:
           _load_file(scheduler, f, public_mode)
         except Exception as e:  # noqa: BLE001
-          print(f'Warning: failed to load {f}: {e}')
+          logger.warning('failed to load %s: %s', f, e)
 
   for stem in sorted(user_stems & contrib_stems):
-    print(
-      f'Warning: {stem}.json exists in both content/user/ and content/contrib/ '
-      f'— both loaded; rename the user file if this is unintentional'
+    logger.warning(
+      '%s.json exists in both content/user/ and content/contrib/ — '
+      'both loaded; rename the user file if this is unintentional',
+      stem,
     )
 
   if content_enabled and '*' not in content_enabled:
     found = user_stems | contrib_stems
     for stem in sorted(content_enabled - found):
-      print(f'Warning: content file not found for enabled stem {stem!r} — check [scheduler] enabled in config.toml')
+      logger.warning('content file not found for enabled stem %r — check [scheduler] enabled in config.toml', stem)
 
 
 def _validate_startup() -> None:
@@ -936,8 +941,8 @@ def _validate_startup() -> None:
 
   user_path = Path('content') / 'user'
   if user_path.is_dir() and not any(user_path.iterdir()):
-    print(
-      'Warning: user content directory is empty. '
+    logger.warning(
+      'user content directory is empty. '
       'If you intended to mount personal content, make sure the host path exists and '
       'contains JSON files. If Docker created this directory automatically, delete it on '
       'the host, create it with your content files, and restart the container.'
@@ -945,8 +950,20 @@ def _validate_startup() -> None:
 
 
 def main() -> None:
+  logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)-8s %(message)s',
+    datefmt='%H:%M:%S',
+  )
   _validate_startup()
   _config_mod.load_config()
+
+  log_level_str = _config_mod.get_optional('scheduler', 'log_level', 'INFO').upper()
+  level = getattr(logging, log_level_str, None)
+  if not isinstance(level, int):
+    logger.warning('invalid log_level %r in config.toml — defaulting to INFO', log_level_str)
+    level = logging.INFO
+  logging.root.setLevel(level)
 
   model = _config_mod.get_model()
   if model == 'flagship':
@@ -968,20 +985,20 @@ def main() -> None:
   if public_mode:
     extras.append('public mode')
   version = importlib.metadata.version('e-note-ion')
-  print(f'Starting e-note-ion v{version} — {board_desc}, {", ".join(extras)}')
+  logger.info('Starting e-note-ion v%s — %s, %s', version, board_desc, ', '.join(extras))
 
-  print('Current message:')
+  logger.info('Current message:')
   try:
-    print(vestaboard.get_state())
+    logger.info('%s', vestaboard.get_state())
   except vestaboard.EmptyBoardError:
-    print('(no current message)')
+    logger.info('(no current message)')
   scheduler = BackgroundScheduler(
     misfire_grace_time=300,
     timezone=_config_mod.get_timezone(),
   )
   load_content(scheduler, public_mode=public_mode, content_enabled=content_enabled)
   scheduler.start()
-  print(f'Scheduler started — {len(scheduler.get_jobs())} job(s) registered')
+  logger.info('Scheduler started — %d job(s) registered', len(scheduler.get_jobs()))
 
   loaded_integrations: set[str] = set()
   for job in scheduler.get_jobs():
@@ -994,7 +1011,7 @@ def main() -> None:
       if hasattr(mod, 'preflight'):
         mod.preflight()
     except Exception as e:  # noqa: BLE001
-      print(f'Warning: preflight for {name!r} failed: {e}')
+      logger.warning('preflight for %r failed: %s', name, e)
 
   threading.Thread(target=worker, daemon=True).start()
 

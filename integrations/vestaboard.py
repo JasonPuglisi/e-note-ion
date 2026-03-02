@@ -12,6 +12,7 @@
 # is a raw JSON array-of-arrays of integer character codes with no wrapper key.
 
 import json
+import logging
 import random
 import re
 import unicodedata
@@ -19,6 +20,8 @@ from enum import Enum
 from typing import Literal
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 # --- API configuration ---
 
@@ -499,7 +502,7 @@ def set_state(
   lines = _expand_format(template['format'], variables)
   lines = _wrap_lines(lines, truncation)
   grid = _build_grid(lines)
-  print(render_grid(grid))
+  logger.debug(render_grid(grid))
   r = requests.post(_HOST, json=grid, headers=_get_headers(), timeout=10)
   if r.status_code == 409:
     raise DuplicateContentError('board already shows this content')

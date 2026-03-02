@@ -26,6 +26,7 @@
 # Events with no SUMMARY or STATUS:CANCELLED are silently skipped.
 # If no events remain after filtering, raises IntegrationDataUnavailableError.
 
+import logging
 import math
 import time
 from datetime import date, datetime, timedelta
@@ -38,6 +39,8 @@ from icalendar.cal import Component
 
 from exceptions import IntegrationDataUnavailableError
 from integrations.http import fetch_with_retry
+
+logger = logging.getLogger(__name__)
 
 # Approximate sRGB values for each Vestaboard color letter. Used for
 # nearest-color matching when reading hex color values from ICS/CalDAV data.
@@ -131,7 +134,9 @@ def _fetch_ics_bytes(url: str) -> bytes:
   cached = _ics_cache.get(url)
   if cached is not None:
     data, fetched_at = cached
-    if time.monotonic() - fetched_at <= _ICS_CACHE_TTL:
+    age = time.monotonic() - fetched_at
+    if age <= _ICS_CACHE_TTL:
+      logger.debug('calendar: ICS cache hit for %r (%.0fs old)', url, age)
       return data
 
   try:
@@ -139,10 +144,11 @@ def _fetch_ics_bytes(url: str) -> bytes:
     r.raise_for_status()
     data = r.content
     _ics_cache[url] = (data, time.monotonic())
+    logger.debug('calendar: fetched ICS from %r (%d bytes)', url, len(data))
     return data
   except requests.RequestException as e:
     if cached is not None:
-      print(f'calendar: fetch failed for {url!r}, serving stale cache — {e}')
+      logger.warning('calendar: fetch failed for %r, serving stale cache — %s', url, e)
       return cached[0]
     raise IntegrationDataUnavailableError(f'calendar: fetch failed for {url!r} — {e}') from None
 
@@ -264,12 +270,12 @@ def _collect_candidates_ics(
       try:
         configured_color = _wrap_color(color_letters[i])
       except ValueError as e:
-        print(f'calendar: {e}')
+        logger.warning('calendar: %s', e)
 
     try:
       raw = _fetch_ics_bytes(url)
     except IntegrationDataUnavailableError as e:
-      print(f'calendar: skipping URL {i + 1} — {e}')
+      logger.warning('calendar: skipping URL %d — %s', i + 1, e)
       continue
 
     cal = Calendar.from_ical(raw)
@@ -279,7 +285,7 @@ def _collect_candidates_ics(
     try:
       occurrences = recurring_ical_events.of(cal).between(window_start, window_end)
     except Exception as e:  # noqa: BLE001
-      print(f'calendar: failed to expand events for URL {i + 1} — {e}')
+      logger.warning('calendar: failed to expand events for URL %d — %s', i + 1, e)
       continue
 
     for component in occurrences:
@@ -305,6 +311,7 @@ def _get_caldav_calendars(
   global _caldav_cache
 
   if _caldav_cache is not None:
+    logger.debug('calendar: CalDAV cache hit (%d calendar(s))', len(_caldav_cache))
     return _caldav_cache
 
   import caldav
@@ -348,6 +355,7 @@ def _get_caldav_calendars(
     order = {name: i for i, name in enumerate(calendar_names or [])}
     result.sort(key=lambda item: order.get(str(item[0].name or ''), len(order)))
 
+  logger.debug('calendar: CalDAV discovered %d calendar(s)', len(result))
   _caldav_cache = result
   return result
 
@@ -378,7 +386,7 @@ def _collect_candidates_caldav(
 
   calendars = _get_caldav_calendars(caldav_url, username, password, calendar_names)
   if not calendars:
-    print('calendar: no CalDAV calendars found')
+    logger.warning('calendar: no CalDAV calendars found')
     return []
 
   window_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -390,7 +398,7 @@ def _collect_candidates_caldav(
     try:
       events = cal.events()
     except Exception as e:  # noqa: BLE001
-      print(f'calendar: failed to fetch events from CalDAV calendar {i + 1} — {e}')
+      logger.warning('calendar: failed to fetch events from CalDAV calendar %d — %s', i + 1, e)
       continue
 
     # Build a merged Calendar for client-side recurring event expansion.
@@ -406,7 +414,7 @@ def _collect_candidates_caldav(
     try:
       occurrences = recurring_ical_events.of(merged).between(window_start, window_end)
     except Exception as e:  # noqa: BLE001
-      print(f'calendar: failed to expand CalDAV events for calendar {i + 1} — {e}')
+      logger.warning('calendar: failed to expand CalDAV events for calendar %d — %s', i + 1, e)
       continue
 
     for component in occurrences:

@@ -17,12 +17,15 @@
 # Optional config.toml keys:
 #   units  — "imperial" (°F, mph, default) or "metric" (°C, km/h)
 
+import logging
 from typing import Any
 
 import requests
 
 from exceptions import IntegrationDataUnavailableError
 from integrations.http import CacheEntry, fetch_with_retry, user_agent
+
+logger = logging.getLogger(__name__)
 
 _GEOCODING_URL = 'https://geocoding-api.open-meteo.com/v1/search'
 _FORECAST_URL = 'https://api.open-meteo.com/v1/forecast'
@@ -172,12 +175,12 @@ def _geocode(city_query: str, country_code: str | None) -> tuple[float, float, s
   try:
     r = fetch_with_retry('GET', _GEOCODING_URL, params=params, headers={'User-Agent': user_agent()}, timeout=10)
   except requests.RequestException as e:
-    print(f'Weather: geocoding request failed — {e}')
+    logger.warning('Weather: geocoding request failed — %s', e)
     raise IntegrationDataUnavailableError(f'Weather: geocoding request failed — {e}') from None
   try:
     r.raise_for_status()
   except requests.HTTPError as e:
-    print(f'Weather: geocoding error {e.response.status_code} {e.response.reason}')
+    logger.warning('Weather: geocoding error %d %s', e.response.status_code, e.response.reason)
     raise IntegrationDataUnavailableError(
       f'Weather geocoding error: {e.response.status_code} {e.response.reason}'
     ) from None
@@ -187,7 +190,9 @@ def _geocode(city_query: str, country_code: str | None) -> tuple[float, float, s
     raise IntegrationDataUnavailableError('Weather: city not found — check the [weather] city setting in config.toml')
 
   loc = results[0]
-  return float(loc['latitude']), float(loc['longitude']), str(loc['name'])
+  lat, lon, name = float(loc['latitude']), float(loc['longitude']), str(loc['name'])
+  logger.debug('Weather: geocoded %r → %s (%.4f, %.4f)', city_query, name, lat, lon)
+  return lat, lon, name
 
 
 def _wmo_condition(code: int) -> tuple[str, str]:
@@ -237,6 +242,7 @@ def get_variables() -> dict[str, list[list[str]]]:
     _geocode_cache = (lat, lon, canonical_city)
   else:
     lat, lon, canonical_city = _geocode_cache
+    logger.debug('Weather: geocode cache hit for %r', canonical_city)
 
   # Select unit system parameters for Open-Meteo.
   if units == 'imperial':
@@ -273,7 +279,7 @@ def get_variables() -> dict[str, list[list[str]]]:
     )
     r.raise_for_status()
   except requests.RequestException as e:
-    print(f'Weather: forecast error — {e}')
+    logger.warning('Weather: forecast error — %s', e)
     if _forecast_cache is not None and _forecast_cache.is_valid(_FORECAST_CACHE_TTL):
       return _forecast_cache.value
     raise IntegrationDataUnavailableError(f'Weather: forecast error — {e}') from None
@@ -299,5 +305,6 @@ def get_variables() -> dict[str, list[list[str]]]:
     'wind': [[_fmt_wind(current['wind_speed_10m'], units)]],
     'precip': [[precip]],
   }
+  logger.debug('Weather: fetched forecast for %r (WMO=%d)', canonical_city, wmo_code)
   _forecast_cache = CacheEntry(result)
   return result

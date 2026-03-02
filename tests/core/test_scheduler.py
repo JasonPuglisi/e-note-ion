@@ -185,12 +185,12 @@ def _make_content(
 
 
 def test_load_file_prints_registration(
-  sched: BackgroundScheduler, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+  sched: BackgroundScheduler, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))
   _mod._load_file(sched, f, False)
-  out = capsys.readouterr().out
+  out = caplog.text
   assert 'test.json' in out
   assert 'tmpl' in out
   assert 'cron=' in out
@@ -198,7 +198,7 @@ def test_load_file_prints_registration(
 
 
 def test_load_file_log_cron_padding_outside_quotes(
-  sched: BackgroundScheduler, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+  sched: BackgroundScheduler, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
   # Two templates with crons of different lengths — the shorter one should be
   # padded with spaces OUTSIDE the quotes, not inside (bug #150).
@@ -219,14 +219,14 @@ def test_load_file_log_cron_padding_outside_quotes(
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(content))
   _mod._load_file(sched, f, False)
-  out = capsys.readouterr().out
+  out = caplog.text
   # Quotes must close immediately after the cron value — no trailing spaces inside
   assert 'cron="0 8 * * *"' in out
   assert 'cron="0 20 * * 1-5"' in out
 
 
 def test_load_file_log_hold_timeout_suffix_before_padding(
-  sched: BackgroundScheduler, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+  sched: BackgroundScheduler, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
   # Two templates where hold values differ in length — the 's' suffix must be
   # attached to the value before padding, not after (bug #150).
@@ -247,7 +247,7 @@ def test_load_file_log_hold_timeout_suffix_before_padding(
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(content))
   _mod._load_file(sched, f, False)
-  out = capsys.readouterr().out
+  out = caplog.text
   # 's' must immediately follow the number — no space between number and 's'
   assert 'hold=180s' in out
   assert 'timeout=120s' in out
@@ -257,7 +257,7 @@ def test_load_file_log_widths_from_effective_values(
   sched: BackgroundScheduler,
   tmp_path: Path,
   monkeypatch: pytest.MonkeyPatch,
-  capsys: pytest.CaptureFixture[str],
+  caplog: pytest.LogCaptureFixture,
 ) -> None:
   # When a cron override is shorter than the JSON value, column widths must be
   # computed from the effective (post-override) value, not the original (bug #150).
@@ -271,7 +271,7 @@ def test_load_file_log_widths_from_effective_values(
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))  # JSON cron is '0 8 * * *' (same length)
   _mod._load_file(sched, f, False)
-  out = capsys.readouterr().out
+  out = caplog.text
   # Override cron is '* * * * *'; must appear without extra padding inside quotes
   assert 'cron="* * * * *"' in out
 
@@ -498,7 +498,7 @@ def test_load_file_ignores_invalid_type_priority_override(
   sched: BackgroundScheduler,
   tmp_path: Path,
   monkeypatch: pytest.MonkeyPatch,
-  capsys: pytest.CaptureFixture[str],
+  caplog: pytest.LogCaptureFixture,
 ) -> None:
   import config as _cfg
 
@@ -511,14 +511,14 @@ def test_load_file_ignores_invalid_type_priority_override(
   f.write_text(json.dumps(_make_content(priority=5)))
   _mod._load_file(sched, f, False)
   assert sched.get_jobs()[0].args[0] == 5  # original priority preserved
-  assert 'Warning' in capsys.readouterr().out
+  assert 'WARNING' in caplog.text
 
 
 def test_load_file_ignores_out_of_range_priority_override(
   sched: BackgroundScheduler,
   tmp_path: Path,
   monkeypatch: pytest.MonkeyPatch,
-  capsys: pytest.CaptureFixture[str],
+  caplog: pytest.LogCaptureFixture,
 ) -> None:
   import config as _cfg
 
@@ -531,7 +531,7 @@ def test_load_file_ignores_out_of_range_priority_override(
   f.write_text(json.dumps(_make_content(priority=5)))
   _mod._load_file(sched, f, False)
   assert sched.get_jobs()[0].args[0] == 5  # original priority preserved
-  assert 'Warning' in capsys.readouterr().out
+  assert 'WARNING' in caplog.text
 
 
 def test_load_file_ignores_unknown_override_keys(
@@ -578,7 +578,7 @@ def test_load_file_disabled_string_true_coerces(
   sched: BackgroundScheduler,
   tmp_path: Path,
   monkeypatch: pytest.MonkeyPatch,
-  capsys: pytest.CaptureFixture[str],
+  caplog: pytest.LogCaptureFixture,
 ) -> None:
   import config as _cfg
 
@@ -587,14 +587,14 @@ def test_load_file_disabled_string_true_coerces(
   f.write_text(json.dumps(_make_content()))
   _mod._load_file(sched, f, False)
   assert len(sched.get_jobs()) == 0
-  assert 'Warning' in capsys.readouterr().out
+  assert 'WARNING' in caplog.text
 
 
 def test_load_file_disabled_invalid_type_ignored(
   sched: BackgroundScheduler,
   tmp_path: Path,
   monkeypatch: pytest.MonkeyPatch,
-  capsys: pytest.CaptureFixture[str],
+  caplog: pytest.LogCaptureFixture,
 ) -> None:
   import config as _cfg
 
@@ -603,7 +603,7 @@ def test_load_file_disabled_invalid_type_ignored(
   f.write_text(json.dumps(_make_content()))
   _mod._load_file(sched, f, False)
   assert len(sched.get_jobs()) == 1
-  assert 'Warning' in capsys.readouterr().out
+  assert 'WARNING' in caplog.text
 
 
 def test_load_file_skips_disabled_webhook_only_template(
@@ -710,7 +710,7 @@ def test_worker_board_locked_discards_after_timeout() -> None:
   assert _mod._queue.empty()
 
 
-def test_worker_log_includes_template_name(capsys: pytest.CaptureFixture[str]) -> None:
+def test_worker_log_includes_template_name(caplog: pytest.LogCaptureFixture) -> None:
   msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
   msg.name = 'user.test.my_template'
   with (
@@ -721,8 +721,7 @@ def test_worker_log_includes_template_name(capsys: pytest.CaptureFixture[str]) -
   ):
     with pytest.raises(KeyboardInterrupt):
       _mod.worker()
-  out = capsys.readouterr().out
-  assert 'user.test.my_template' in out
+  assert 'user.test.my_template' in caplog.text
 
 
 def test_worker_clears_stale_hold_interrupt_before_hold() -> None:
@@ -1015,7 +1014,7 @@ def _mock_sched() -> MagicMock:
   return m
 
 
-def test_main_note_startup_banner(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_main_note_startup_banner(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
   mock_sched = _mock_sched()
   with (
     patch.object(_mod, '_validate_startup'),
@@ -1030,11 +1029,10 @@ def test_main_note_startup_banner(monkeypatch: pytest.MonkeyPatch, capsys: pytes
     patch('time.sleep', side_effect=KeyboardInterrupt),
   ):
     _mod.main()
-  out = capsys.readouterr().out
-  assert 'Note (3×15)' in out
+  assert 'Note (3×15)' in caplog.text
 
 
-def test_main_version_in_banner(capsys: pytest.CaptureFixture[str]) -> None:
+def test_main_version_in_banner(caplog: pytest.LogCaptureFixture) -> None:
   mock_sched = _mock_sched()
   with (
     patch.object(_mod, '_validate_startup'),
@@ -1050,12 +1048,10 @@ def test_main_version_in_banner(capsys: pytest.CaptureFixture[str]) -> None:
     patch('importlib.metadata.version', return_value='1.2.3'),
   ):
     _mod.main()
-  assert 'v1.2.3' in capsys.readouterr().out
+  assert 'v1.2.3' in caplog.text
 
 
-def test_main_flagship_sets_model_and_banner(
-  monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_main_flagship_sets_model_and_banner(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
   monkeypatch.setattr(vb, 'model', vb.VestaboardModel.NOTE)  # ensures restoration
   mock_sched = _mock_sched()
   with (
@@ -1072,11 +1068,10 @@ def test_main_flagship_sets_model_and_banner(
   ):
     _mod.main()
   assert vb.model is vb.VestaboardModel.FLAGSHIP
-  out = capsys.readouterr().out
-  assert 'Flagship (6×22)' in out
+  assert 'Flagship (6×22)' in caplog.text
 
 
-def test_main_public_mode_in_banner(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_main_public_mode_in_banner(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
   mock_sched = _mock_sched()
   with (
     patch.object(_mod, '_validate_startup'),
@@ -1091,11 +1086,10 @@ def test_main_public_mode_in_banner(monkeypatch: pytest.MonkeyPatch, capsys: pyt
     patch('time.sleep', side_effect=KeyboardInterrupt),
   ):
     _mod.main()
-  out = capsys.readouterr().out
-  assert 'public mode' in out
+  assert 'public mode' in caplog.text
 
 
-def test_main_content_enabled_in_banner(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_main_content_enabled_in_banner(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
   mock_sched = _mock_sched()
   with (
     patch.object(_mod, '_validate_startup'),
@@ -1110,11 +1104,10 @@ def test_main_content_enabled_in_banner(monkeypatch: pytest.MonkeyPatch, capsys:
     patch('time.sleep', side_effect=KeyboardInterrupt),
   ):
     _mod.main()
-  out = capsys.readouterr().out
-  assert 'content: bart' in out
+  assert 'content: bart' in caplog.text
 
 
-def test_main_empty_board_on_startup(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_main_empty_board_on_startup(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
   mock_sched = _mock_sched()
   with (
     patch.object(_mod, '_validate_startup'),
@@ -1129,8 +1122,7 @@ def test_main_empty_board_on_startup(monkeypatch: pytest.MonkeyPatch, capsys: py
     patch('time.sleep', side_effect=KeyboardInterrupt),
   ):
     _mod.main()
-  out = capsys.readouterr().out
-  assert '(no current message)' in out
+  assert '(no current message)' in caplog.text
 
 
 def test_main_passes_timezone_to_scheduler(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1422,14 +1414,14 @@ def test_validate_startup_errors_on_empty_config(
 
 
 def test_validate_startup_warns_on_empty_content_dir(
-  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
   (tmp_path / 'config.toml').write_text('[vestaboard]\napi_key = "x"\n')
   user_dir = tmp_path / 'content' / 'user'
   user_dir.mkdir(parents=True)
   monkeypatch.chdir(tmp_path)
   _mod._validate_startup()  # must not raise
-  assert 'warning' in capsys.readouterr().out.lower()
+  assert 'WARNING' in caplog.text
 
 
 def test_validate_startup_passes_with_valid_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1601,7 +1593,7 @@ def test_load_file_ignores_invalid_refresh_interval_override(
   sched: BackgroundScheduler,
   tmp_path: Path,
   monkeypatch: pytest.MonkeyPatch,
-  capsys: pytest.CaptureFixture[str],
+  caplog: pytest.LogCaptureFixture,
 ) -> None:
   import config as _cfg
 
@@ -1615,7 +1607,7 @@ def test_load_file_ignores_invalid_refresh_interval_override(
   _mod._load_file(sched, f, False)
   # Override is below minimum — original value should be preserved
   assert sched.get_jobs()[0].args[1].get('refresh_interval') == 60
-  assert 'Warning' in capsys.readouterr().out
+  assert 'WARNING' in caplog.text
 
 
 # --- worker: refresh_fn setup ---
@@ -1770,7 +1762,7 @@ def test_worker_idle_refresh_cleared_on_new_send() -> None:
   assert len(set_state_calls) == 3
 
 
-def test_worker_idle_refresh_error_logged_and_continues(capsys: pytest.CaptureFixture[str]) -> None:
+def test_worker_idle_refresh_error_logged_and_continues(caplog: pytest.LogCaptureFixture) -> None:
   """Idle refresh errors are logged and the worker loop continues."""
   msg = _make_integration_msg_with_refresh(30)
   mock_integration = MagicMock()
@@ -1792,7 +1784,7 @@ def test_worker_idle_refresh_error_logged_and_continues(capsys: pytest.CaptureFi
     with pytest.raises(KeyboardInterrupt):
       _mod.worker()
 
-  assert 'Idle refresh error' in capsys.readouterr().out
+  assert 'Idle refresh error' in caplog.text
 
 
 def test_worker_idle_refresh_not_set_for_non_integration_message() -> None:
@@ -1982,12 +1974,12 @@ def test_load_file_webhook_only_template_not_scheduled(sched: BackgroundSchedule
 
 
 def test_load_file_webhook_only_logged_in_startup_table(
-  sched: BackgroundScheduler, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+  sched: BackgroundScheduler, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_webhook_only_content()))
   _mod._load_file(sched, f, False)
-  out = capsys.readouterr().out
+  out = caplog.text
   assert 'webhook=true' in out
   assert 'now_playing' in out
 
@@ -2003,7 +1995,7 @@ def test_known_integrations_covers_all_integration_modules() -> None:
   assert not missing, f'Integrations missing from _KNOWN_INTEGRATIONS: {missing}'
 
 
-def test_worker_logs_warning_on_integration_data_unavailable(capsys: pytest.CaptureFixture[str]) -> None:
+def test_worker_logs_warning_on_integration_data_unavailable(caplog: pytest.LogCaptureFixture) -> None:
   """IntegrationDataUnavailableError must log a warning rather than silently skipping."""
   msg = _mod.QueuedMessage(
     priority=5,
@@ -2029,7 +2021,7 @@ def test_worker_logs_warning_on_integration_data_unavailable(capsys: pytest.Capt
   ):
     with pytest.raises(KeyboardInterrupt):
       _mod.worker()
-  output = capsys.readouterr().out
+  output = caplog.text
   assert 'contrib.weather.conditions' in output
   assert 'forecast error 504' in output
 
@@ -2038,7 +2030,7 @@ def test_worker_logs_warning_on_integration_data_unavailable(capsys: pytest.Capt
 
 
 def test_load_content_warns_on_malformed_json(
-  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
   user_dir = tmp_path / 'content' / 'user'
   user_dir.mkdir(parents=True)
@@ -2046,35 +2038,34 @@ def test_load_content_warns_on_malformed_json(
   monkeypatch.chdir(tmp_path)
   _mod.load_content(sched)  # must not raise
   assert len(sched.get_jobs()) == 0
-  output = capsys.readouterr().out
-  assert 'Warning: failed to load' in output
+  output = caplog.text
+  assert 'failed to load' in output
   assert 'bad.json' in output
 
 
 def test_load_content_warns_on_unknown_stem(
-  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
   contrib_dir = tmp_path / 'content' / 'contrib'
   contrib_dir.mkdir(parents=True)
   monkeypatch.chdir(tmp_path)
   _mod.load_content(sched, content_enabled={'nonexistent'})
-  output = capsys.readouterr().out
-  assert "Warning: content file not found for enabled stem 'nonexistent'" in output
+  output = caplog.text
+  assert "content file not found for enabled stem 'nonexistent'" in output
 
 
 def test_load_content_star_no_stem_warnings(
-  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
   contrib_dir = tmp_path / 'content' / 'contrib'
   contrib_dir.mkdir(parents=True)
   monkeypatch.chdir(tmp_path)
   _mod.load_content(sched, content_enabled={'*'})
-  output = capsys.readouterr().out
-  assert 'content file not found' not in output
+  assert 'content file not found' not in caplog.text
 
 
 def test_load_content_warns_on_duplicate_stem(
-  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
   user_dir = tmp_path / 'content' / 'user'
   contrib_dir = tmp_path / 'content' / 'contrib'
@@ -2084,14 +2075,14 @@ def test_load_content_warns_on_duplicate_stem(
   _make_file(contrib_dir, 'weather.json')
   monkeypatch.chdir(tmp_path)
   _mod.load_content(sched, content_enabled={'weather'})
-  output = capsys.readouterr().out
-  assert 'Warning: weather.json exists in both content/user/ and content/contrib/' in output
+  output = caplog.text
+  assert 'weather.json exists in both content/user/ and content/contrib/' in output
   # Both files must still be loaded
   assert len(sched.get_jobs()) == 2
 
 
 def test_load_file_warns_and_skips_unknown_integration(
-  sched: BackgroundScheduler, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+  sched: BackgroundScheduler, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
   content = {
     'templates': {
@@ -2106,6 +2097,6 @@ def test_load_file_warns_and_skips_unknown_integration(
   f.write_text(json.dumps(content))
   _mod._load_file(sched, f, False)
   assert len(sched.get_jobs()) == 0
-  output = capsys.readouterr().out
-  assert 'Warning: skipping template' in output
+  output = caplog.text
+  assert 'skipping template' in output
   assert 'notreal' in output

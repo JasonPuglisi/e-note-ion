@@ -1,6 +1,6 @@
 [project]
 name = "e-note-ion"
-version = "0.25.6"
+version = "0.25.8"
 description = "Automation for Vestaboard displays — with emotion"
 keywords = ["vestaboard", "note", "flagship", "automation", "schedule", "scheduling"]
 authors = [
@@ -66,6 +66,7 @@ select = ["E", "F", "I"]  # pycodestyle errors, pyflakes, isort
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-m 'not integration'"
+log_level = "DEBUG"
 markers = [
   "integration: marks tests that call real external APIs (deselected by default)",
   "require_env: list env var names required for the test to run",

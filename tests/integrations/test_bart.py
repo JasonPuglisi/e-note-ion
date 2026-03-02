@@ -446,7 +446,7 @@ def test_get_variables_populates_color_cache(bart_env: None) -> None:
   assert '[G]' in (bart._dest_color_cache or {}).get('DALY', [])  # noqa: SLF001
 
 
-def test_get_variables_routes_api_failure_does_not_crash(bart_env: None, capsys: pytest.CaptureFixture[str]) -> None:
+def test_get_variables_routes_api_failure_does_not_crash(bart_env: None, caplog: pytest.LogCaptureFixture) -> None:
   # Routes API fails — get_variables should still return ETD data and degrade
   # no-service lines to colorless 'NO SERVICE'.
   bart._dest_color_cache = None  # noqa: SLF001
@@ -459,8 +459,7 @@ def test_get_variables_routes_api_failure_does_not_crash(bart_env: None, capsys:
   ):
     result = bart.get_variables()
   assert result['line1'][0][0] == 'NO SERVICE'
-  out = capsys.readouterr().out
-  assert 'Warning' in out
+  assert 'WARNING' in caplog.text
 
 
 def test_get_variables_uses_cached_colors_on_second_call(bart_env: None) -> None:
