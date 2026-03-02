@@ -30,6 +30,7 @@ from typing import Any
 import requests
 
 from exceptions import IntegrationDataUnavailableError
+from integrations.color import fetch_cover_color
 from integrations.http import CacheEntry, fetch_with_retry, user_agent
 
 logger = logging.getLogger(__name__)
@@ -191,10 +192,20 @@ def get_variables() -> dict[str, list[list[str]]]:
       return _collection_cache.value
     raise IntegrationDataUnavailableError(f'Discogs: collection request failed — {msg}') from None
 
+  cover_url = release.get('basic_information', {}).get('cover_image', '')
+  color_tag = fetch_cover_color(cover_url) if cover_url else '[Y]'
+
   result: dict[str, list[list[str]]] = {
     'album': [[_format_album(release)]],
     'artist': [[_format_artist(release)]],
+    'color': [[color_tag]],
   }
-  logger.debug('Discogs: selected record %r by %r (offset=%d)', result['album'][0][0], result['artist'][0][0], offset)
+  logger.debug(
+    'Discogs: selected record %r by %r (offset=%d, color=%s)',
+    result['album'][0][0],
+    result['artist'][0][0],
+    offset,
+    color_tag,
+  )
   _collection_cache = CacheEntry(result)
   return result
