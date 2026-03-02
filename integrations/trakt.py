@@ -5,7 +5,7 @@
 # Authentication uses the OAuth device code flow (no browser redirect). On
 # first use, the scheduler prints a short code and URL to stdout; the user
 # visits the URL, enters the code, and tokens are written to config.toml.
-# Access tokens expire every ~90 days; refresh happens automatically 1 hour
+# Access tokens expire every ~90 days; refresh happens automatically 24 hours
 # before expiry, rotating the refresh token as required by Trakt's API.
 #
 # Required config.toml keys ([trakt]):
@@ -109,10 +109,18 @@ def _refresh_token() -> None:
   logger.debug('Trakt: token refreshed successfully')
 
 
-def _get_token() -> str:
-  """Return a valid Trakt access token, refreshing if within 1 hour of expiry.
+def _clear_tokens() -> None:
+  """Clear stored tokens from config (in-memory and on disk)."""
+  import config as _config_mod
 
-  Raises IntegrationDataUnavailableError if auth is pending (no tokens yet).
+  _config_mod.write_section_values('trakt', {'access_token': '', 'refresh_token': '', 'expires_at': ''})  # nosec B105 — empty strings intentionally clear stored tokens
+
+
+def _get_token() -> str:
+  """Return a valid Trakt access token, refreshing if within 24 hours of expiry.
+
+  Raises IntegrationDataUnavailableError if auth is pending (no tokens yet) or
+  if a token refresh fails (tokens cleared; re-auth flow started).
   """
   import config as _config_mod
 
@@ -125,13 +133,26 @@ def _get_token() -> str:
   if expires_at_str:
     try:
       expires_at = int(expires_at_str)
-      secs_remaining = expires_at - time.time()
-      if secs_remaining < 3600:
-        logger.debug('Trakt: access token expires in %.0fs — triggering refresh', secs_remaining)
-        _refresh_token()
-        access_token = _config_mod.get_optional('trakt', 'access_token')
     except ValueError:
       pass  # malformed expires_at — proceed with current token
+    else:
+      secs_remaining = expires_at - time.time()
+      if secs_remaining < 86400:
+        logger.debug('Trakt: access token expires in %.0fs — triggering refresh', secs_remaining)
+        try:
+          _refresh_token()
+        except requests.HTTPError as e:
+          logger.warning(
+            'Trakt: token refresh failed (%s) — clearing tokens and re-starting '
+            'auth flow. Check logs for the new device code and URL.',
+            e,
+          )
+          _clear_tokens()
+          _ensure_authenticated()
+          raise IntegrationDataUnavailableError(
+            'Trakt auth pending — token refresh failed, re-authentication required'
+          ) from None
+        access_token = _config_mod.get_optional('trakt', 'access_token')
 
   return access_token
 
@@ -207,11 +228,33 @@ def _run_auth_flow() -> None:
 
 
 def preflight() -> None:
-  """Called at startup. Initiates the auth flow if tokens are absent."""
+  """Called at startup. Initiates the auth flow if tokens are absent.
+
+  Proactively refreshes near-expiry tokens before any poll fires, so a brief
+  scheduler restart near the expiry window doesn't cause the token to lapse.
+  """
   import config as _config_mod
 
-  if not _config_mod.get_optional('trakt', 'access_token'):
+  access_token = _config_mod.get_optional('trakt', 'access_token')
+  if not access_token:
     _ensure_authenticated()
+    return
+
+  expires_at_str = _config_mod.get_optional('trakt', 'expires_at')
+  if expires_at_str:
+    try:
+      expires_at = int(expires_at_str)
+    except ValueError:
+      return
+    secs_remaining = expires_at - time.time()
+    if secs_remaining < 86400:
+      logger.info('Trakt: access token expires in %.0fs — refreshing at startup', secs_remaining)
+      try:
+        _refresh_token()
+      except requests.HTTPError as e:
+        logger.warning('Trakt: startup token refresh failed (%s) — clearing tokens', e)
+        _clear_tokens()
+        _ensure_authenticated()
 
 
 def _ensure_authenticated() -> None:

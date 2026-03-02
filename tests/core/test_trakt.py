@@ -34,7 +34,7 @@ def config_with_tokens(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     'client_secret = "test-secret"\n'
     'access_token = "test-access"\n'
     'refresh_token = "test-refresh"\n'
-    f'expires_at = {int(time.time()) + 10000}\n'
+    f'expires_at = {int(time.time()) + 200000}\n'  # well above 24h threshold
   )
   monkeypatch.setattr(
     _cfg,
@@ -45,7 +45,7 @@ def config_with_tokens(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         'client_secret': 'test-secret',
         'access_token': 'test-access',
         'refresh_token': 'test-refresh',
-        'expires_at': int(time.time()) + 10000,
+        'expires_at': int(time.time()) + 200000,
       }
     },
   )
@@ -74,8 +74,114 @@ def test_preflight_starts_auth_when_no_tokens(config_without_tokens: Path) -> No
 
 def test_preflight_skips_auth_when_tokens_present(config_with_tokens: Path) -> None:
   with patch.object(trakt, '_ensure_authenticated') as mock_auth:
-    trakt.preflight()
+    with patch.object(trakt, '_refresh_token'):  # tokens far-future; refresh not expected
+      trakt.preflight()
   mock_auth.assert_not_called()
+
+
+def test_preflight_refreshes_near_expiry_token_at_startup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  """preflight() calls _refresh_token when token is within 24 hours of expiry."""
+  cfg_file = tmp_path / 'config.toml'
+  cfg_file.write_text(
+    '[trakt]\n'
+    'client_id = "test-id"\n'
+    'client_secret = "test-secret"\n'
+    'access_token = "old-access"\n'
+    'refresh_token = "test-refresh"\n'
+    f'expires_at = {int(time.time()) + 3600}\n'  # 1 hour — inside 24h window
+  )
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {
+      'trakt': {
+        'client_id': 'test-id',
+        'client_secret': 'test-secret',
+        'access_token': 'old-access',
+        'refresh_token': 'test-refresh',
+        'expires_at': int(time.time()) + 3600,
+      }
+    },
+  )
+  monkeypatch.chdir(tmp_path)
+
+  with patch.object(trakt, '_refresh_token') as mock_refresh:
+    trakt.preflight()
+
+  mock_refresh.assert_called_once()
+
+
+def test_preflight_no_refresh_when_token_far_from_expiry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  """preflight() does not call _refresh_token when token expires far in the future."""
+  cfg_file = tmp_path / 'config.toml'
+  cfg_file.write_text(
+    '[trakt]\n'
+    'client_id = "test-id"\n'
+    'client_secret = "test-secret"\n'
+    'access_token = "old-access"\n'
+    'refresh_token = "test-refresh"\n'
+    f'expires_at = {int(time.time()) + 200000}\n'  # well outside 24h
+  )
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {
+      'trakt': {
+        'client_id': 'test-id',
+        'client_secret': 'test-secret',
+        'access_token': 'old-access',
+        'refresh_token': 'test-refresh',
+        'expires_at': int(time.time()) + 200000,
+      }
+    },
+  )
+  monkeypatch.chdir(tmp_path)
+
+  with patch.object(trakt, '_refresh_token') as mock_refresh:
+    trakt.preflight()
+
+  mock_refresh.assert_not_called()
+
+
+def test_preflight_refresh_failure_clears_tokens_and_triggers_reauth(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  """preflight() clears tokens and starts re-auth if startup refresh fails."""
+  cfg_file = tmp_path / 'config.toml'
+  cfg_file.write_text(
+    '[trakt]\n'
+    'client_id = "test-id"\n'
+    'client_secret = "test-secret"\n'
+    'access_token = "old-access"\n'
+    'refresh_token = "test-refresh"\n'
+    f'expires_at = {int(time.time()) + 3600}\n'
+  )
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {
+      'trakt': {
+        'client_id': 'test-id',
+        'client_secret': 'test-secret',
+        'access_token': 'old-access',
+        'refresh_token': 'test-refresh',
+        'expires_at': int(time.time()) + 3600,
+      }
+    },
+  )
+  monkeypatch.chdir(tmp_path)
+
+  mock_resp = MagicMock()
+  mock_resp.status_code = 400
+  mock_resp.reason = 'Bad Request'
+
+  with patch.object(trakt, '_refresh_token', side_effect=requests.HTTPError(response=mock_resp)):
+    with patch.object(trakt, '_ensure_authenticated') as mock_auth:
+      trakt.preflight()
+
+  mock_auth.assert_called_once()
+  assert _cfg._config['trakt']['access_token'] == ''
+  assert _cfg._config['trakt']['refresh_token'] == ''
 
 
 def test_get_token_returns_access_token(config_with_tokens: Path) -> None:
@@ -103,7 +209,7 @@ def test_token_refresh_called_when_near_expiry(tmp_path: Path, monkeypatch: pyte
     'client_secret = "test-secret"\n'
     'access_token = "old-access"\n'
     'refresh_token = "test-refresh"\n'
-    f'expires_at = {int(time.time()) + 100}\n'  # within 1-hour threshold
+    f'expires_at = {int(time.time()) + 100}\n'  # within 24-hour threshold
   )
   monkeypatch.setattr(
     _cfg,
@@ -128,6 +234,126 @@ def test_token_refresh_called_when_near_expiry(tmp_path: Path, monkeypatch: pyte
 
   mock_refresh.assert_called_once()
   assert token == 'new-access'
+
+
+def test_get_token_refresh_called_within_24h_window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  """Token with 20 hours remaining (outside old 1h window) should still trigger refresh."""
+  cfg_file = tmp_path / 'config.toml'
+  expires = int(time.time()) + 72000  # 20 hours — inside 24h, outside old 1h
+  cfg_file.write_text(
+    '[trakt]\n'
+    'client_id = "test-id"\n'
+    'client_secret = "test-secret"\n'
+    'access_token = "old-access"\n'
+    'refresh_token = "test-refresh"\n'
+    f'expires_at = {expires}\n'
+  )
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {
+      'trakt': {
+        'client_id': 'test-id',
+        'client_secret': 'test-secret',
+        'access_token': 'old-access',
+        'refresh_token': 'test-refresh',
+        'expires_at': expires,
+      }
+    },
+  )
+  monkeypatch.chdir(tmp_path)
+
+  with patch.object(trakt, '_refresh_token') as mock_refresh:
+    trakt._get_token()
+
+  mock_refresh.assert_called_once()
+
+
+def test_get_token_refresh_failure_clears_tokens_and_triggers_reauth(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  """HTTPError from _refresh_token clears tokens and starts re-auth."""
+  cfg_file = tmp_path / 'config.toml'
+  cfg_file.write_text(
+    '[trakt]\n'
+    'client_id = "test-id"\n'
+    'client_secret = "test-secret"\n'
+    'access_token = "old-access"\n'
+    'refresh_token = "test-refresh"\n'
+    f'expires_at = {int(time.time()) + 100}\n'
+  )
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {
+      'trakt': {
+        'client_id': 'test-id',
+        'client_secret': 'test-secret',
+        'access_token': 'old-access',
+        'refresh_token': 'test-refresh',
+        'expires_at': int(time.time()) + 100,
+      }
+    },
+  )
+  monkeypatch.chdir(tmp_path)
+
+  mock_resp = MagicMock()
+  mock_resp.status_code = 400
+  mock_resp.reason = 'Bad Request'
+
+  with patch.object(trakt, '_refresh_token', side_effect=requests.HTTPError(response=mock_resp)):
+    with patch.object(trakt, '_ensure_authenticated') as mock_auth:
+      with pytest.raises(IntegrationDataUnavailableError, match='re-authentication required'):
+        trakt._get_token()
+
+  mock_auth.assert_called_once()
+  assert _cfg._config['trakt']['access_token'] == ''
+  assert _cfg._config['trakt']['refresh_token'] == ''
+
+
+def test_get_token_refresh_failure_raises_unavailable_not_http_error(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  """Worker sees IntegrationDataUnavailableError (graceful skip), not raw HTTPError."""
+  cfg_file = tmp_path / 'config.toml'
+  cfg_file.write_text(
+    '[trakt]\n'
+    'client_id = "test-id"\n'
+    'client_secret = "test-secret"\n'
+    'access_token = "old-access"\n'
+    'refresh_token = "test-refresh"\n'
+    f'expires_at = {int(time.time()) + 100}\n'
+  )
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {
+      'trakt': {
+        'client_id': 'test-id',
+        'client_secret': 'test-secret',
+        'access_token': 'old-access',
+        'refresh_token': 'test-refresh',
+        'expires_at': int(time.time()) + 100,
+      }
+    },
+  )
+  monkeypatch.chdir(tmp_path)
+
+  mock_resp = MagicMock()
+  mock_resp.status_code = 400
+  mock_resp.reason = 'Bad Request'
+
+  with patch.object(trakt, '_refresh_token', side_effect=requests.HTTPError(response=mock_resp)):
+    with patch.object(trakt, '_ensure_authenticated'):
+      with pytest.raises(IntegrationDataUnavailableError):
+        trakt._get_token()
+      # confirm no HTTPError leaks out
+      try:
+        trakt._get_token()  # tokens now cleared → raises auth pending
+      except IntegrationDataUnavailableError:
+        pass
+      except requests.HTTPError:
+        pytest.fail('HTTPError leaked out of _get_token — worker would log ERROR instead of WARNING')
 
 
 # --- _write_tokens / _store_tokens ---
