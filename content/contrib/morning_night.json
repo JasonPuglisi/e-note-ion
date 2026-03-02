@@ -1,0 +1,97 @@
+{
+  "templates": {
+    "good_morning": {
+      "schedule": {
+        "cron": "0 7 * * *",
+        "hold": 300,
+        "timeout": 3600
+      },
+      "priority": 3,
+      "templates": [
+        {
+          "format": [
+            "[Y] GOOD MORNING",
+            "HAVE A GREAT DAY"
+          ]
+        },
+        {
+          "format": [
+            "[Y] GOOD MORNING",
+            "YOU GOT THIS"
+          ]
+        },
+        {
+          "format": [
+            "[Y] GOOD MORNING",
+            "MAKE IT COUNT"
+          ]
+        },
+        {
+          "format": [
+            "[Y] GOOD MORNING",
+            "RISE AND SHINE"
+          ]
+        },
+        {
+          "format": [
+            "[Y] GOOD MORNING",
+            "HAPPY TO SEE YOU"
+          ]
+        },
+        {
+          "format": [
+            "[Y] GOOD MORNING",
+            "LETS DO THIS"
+          ]
+        },
+        {
+          "format": [
+            "[Y] GOOD MORNING",
+            "A BRAND NEW DAY"
+          ]
+        },
+        {
+          "format": [
+            "[Y] GOOD MORNING",
+            "THE WORLD IS YOURS"
+          ]
+        }
+      ]
+    },
+    "good_morning_september": {
+      "schedule": {
+        "cron": "0 7 21 9 *",
+        "hold": 300,
+        "timeout": 3600
+      },
+      "priority": 4,
+      "templates": [
+        {
+          "format": [
+            "DO YOU REMEMBER",
+            "THE 21ST NIGHT",
+            "OF SEPTEMBER"
+          ]
+        }
+      ]
+    },
+    "good_night": {
+      "schedule": {
+        "cron": "0 21 * * *",
+        "hold": 300,
+        "timeout": 3600
+      },
+      "priority": 3,
+      "integration": "moon",
+      "templates": [
+        {
+          "format": [
+            "{moon_row1} GOOD",
+            "{moon_row2} NIGHT",
+            "{moon_row3}"
+          ]
+        }
+      ]
+    }
+  }
+}
