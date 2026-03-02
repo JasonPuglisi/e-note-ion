@@ -356,6 +356,102 @@ def test_get_token_refresh_failure_raises_unavailable_not_http_error(
         pytest.fail('HTTPError leaked out of _get_token — worker would log ERROR instead of WARNING')
 
 
+# --- _handle_api_401 ---
+
+
+def test_handle_api_401_refreshes_and_returns_new_token(
+  config_with_tokens: Path,
+) -> None:
+  """_handle_api_401 calls _refresh_token and returns the updated access token."""
+
+  def fake_refresh() -> None:
+    _cfg._config['trakt']['access_token'] = 'refreshed-token'
+
+  with patch.object(trakt, '_refresh_token', side_effect=fake_refresh):
+    token = trakt._handle_api_401()
+
+  assert token == 'refreshed-token'
+
+
+def test_handle_api_401_refresh_failure_clears_tokens_and_triggers_reauth(
+  config_with_tokens: Path,
+) -> None:
+  """_handle_api_401 clears tokens and starts re-auth when refresh fails."""
+  mock_resp = MagicMock()
+  mock_resp.status_code = 400
+  mock_resp.reason = 'Bad Request'
+
+  with patch.object(trakt, '_refresh_token', side_effect=requests.HTTPError(response=mock_resp)):
+    with patch.object(trakt, '_ensure_authenticated') as mock_auth:
+      with pytest.raises(IntegrationDataUnavailableError, match='re-authentication required'):
+        trakt._handle_api_401()
+
+  mock_auth.assert_called_once()
+  assert _cfg._config['trakt']['access_token'] == ''
+
+
+def test_get_variables_calendar_401_retries_with_refreshed_token(config_with_tokens: Path) -> None:
+  """A 401 from the calendar endpoint triggers a token refresh and retries."""
+  unauth = MagicMock()
+  unauth.status_code = 401
+
+  ok = MagicMock()
+  ok.status_code = 200
+  ok.raise_for_status.return_value = None
+  ok.json.return_value = _CALENDAR_RESPONSE
+
+  def fake_refresh() -> None:
+    _cfg._config['trakt']['access_token'] = 'new-token'
+
+  with patch.object(trakt, '_refresh_token', side_effect=fake_refresh):
+    with patch('integrations.trakt.fetch_with_retry', side_effect=[unauth, ok]):
+      result = trakt.get_variables_calendar()
+
+  assert result['show_name'] == [['GREAT SHOW']]
+
+
+def test_get_variables_watching_401_retries_with_refreshed_token(config_with_tokens: Path) -> None:
+  """A 401 from the watching endpoint triggers a token refresh and retries."""
+  unauth = MagicMock()
+  unauth.status_code = 401
+
+  ok = MagicMock()
+  ok.status_code = 200
+  ok.raise_for_status.return_value = None
+  ok.json.return_value = {
+    'type': 'episode',
+    'show': {'title': 'My Show'},
+    'episode': {'season': 1, 'number': 1, 'title': 'Pilot'},
+  }
+
+  def fake_refresh() -> None:
+    _cfg._config['trakt']['access_token'] = 'new-token'
+
+  with patch.object(trakt, '_refresh_token', side_effect=fake_refresh):
+    with patch('integrations.trakt.fetch_with_retry', side_effect=[unauth, ok]):
+      result = trakt.get_variables_watching()
+
+  assert result['show_name'] == [['MY SHOW']]
+
+
+def test_get_variables_next_up_401_retries_with_refreshed_token(config_with_tokens: Path) -> None:
+  """A 401 from the watched/shows endpoint triggers a token refresh and retries."""
+  unauth = MagicMock()
+  unauth.status_code = 401
+
+  watched = _mock_watched_ok([_WATCHED_SHOWS_RESPONSE[0]])
+  progress = _mock_progress_ok(_PROGRESS_WITH_NEXT)
+
+  def fake_refresh() -> None:
+    _cfg._config['trakt']['access_token'] = 'new-token'
+
+  with patch.object(trakt, '_refresh_token', side_effect=fake_refresh):
+    with patch('integrations.trakt.fetch_with_retry', side_effect=[unauth, watched, progress]):
+      result = trakt.get_variables_next_up()
+
+  assert result['show_name'] == [['BREAKING BAD']]
+
+
 # --- _write_tokens / _store_tokens ---
 
 

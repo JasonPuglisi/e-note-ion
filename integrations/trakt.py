@@ -166,6 +166,31 @@ def _request_headers(access_token: str, client_id: str) -> dict[str, str]:
   }
 
 
+def _handle_api_401() -> str:
+  """Called when a Trakt API request returns 401.
+
+  Attempts a token refresh. If the refresh succeeds, returns the new access
+  token so the caller can retry the request. If the refresh fails (e.g. token
+  revoked), clears stored tokens, starts re-auth, and raises
+  IntegrationDataUnavailableError so the worker skips this cycle gracefully.
+  """
+  import config as _config_mod
+
+  logger.warning('Trakt: received 401 — attempting token refresh')
+  try:
+    _refresh_token()
+  except requests.HTTPError as e:
+    logger.warning('Trakt: token refresh after 401 failed (%s) — clearing tokens and re-starting auth flow', e)
+    _clear_tokens()
+    _ensure_authenticated()
+    raise IntegrationDataUnavailableError('Trakt auth pending — token invalid, re-authentication required') from None
+  new_token = _config_mod.get_optional('trakt', 'access_token')
+  if not new_token:
+    raise IntegrationDataUnavailableError('Trakt auth pending — token unavailable after refresh')
+  logger.debug('Trakt: token refreshed after 401 — retrying request')
+  return new_token
+
+
 # --- OAuth device code flow ---
 
 
@@ -310,13 +335,12 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
   global _calendar_cache
 
   today = datetime.now().strftime('%Y-%m-%d')
+  url = f'{_TRAKT_API_BASE}/calendars/my/shows/{today}/{days}'
   try:
-    r = fetch_with_retry(
-      'GET',
-      f'{_TRAKT_API_BASE}/calendars/my/shows/{today}/{days}',
-      headers=_request_headers(token, client_id),
-      timeout=10,
-    )
+    r = fetch_with_retry('GET', url, headers=_request_headers(token, client_id), timeout=10)
+    if r.status_code == 401:
+      token = _handle_api_401()
+      r = fetch_with_retry('GET', url, headers=_request_headers(token, client_id), timeout=10)
     r.raise_for_status()
   except requests.RequestException as e:
     if isinstance(e, requests.HTTPError):
@@ -399,13 +423,12 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
   token = _get_token()
   client_id = _config_mod.get('trakt', 'client_id')
 
+  url = f'{_TRAKT_API_BASE}/users/me/watching'
   try:
-    r = fetch_with_retry(
-      'GET',
-      f'{_TRAKT_API_BASE}/users/me/watching',
-      headers=_request_headers(token, client_id),
-      timeout=10,
-    )
+    r = fetch_with_retry('GET', url, headers=_request_headers(token, client_id), timeout=10)
+    if r.status_code == 401:
+      token = _handle_api_401()
+      r = fetch_with_retry('GET', url, headers=_request_headers(token, client_id), timeout=10)
   except requests.RequestException as e:
     raise IntegrationDataUnavailableError(f'Trakt: watching request failed — {e}') from None
 
@@ -485,13 +508,12 @@ def get_variables_next_up() -> dict[str, list[list[str]]]:
   token = _get_token()
   client_id = _config_mod.get('trakt', 'client_id')
 
+  watched_url = f'{_TRAKT_API_BASE}/users/me/watched/shows'
   try:
-    r = fetch_with_retry(
-      'GET',
-      f'{_TRAKT_API_BASE}/users/me/watched/shows',
-      headers=_request_headers(token, client_id),
-      timeout=10,
-    )
+    r = fetch_with_retry('GET', watched_url, headers=_request_headers(token, client_id), timeout=10)
+    if r.status_code == 401:
+      token = _handle_api_401()
+      r = fetch_with_retry('GET', watched_url, headers=_request_headers(token, client_id), timeout=10)
     r.raise_for_status()
   except requests.RequestException as e:
     if isinstance(e, requests.HTTPError):
@@ -509,13 +531,12 @@ def get_variables_next_up() -> dict[str, list[list[str]]]:
 
   for entry in shows:
     trakt_id = entry['show']['ids']['trakt']
+    progress_url = f'{_TRAKT_API_BASE}/shows/{trakt_id}/progress/watched'
     try:
-      r2 = fetch_with_retry(
-        'GET',
-        f'{_TRAKT_API_BASE}/shows/{trakt_id}/progress/watched',
-        headers=_request_headers(token, client_id),
-        timeout=10,
-      )
+      r2 = fetch_with_retry('GET', progress_url, headers=_request_headers(token, client_id), timeout=10)
+      if r2.status_code == 401:
+        token = _handle_api_401()
+        r2 = fetch_with_retry('GET', progress_url, headers=_request_headers(token, client_id), timeout=10)
       r2.raise_for_status()
     except requests.RequestException as e:
       if isinstance(e, requests.HTTPError):
