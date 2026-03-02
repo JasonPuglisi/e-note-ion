@@ -39,6 +39,16 @@ import config as _config_mod
 import integrations.vestaboard as vestaboard
 from exceptions import IntegrationDataUnavailableError
 
+# When run via `python scheduler.py` or the `e-note-ion` entry point, Python
+# loads this module as __main__. Integrations that do `import scheduler` (e.g.
+# plex.py) would otherwise trigger a *second* import, producing a separate
+# module object with its own copies of module-level globals such as
+# _current_hold_supersede_tag. This line aliases __main__ → scheduler so that
+# all imports share a single module object. No-op when scheduler is already
+# imported normally (e.g. in tests or when imported by another module).
+if __name__ == '__main__':
+  sys.modules.setdefault('scheduler', sys.modules['__main__'])
+
 # Allowlist of valid integration names. Must be extended when a new integration
 # is added to integrations/.
 _KNOWN_INTEGRATIONS: frozenset[str] = frozenset({'bart', 'calendar', 'discogs', 'plex', 'trakt', 'weather'})
@@ -217,8 +227,6 @@ def current_hold_tag() -> str:
   """Return the supersede_tag of the message currently being held, or ''."""
   with _current_hold_lock:
     tag = _current_hold_supersede_tag
-  ts = datetime.now().strftime('%H:%M:%S.%f')[:-3]
-  print(f'[{ts}] [tag] current_hold_tag()={tag!r} pri={_current_hold_priority!r}')
   return tag
 
 
@@ -352,10 +360,6 @@ def worker() -> None:
     with _current_hold_lock:
       _current_hold_supersede_tag = message.supersede_tag
       _current_hold_priority = message.priority
-    print(
-      f'[{datetime.now().strftime("%H:%M:%S.%f")[:-3]}] [tag] set tag={message.supersede_tag!r}'
-      f' priority={message.priority!r}'
-    )
 
     try:
       variables = message.data['variables']
@@ -371,7 +375,6 @@ def worker() -> None:
       with _current_hold_lock:
         _current_hold_supersede_tag = ''
         _current_hold_priority = None
-      print(f'[{datetime.now().strftime("%H:%M:%S.%f")[:-3]}] [tag] cleared (IntegrationDataUnavailableError)')
       print(f'[{datetime.now().strftime("%H:%M:%S")}] Skipping {message.name}: {e}')
       continue
     except vestaboard.DuplicateContentError:
@@ -382,7 +385,6 @@ def worker() -> None:
       with _current_hold_lock:
         _current_hold_supersede_tag = ''
         _current_hold_priority = None
-      print(f'[{datetime.now().strftime("%H:%M:%S.%f")[:-3]}] [tag] cleared (BoardLockedError)')
       print(f'Board locked: {e}. Retrying in {_LOCK_RETRY_DELAY}s.')
       time.sleep(_LOCK_RETRY_DELAY)
       # Re-enqueue if the message hasn't exceeded its timeout.
@@ -393,7 +395,6 @@ def worker() -> None:
       with _current_hold_lock:
         _current_hold_supersede_tag = ''
         _current_hold_priority = None
-      print(f'[{datetime.now().strftime("%H:%M:%S.%f")[:-3]}] [tag] cleared (Exception: {type(e).__name__})')
       print(f'Error sending to board: {e}')
       continue
 
