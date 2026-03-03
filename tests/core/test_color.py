@@ -15,6 +15,24 @@ def _png_bytes(r: int, g: int, b: int, size: int = 1) -> bytes:
   return buf.getvalue()
 
 
+def _png_bytes_regions(
+  dominant: tuple[int, int, int],
+  accent: tuple[int, int, int],
+  dominant_count: int = 8,
+  accent_count: int = 2,
+) -> bytes:
+  """Return PNG bytes with a dominant color region and a smaller accent region."""
+  total = dominant_count + accent_count
+  img = Image.new('RGB', (total, 1))
+  for x in range(dominant_count):
+    img.putpixel((x, 0), dominant)
+  for x in range(dominant_count, total):
+    img.putpixel((x, 0), accent)
+  buf = io.BytesIO()
+  img.save(buf, format='PNG')
+  return buf.getvalue()
+
+
 # --- dominant_color_tag ---
 
 
@@ -98,6 +116,23 @@ def test_dominant_color_tag_light_red_maps_to_red() -> None:
 def test_dominant_color_tag_light_green_maps_to_green() -> None:
   tag = color_mod.dominant_color_tag(_png_bytes(120, 200, 130))
   assert tag == '[G]'
+
+
+def test_dominant_color_tag_kmeans_picks_dominant_region() -> None:
+  # Blue dominant region (8px) + red accent (2px) → should resolve to [B],
+  # not [R] or some blend. This validates that k-means identifies the largest
+  # cluster rather than averaging all pixels together.
+  png = _png_bytes_regions(dominant=(30, 80, 200), accent=(200, 20, 30))
+  tag = color_mod.dominant_color_tag(png)
+  assert tag == '[B]'
+
+
+def test_dominant_color_tag_kmeans_picks_dominant_over_skin_tone() -> None:
+  # Blue background (8px) + skin tone accent (2px) → [B], not [W]/[Y].
+  # Simulates covers like IM NAYEON where averaging would wash out to grey.
+  png = _png_bytes_regions(dominant=(60, 100, 180), accent=(210, 160, 120))
+  tag = color_mod.dominant_color_tag(png)
+  assert tag == '[B]'
 
 
 # --- fetch_cover_color ---

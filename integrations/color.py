@@ -7,13 +7,18 @@
 # Apple Music now-playing (#22).
 #
 # Color extraction approach:
-#   1. Decode the image with Pillow and convert to RGB.
+#   1. Decode the image with Pillow, convert to RGB, and resize to at most
+#      _SAMPLE_SIZE×_SAMPLE_SIZE pixels (preserving aspect ratio) for fast
+#      clustering.
 #   2. Filter out near-white (all channels > 230) and near-black (all channels
 #      < 25) pixels — these are background/border artifacts that skew the result.
-#   3. Compute the arithmetic mean of the remaining pixels in RGB space.
-#   4. Check HSV saturation of the average color. If below _SATURATION_THRESHOLD
-#      the image is achromatic (grey/B&W); map directly to [W] or [K] by
-#      luminance (ITU-R BT.601).
+#   3. Run k-means++ clustering (k=3) on the filtered pixels. This finds the
+#      dominant color region even when the image has multiple distinct hues
+#      (e.g. blue background + skin tones). The centroid of the largest cluster
+#      represents the dominant color.
+#   4. Check HSV saturation of the dominant centroid. If below
+#      _SATURATION_THRESHOLD the color is achromatic (grey/B&W); map directly
+#      to [W] or [K] by luminance (ITU-R BT.601).
 #   5. For chromatic colors, compute the HSV hue angle and find the nearest
 #      entry in _CHROMATIC_PALETTE by circular hue distance. Hue matching is
 #      invariant to lightness, so pale blue and deep navy both map to [B].
@@ -23,6 +28,7 @@
 
 import io
 import logging
+import random
 
 import requests
 from PIL import Image
@@ -44,6 +50,10 @@ _CHROMATIC_PALETTE: list[tuple[float, str]] = [
   (275.0, '[V]'),  # violet
 ]
 
+# Image is resized to at most this dimension on each side before clustering.
+# 100×100 = 10k pixels — enough color information, fast to cluster.
+_SAMPLE_SIZE = 100
+
 # Maximum image size to read (bytes). Cover art thumbnails are well under 500 KB;
 # this guards against unexpectedly large redirect targets.
 _MAX_IMAGE_BYTES = 2 * 1024 * 1024  # 2 MB
@@ -55,12 +65,89 @@ _NEAR_BLACK = 25  # all channels below this → skip
 # HSV saturation below this threshold → treat as achromatic (grey/B&W).
 _SATURATION_THRESHOLD = 0.15
 
+# k-means parameters.
+_KMEANS_K = 3
+_KMEANS_MAX_ITER = 20
+
 # Known Discogs placeholder image indicators.
 _PLACEHOLDER_SUFFIXES = ('spacer.gif', 'placeholder.gif')
 
 
+def _kmeans_dominant(pixels: list[tuple[int, int, int]]) -> tuple[int, int, int]:
+  """Return the centroid of the largest k-means cluster (k=_KMEANS_K).
+
+  Uses k-means++ initialization to spread starting centroids across the color
+  space, then iterates until convergence or _KMEANS_MAX_ITER. Falls back to
+  a simple average when there are too few distinct pixels to cluster.
+  """
+  k = _KMEANS_K
+
+  if len(pixels) <= k:
+    n = len(pixels)
+    return (
+      sum(p[0] for p in pixels) // n,
+      sum(p[1] for p in pixels) // n,
+      sum(p[2] for p in pixels) // n,
+    )
+
+  # k-means++ initialization: spread starting centroids across the color space.
+  first = random.choice(pixels)  # nosec S311
+  centroids: list[tuple[float, float, float]] = [(float(first[0]), float(first[1]), float(first[2]))]
+
+  for _ in range(k - 1):
+    dists = [min((p[0] - c[0]) ** 2 + (p[1] - c[1]) ** 2 + (p[2] - c[2]) ** 2 for c in centroids) for p in pixels]
+    total = sum(dists)
+    if total == 0:
+      break
+    threshold = random.random() * total  # nosec S311
+    cumulative = 0.0
+    for p, d in zip(pixels, dists):
+      cumulative += d
+      if cumulative >= threshold:
+        centroids.append((float(p[0]), float(p[1]), float(p[2])))
+        break
+
+  # Pad with duplicates if initialization produced fewer than k centroids
+  # (can happen when all pixels are identical).
+  while len(centroids) < k:
+    centroids.append(centroids[-1])
+
+  # Iterate: assign → update → check convergence.
+  assignments: list[list[tuple[int, int, int]]] = [[] for _ in range(k)]
+  for _ in range(_KMEANS_MAX_ITER):
+    new_assignments: list[list[tuple[int, int, int]]] = [[] for _ in range(k)]
+    for p in pixels:
+      nearest = min(
+        range(k),
+        key=lambda i: (p[0] - centroids[i][0]) ** 2 + (p[1] - centroids[i][1]) ** 2 + (p[2] - centroids[i][2]) ** 2,
+      )
+      new_assignments[nearest].append(p)
+
+    changed = False
+    for i, cluster in enumerate(new_assignments):
+      if not cluster:
+        continue
+      n = len(cluster)
+      nc: tuple[float, float, float] = (
+        sum(p[0] for p in cluster) / n,
+        sum(p[1] for p in cluster) / n,
+        sum(p[2] for p in cluster) / n,
+      )
+      if nc != centroids[i]:
+        changed = True
+        centroids[i] = nc
+
+    assignments = new_assignments
+    if not changed:
+      break
+
+  largest = max(range(k), key=lambda i: len(assignments[i]))
+  c = centroids[largest]
+  return (int(round(c[0])), int(round(c[1])), int(round(c[2])))
+
+
 def dominant_color_tag(image_bytes: bytes, *, fallback: str = '[Y]') -> str:
-  """Return the Vestaboard color tag nearest to the dominant color in the image.
+  """Return the Vestaboard color tag for the dominant color in the image.
 
   Args:
     image_bytes: Raw image bytes (JPEG, PNG, etc.).
@@ -74,6 +161,9 @@ def dominant_color_tag(image_bytes: bytes, *, fallback: str = '[Y]') -> str:
   except Exception as e:
     logger.debug('color: image decode failed — %s', e)
     return fallback
+
+  # Resize to at most _SAMPLE_SIZE×_SAMPLE_SIZE for fast clustering.
+  img.thumbnail((_SAMPLE_SIZE, _SAMPLE_SIZE), Image.Resampling.LANCZOS)
 
   raw = img.tobytes()
   # RGB: 3 bytes per pixel; tobytes() always returns int values.
@@ -91,10 +181,8 @@ def dominant_color_tag(image_bytes: bytes, *, fallback: str = '[Y]') -> str:
     logger.debug('color: all pixels filtered (near-white/black); using fallback %s', fallback)
     return fallback
 
-  n = len(filtered)
-  avg_r = sum(r for r, _, _ in filtered) // n
-  avg_g = sum(g for _, g, _ in filtered) // n
-  avg_b = sum(b for _, _, b in filtered) // n
+  # Find dominant color via k-means clustering.
+  avg_r, avg_g, avg_b = _kmeans_dominant(filtered)
 
   # Compute HSV saturation to detect achromatic (grey/B&W) images.
   max_c = max(avg_r, avg_g, avg_b)
@@ -119,7 +207,8 @@ def dominant_color_tag(image_bytes: bytes, *, fallback: str = '[Y]') -> str:
       _CHROMATIC_PALETTE,
       key=lambda entry: min(abs(entry[0] - hue), 360 - abs(entry[0] - hue)),
     )[1]
-    logger.debug('color: avg RGB (%d, %d, %d) sat=%.2f hue=%.1f → %s', avg_r, avg_g, avg_b, saturation, hue, tag)
+    logger.debug('color: avg RGB (%d,%d,%d) sat=%.2f hue=%.1f → %s', avg_r, avg_g, avg_b, saturation, hue, tag)
+
   return tag
 
 
