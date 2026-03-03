@@ -120,6 +120,45 @@ def test_identity_failure_raises_unavailable(discogs_config: None) -> None:
       discogs.get_variables()
 
 
+# --- artist anv ---
+
+
+def test_artist_uses_anv_when_present(discogs_config: None) -> None:
+  """anv (release-credited name) is preferred over canonical Discogs name."""
+  release: dict[str, Any] = {
+    'basic_information': {
+      'title': 'Im Nayeon',
+      'artists': [{'name': 'Na Yeon', 'anv': 'Nayeon'}],
+      'cover_image': '',
+    }
+  }
+  with patch('integrations.discogs.random.randint', return_value=0):
+    with patch(
+      'integrations.discogs.fetch_with_retry',
+      side_effect=[_mock_identity(), _mock_page([release], total=1)],
+    ):
+      result = discogs.get_variables()
+  assert result['artist'][0][0] == 'NAYEON'
+
+
+def test_artist_falls_back_to_name_when_anv_empty(discogs_config: None) -> None:
+  """Empty anv falls back to canonical name."""
+  release: dict[str, Any] = {
+    'basic_information': {
+      'title': 'Some Album',
+      'artists': [{'name': 'Some Artist', 'anv': ''}],
+      'cover_image': '',
+    }
+  }
+  with patch('integrations.discogs.random.randint', return_value=0):
+    with patch(
+      'integrations.discogs.fetch_with_retry',
+      side_effect=[_mock_identity(), _mock_page([release], total=1)],
+    ):
+      result = discogs.get_variables()
+  assert result['artist'][0][0] == 'SOME ARTIST'
+
+
 # --- artist formatting ---
 
 
