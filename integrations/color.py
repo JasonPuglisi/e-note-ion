@@ -61,6 +61,7 @@ _MAX_IMAGE_BYTES = 2 * 1024 * 1024  # 2 MB
 # Pixel brightness thresholds for background filtering.
 _NEAR_WHITE = 230  # all channels above this → skip
 _NEAR_BLACK = 25  # all channels below this → skip
+_DARK_LUM_FLOOR = 40  # ITU-R BT.601 luminance below this → skip (dark shadows pass per-channel but read as black)
 
 # HSV saturation below this threshold → treat as achromatic (grey/B&W).
 _SATURATION_THRESHOLD = 0.15
@@ -169,12 +170,16 @@ def dominant_color_tag(image_bytes: bytes, *, fallback: str = '[Y]') -> str:
   # RGB: 3 bytes per pixel; tobytes() always returns int values.
   pixels = [(raw[i], raw[i + 1], raw[i + 2]) for i in range(0, len(raw), 3)]
 
-  # Filter near-white and near-black pixels.
+  # Filter near-white, near-black, and dark shadow pixels.
+  # The luminance floor catches dark pixels (e.g. face shadows on a black cover)
+  # that pass the per-channel near-black check but are visually indistinguishable
+  # from black and skew hue detection with their slight warm undertones.
   filtered = [
     (r, g, b)
     for r, g, b in pixels
     if not (r > _NEAR_WHITE and g > _NEAR_WHITE and b > _NEAR_WHITE)
     and not (r < _NEAR_BLACK and g < _NEAR_BLACK and b < _NEAR_BLACK)
+    and (r * 299 + g * 587 + b * 114) // 1000 >= _DARK_LUM_FLOOR
   ]
 
   if not filtered:

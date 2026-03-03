@@ -91,6 +91,14 @@ def test_dominant_color_tag_dark_grey_maps_to_black() -> None:
   assert tag == '[K]'
 
 
+def test_dominant_color_tag_dark_warm_shadow_maps_to_achromatic() -> None:
+  # Dark shadow pixels (e.g. face on a black album cover): lum ~36, passes per-channel
+  # near-black filter but is visually black. Slight warm R>G>B bias must not map to [O].
+  # These are filtered by the luminance floor — fallback [Y] is returned.
+  tag = color_mod.dominant_color_tag(_png_bytes(40, 35, 32))
+  assert tag == '[Y]'  # all pixels filtered → fallback
+
+
 def test_dominant_color_tag_bw_image_maps_to_white_or_black() -> None:
   # A B&W image (black silhouette on white bg): black pixels filtered,
   # white pixels filtered, grey midtones (if any) map achromatic.
