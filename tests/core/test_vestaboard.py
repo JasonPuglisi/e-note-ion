@@ -213,6 +213,39 @@ def test_wrap_lines_ellipsis_preserves_fixed_layout() -> None:
   assert result[2] == 'TEAM CHERRY'
 
 
+# --- _strip_unsupported ---
+
+
+def test_strip_unsupported_removes_hiragana() -> None:
+  # Japanese hiragana has no Vestaboard mapping and must be dropped.
+  result = vb._strip_unsupported('あつまれ ANIMAL CROSSING')  # noqa: SLF001
+  assert result == 'ANIMAL CROSSING'
+
+
+def test_strip_unsupported_collapses_spaces() -> None:
+  # Stripping characters that were surrounded by spaces must not leave double spaces.
+  result = vb._strip_unsupported('HELLO あ WORLD')  # noqa: SLF001
+  assert result == 'HELLO WORLD'
+
+
+def test_strip_unsupported_preserves_color_tags() -> None:
+  result = vb._strip_unsupported('[R] MORNING SPIN')  # noqa: SLF001
+  assert result == '[R] MORNING SPIN'
+
+
+def test_strip_unsupported_preserves_ascii() -> None:
+  result = vb._strip_unsupported('ANIMAL CROSSING: NEW HORIZONS')  # noqa: SLF001
+  assert result == 'ANIMAL CROSSING: NEW HORIZONS'
+
+
+def test_wrap_lines_strips_unsupported_before_wrap() -> None:
+  # Japanese prefix + English suffix: unsupported chars stripped, English visible.
+  lines = ['あつまれ どうぶつの森 = ANIMAL CROSSING']
+  result = vb._wrap_lines(lines, truncation='ellipsis')  # noqa: SLF001
+  assert result[0].startswith('= ANIMAL')
+  assert 'あ' not in result[0]
+
+
 # --- _expand_format ---
 
 

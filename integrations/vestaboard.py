@@ -286,6 +286,30 @@ def _encode_char(ch: str) -> int:
   return _CHAR_CODES.get((normalized or ch).upper(), 0)
 
 
+def _strip_unsupported(text: str) -> str:
+  """Remove characters that have no Vestaboard display mapping.
+
+  Characters that NFKD-normalize to nothing and are not in _CHAR_CODES
+  (e.g. hiragana, katakana, CJK, other non-Latin scripts) are dropped.
+  Spaces, color tags ([R] etc.), and ❤️ are always preserved.
+  Multiple spaces produced by stripping are collapsed to one, and
+  leading/trailing whitespace is removed.
+  """
+  tokens: list[str] = []
+  i = 0
+  while i < len(text):
+    tok, consumed = _next_token(text, i)
+    i += consumed
+    if tok in (' ', '❤️') or tok in _COLOR_TAGS or len(tok) == 5:  # space, emoji, color tag, escaped tag
+      tokens.append(tok)
+    else:
+      normalized = unicodedata.normalize('NFKD', tok).encode('ascii', 'ignore').decode('ascii')
+      if (normalized or tok).upper() in _CHAR_CODES:
+        tokens.append(tok)
+      # else: drop — no mapping exists (hiragana, katakana, CJK, etc.)
+  return re.sub(r' +', ' ', ''.join(tokens)).strip()
+
+
 def _encode_line(text: str) -> list[int]:
   """Encode a text string into a row of model.cols integer character codes.
 
@@ -425,6 +449,7 @@ def _wrap_lines(
   cols = model.cols
   result: list[str] = []
   for line in lines:
+    line = _strip_unsupported(line)
     if display_len(line) <= cols:
       result.append(line)
       continue
