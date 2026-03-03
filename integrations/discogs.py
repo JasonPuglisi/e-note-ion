@@ -104,7 +104,10 @@ def _format_artist(release: dict[str, Any]) -> str:
   artists = release.get('basic_information', {}).get('artists', [])
   if not artists:
     return 'UNKNOWN ARTIST'
-  name = artists[0].get('name', '').strip()
+  artist = artists[0]
+  # Prefer anv (name as credited on this release) over the canonical Discogs
+  # name — e.g. 'Nayeon' (anv) vs 'Na Yeon' (canonical name).
+  name = (artist.get('anv') or artist.get('name', '')).strip()
   # Strip Discogs disambiguator suffixes e.g. 'David Bowie (2)' → 'David Bowie'
   if ' (' in name:
     name = name[: name.rfind(' (')]
