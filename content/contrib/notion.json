@@ -1,0 +1,22 @@
+{
+  "templates": {
+    "notification": {
+      "webhook": true,
+      "schedule": {
+        "hold": 120,
+        "timeout": 120
+      },
+      "priority": 7,
+      "truncation": "word",
+      "integration": "notion",
+      "templates": [
+        {
+          "format": [
+            "[W] FROM NOTION",
+            "{message}"
+          ]
+        }
+      ]
+    }
+  }
+}
