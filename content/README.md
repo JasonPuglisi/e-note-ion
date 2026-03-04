@@ -243,3 +243,4 @@ Don't inflate priority to "win" — see the priority guidelines above.
 | [`trakt.json`](contrib/trakt.md) | Trakt.tv upcoming calendar and now-playing |
 | [`morning_night.json`](contrib/morning_night.md) | Good morning and good night messages with moon phase visual |
 | [`plex.json`](contrib/plex.md) | Plex Media Server now-playing via webhook |
+| [`notion.json`](contrib/notion.md) | Notion automation notifications via webhook |
