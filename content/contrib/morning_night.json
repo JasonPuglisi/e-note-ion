@@ -7,67 +7,13 @@
         "timeout": 3600
       },
       "priority": 3,
+      "integration": "morning",
       "templates": [
         {
           "format": [
-            "[Y] GOOD MORNING",
-            "RISE AND SHINE"
-          ]
-        },
-        {
-          "format": [
-            "[Y] GOOD MORNING",
-            "LET'S DO THIS"
-          ]
-        },
-        {
-          "format": [
-            "[Y] GOOD MORNING",
-            "HAPPY TO",
-            "SEE YOU"
-          ]
-        },
-        {
-          "format": [
-            "[Y] GOOD MORNING",
-            "LOOK ALIVE"
-          ]
-        },
-        {
-          "format": [
-            "[Y] GOOD MORNING",
-            "HERE COMES",
-            "THE SUN"
-          ]
-        },
-        {
-          "format": [
-            "[Y] GOOD MORNING",
-            "EYES OPEN"
-          ]
-        },
-        {
-          "format": [
-            "[Y] GOOD MORNING",
-            "OFF WE GO"
-          ]
-        },
-        {
-          "format": [
-            "[Y] GOOD MORNING",
-            "UP AND AT 'EM"
-          ]
-        },
-        {
-          "format": [
-            "[Y] GOOD MORNING",
-            "HERE WE GO"
-          ]
-        },
-        {
-          "format": [
-            "[Y] GOOD MORNING",
-            "STEPPING IN"
+            "{morning_r1} GOOD",
+            "{morning_r2} MORNING",
+            "{morning_r3}"
           ]
         }
       ]
