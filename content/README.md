@@ -68,7 +68,7 @@ schedule and display settings.
 | `timeout` | Seconds the message can wait in the queue before being discarded |
 | `priority` | Integer 0–10; higher number runs first when multiple messages are queued simultaneously |
 | `private` | If `true`, excluded when public mode is enabled (`[scheduler] public = true` in config.toml) |
-| `truncation` | `hard` cuts mid-word (default); `word` stops at a word boundary; `ellipsis` adds `...` |
+| `truncation` | `hard` cuts mid-word (default); `word` stops at a word boundary; `ellipsis` fills to the column limit then appends `...` |
 
 ### Variables
 
