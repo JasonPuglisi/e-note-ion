@@ -59,33 +59,43 @@ def _load_template_config(template_name: str) -> dict[str, Any]:
 def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
   """Process a Notion webhook payload and return a WebhookMessage or None.
 
-  Expected payload fields:
-    message (str, required): body text; newlines produce multiple display lines.
-    urgent  (bool, optional, default false): if true, interrupt the current hold.
-    tag     (str, optional, default "notion"): deduplication key — queued messages
+  Expects the Notion automation webhook format, where page data is nested under
+  payload["data"]["properties"]. The integration reads three page properties:
+    message (title, required): body text; newlines produce multiple display lines.
+    urgent  (checkbox, optional, default false): if true, interrupt the current hold.
+    tag     (select, optional, default "notion"): deduplication key — queued messages
             with the same namespaced tag are replaced by this one. Set to "" to
             disable superseding entirely.
 
   Returns None if message is missing or blank, or on any unexpected error.
   """
   try:
-    message = payload.get('message', '')
-    if not isinstance(message, str):
-      message = ''
+    data = payload.get('data')
+    if not isinstance(data, dict):
+      logger.debug('notion: discarding: missing or invalid data key')
+      return None
+    properties = data.get('properties')
+    if not isinstance(properties, dict):
+      logger.debug('notion: discarding: missing or invalid properties key')
+      return None
+
+    title_items = properties.get('message', {}).get('title', [])
+    message = ''.join(item.get('plain_text', '') for item in title_items if isinstance(item, dict))
     message_lines = [line.strip().upper() for line in message.split('\n') if line.strip()]
     if not message_lines:
       logger.debug('notion: discarding: empty or missing message')
       return None
 
-    urgent = bool(payload.get('urgent', False))
+    urgent = bool(properties.get('urgent', {}).get('checkbox', False))
 
-    raw_tag = payload.get('tag')
-    if raw_tag is None:
+    select = properties.get('tag', {}).get('select')
+    if select is None:
       supersede_tag = 'notion'
-    elif isinstance(raw_tag, str):
+    elif isinstance(select, dict):
+      raw_tag = select.get('name', '')
       supersede_tag = f'notion.{raw_tag}' if raw_tag else ''
     else:
-      logger.debug('notion: invalid tag type %r, using default', type(raw_tag).__name__)
+      logger.debug('notion: invalid tag select type %r, using default', type(select).__name__)
       supersede_tag = 'notion'
 
     cfg = _load_template_config('notification')
