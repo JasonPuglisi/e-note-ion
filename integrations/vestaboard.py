@@ -402,7 +402,7 @@ def truncate_line(
   Strategies:
     hard     — cut at the column limit, mid-word if necessary.
     word     — cut at the last full word boundary that fits.
-    ellipsis — cut at the last full word boundary and append '...'.
+    ellipsis — cut at the column limit (hard cut) and append '...'.
 
   Multi-char tokens (❤️, color tags, escaped color tags) are never split.
   Escaped color tags (e.g. [[G]]) count as 3 display chars and are treated
@@ -420,15 +420,16 @@ def truncate_line(
     tok_display = 3 if len(tok) == 5 else 1
     if count + tok_display > target:
       break
-    if tok_display == 1 and tok == ' ' and strategy in ('word', 'ellipsis'):
+    if tok_display == 1 and tok == ' ' and strategy == 'word':
       last_word_end = len(result)
     result.append(tok)
     i += consumed
     count += tok_display
+  if strategy == 'ellipsis':
+    return ''.join(result) + '...'
   if strategy == 'hard' or last_word_end < 0:
     return ''.join(result)
-  base = ''.join(result[:last_word_end])
-  return base + ('...' if strategy == 'ellipsis' else '')
+  return ''.join(result[:last_word_end])
 
 
 def _wrap_lines(

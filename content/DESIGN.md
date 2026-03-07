@@ -215,7 +215,7 @@ Use the `truncation` field to control overflow:
 
 | Mode | Use when |
 |---|---|
-| `ellipsis` | Live API data — the user should know content was cut |
+| `ellipsis` | Live API data — fills to the column limit, then appends `...` so the user knows content was cut |
 | `word` | Hand-written static content with natural word boundaries |
 | `hard` | Output is pre-fitted and overflow is impossible or intentional |
 

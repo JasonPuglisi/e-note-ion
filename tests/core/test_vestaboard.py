@@ -141,8 +141,15 @@ def test_truncate_word() -> None:
 
 
 def test_truncate_ellipsis() -> None:
-  # target=7 (10-3): fits 'HELLO'(5) + space(6) + 'W'(7); base='HELLO' + '...'
-  assert vb.truncate_line('HELLO WORLD', 10, 'ellipsis') == 'HELLO...'
+  # target=7 (10-3): hard-cuts to 'HELLO W' (7 chars), then appends '...'
+  assert vb.truncate_line('HELLO WORLD', 10, 'ellipsis') == 'HELLO W...'
+
+
+def test_truncate_ellipsis_no_word_backtrack() -> None:
+  # ellipsis must NOT backtrack to the word boundary — result is longer than word cut
+  word_result = vb.truncate_line('HELLO WORLD', 10, 'word')
+  ellipsis_result = vb.truncate_line('HELLO WORLD', 10, 'ellipsis')
+  assert len(ellipsis_result.rstrip('.')) > len(word_result)
 
 
 def test_truncate_word_no_space_falls_back_to_hard() -> None:
