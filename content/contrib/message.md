@@ -83,31 +83,28 @@ passphrase with the friend.
 **Build the admin Shortcut:**
 
 1. Open Shortcuts → tap **+** → name it "Register Board Friend"
-2. Add **Ask for Input** (Text) → prompt "Friend's name (e.g. alice)" → save as `name`
-3. Add **Ask for Input** (Text) → prompt "Display name (shown on board)" → save as `display_name`
-4. Add **Choose from List** → items: Red, Orange, Yellow, Green, Blue, Violet, White, Black, Heart → save as `color_name`
-5. Add a **Dictionary** action mapping color names to codes:
-   `Red→R, Orange→O, Yellow→Y, Green→G, Blue→B, Violet→V, White→W, Black→K, Heart→H`
-   Get value for key `color_name` → save as `color`
-6. Generate the passphrase (3 random words from the wordlist — see below):
+2. Add **Ask for Input** (Text) → prompt "Friend's name (e.g. Alice or Bob Smith)" → save as `name`
+3. Add **Choose from List** → items: Red, Orange, Yellow, Green, Blue, Violet, White, Black, Heart → save as `color`
+4. Generate the passphrase (3 random words from the wordlist — see below):
    - Add **Text** action with the wordlist (one word per line)
    - Add **Split Text** (by new lines) → save as `words`
    - Add **Count** of `words` → save as `word_count`
    - Repeat 3 times: **Get Random Number** (1 to `word_count`) → **Get Item from List** at that index
    - Combine: **Text** `word1-word2-word3` → save as `passphrase`
-7. Add **Get Contents of URL**:
+5. Add **Get Contents of URL**:
    - URL: `https://<your-board-host>/webhook/message`
    - Method: POST
    - Headers: `Content-Type: application/json`, `X-Webhook-Secret: <main-secret>`
    - Request Body (JSON):
      ```json
-     { "action": "register", "name": "<name>", "display_name": "<display_name>",
-       "color": "<color>", "passphrase": "<passphrase>" }
+     { "action": "register", "name": "<name>", "color": "<color>", "passphrase": "<passphrase>" }
      ```
-8. Add **Show Result** → text "Share this with <display_name>: <passphrase>"
-9. Add import questions for the board URL and main webhook secret
+6. Add **Show Result** → text "Share this with <name>: <passphrase>"
+7. Add import questions for the board URL and main webhook secret
 
 Share via iCloud link → send to yourself only. This Shortcut holds the main secret.
+
+The `display_name` field is optional — when omitted the board uses `name` (uppercased on display).
 
 ### Friend Shortcut
 
@@ -149,8 +146,7 @@ are needed — name and color come from the board's config.
 {
   "action": "register",
   "name": "alice",
-  "display_name": "Alice",
-  "color": "R",
+  "color": "Red",
   "passphrase": "river-candle-bench"
 }
 ```
@@ -158,9 +154,8 @@ are needed — name and color come from the board's config.
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `action` | string | Yes | — | Must be `"register"` |
-| `name` | string | Yes | — | Credential key: lowercase alphanumeric, hyphens, underscores |
-| `display_name` | string | No | `name` | Name shown on the board header row |
-| `color` | string | No | `"W"` | Header color: R O Y G B V W K H |
+| `name` | string | Yes | — | Friend's name; spaces become hyphens, then lowercased (e.g. "Bob Smith" → `bob-smith`); shown on the board uppercased |
+| `color` | string | No | `"White"` | Header color: full name (Red, Orange, Yellow, Green, Blue, Violet, White, Black, Heart) or single-letter code |
 | `passphrase` | string | Yes | — | Plaintext passphrase (min 8 chars); hashed before storing |
 
 Re-registering an existing `name` overwrites the previous credential and display config.
