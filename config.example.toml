@@ -156,7 +156,7 @@ client_secret = "your-trakt-client-secret"
 # Remove the comment from this entire section to activate the listener.
 #
 # ⚠  Security: external webhook senders (outside your LAN) require TLS.
-# Recommended: use Tailscale Funnel — no domain or cert management needed.
+# Recommended: use Cloudflare Tunnel — no domain or cert management needed.
 # Never send the shared secret over plaintext HTTP across the internet.
 # See: https://github.com/JasonPuglisi/e-note-ion/blob/main/docs/webhook-reverse-proxy.md
 #

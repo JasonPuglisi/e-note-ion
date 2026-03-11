@@ -10,81 +10,80 @@ This page covers the recommended setup options.
 
 ---
 
-## Option 1 — Tailscale Funnel (recommended)
+## Option 1 — Cloudflare Tunnel (recommended)
 
-[Tailscale Funnel](https://tailscale.com/kb/1223/funnel) exposes a local port
-on the public internet at a stable `https://<machine>.tail<hash>.ts.net` URL
-with automatic TLS. No domain, no certificate management, no router port
-forwarding needed.
+[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
+exposes a local port on the public internet at a stable `https://` URL with
+automatic TLS. No domain ownership is required (Cloudflare provides a free
+`*.trycloudflare.com` hostname), no router port forwarding, and no certificate
+management.
+
+`cloudflared` runs as a lightweight sidecar container alongside e-note-ion —
+a clean fit for both Docker Compose and Unraid.
+
+### Step 1 — Create a tunnel
+
+1. Log in to the [Cloudflare Zero Trust dashboard](https://one.dash.cloudflare.com/).
+2. Go to **Networks → Tunnels** and click **Create a tunnel**.
+3. Select **Cloudflared** as the connector type, give the tunnel a name, and
+   follow the prompts. At the end, copy the **tunnel token** shown on screen
+   (a long base64 string). Keep it safe — treat it like a password.
+4. Under **Public Hostname**, add a route: point any hostname to
+   `http://localhost:8080` (the webhook listener's internal address). Save.
 
 ### Unraid
 
-1. Install the **Tailscale** Community Application (if not already installed)
-   and authenticate it to your tailnet via **Settings → Tailscale**.
-2. In **Settings → Tailscale**, enable **Allow Tailscale Funnel**. This
-   authorizes the Unraid host to use Funnel.
-3. In `config.toml`, set `bind = "0.0.0.0"` so the container accepts
-   connections from outside localhost. Restart the container.
-4. Open the **Unraid terminal** (Tools → Terminal) and run:
+1. In the Unraid **Community Applications** panel, search for **cloudflared**
+   and install it.
+2. Set the `TUNNEL_TOKEN` environment variable to the token from Step 1.
+3. In your e-note-ion Docker settings, set `bind = "0.0.0.0"` in `config.toml`
+   and confirm the webhook port mapping is active (container `8080` → host
+   `32800` by default).
+4. Start the cloudflared container. Your public webhook URL will be the
+   hostname you configured in the Cloudflare dashboard:
    ```
-   tailscale funnel --https=8443 --bg 32800
+   https://<your-hostname>/webhook/<integration>
    ```
-   Port 443 is occupied by Unraid's own web UI, so 8443 is used instead.
-   Both 443 and 8443 are valid Tailscale Funnel ports. The `--bg` flag
-   persists the configuration across Tailscale daemon restarts.
-5. Your public webhook URL is:
-   ```
-   https://<machine>.tail<hash>.ts.net:8443/webhook/<integration>
-   ```
-   Pass the secret as a query parameter or `X-Webhook-Secret` header (see
-   [Webhook setup](../AGENTS.md#webhook-integrations)).
 
-> **Note:** Tailscale Funnel makes the endpoint reachable from the open
-> internet. The shared secret protects it — guard it like a password.
->
-> **Do not** use the per-container Tailscale integration available in the
-> Docker container edit UI — that hook requires the container to run as
-> root, which is unnecessary here and should be avoided.
+> **Note:** Both containers must be on the same Docker bridge network so
+> cloudflared can reach e-note-ion at `http://e-note-ion:8080`, or configure
+> cloudflared to target the host IP (e.g. `http://172.17.0.1:32800`) instead
+> of `localhost`.
 
 ### Docker Compose
 
-Run Tailscale as a sidecar and share the network namespace:
+Run `cloudflared` as a sidecar sharing e-note-ion's network namespace:
 
 ```yaml
 services:
   e-note-ion:
     image: ghcr.io/jasonpuglisi/e-note-ion
-    network_mode: service:tailscale
     volumes:
       - ./config.toml:/app/config.toml
 
-  tailscale:
-    image: tailscale/tailscale
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
     environment:
-      - TS_AUTHKEY=tskey-auth-...
-      - TS_SERVE_CONFIG=/config/serve.json
-    volumes:
-      - ./tailscale:/var/lib/tailscale
-      - ./tailscale-config:/config
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    network_mode: service:e-note-ion
+    depends_on:
+      - e-note-ion
 ```
 
-With `network_mode: service:tailscale`, the e-note-ion container shares
-Tailscale's network stack. Configure Funnel in `tailscale-config/serve.json`
-to route public HTTPS traffic on port 443 to `http://localhost:8080`.
-See the [Tailscale Docker guide](https://tailscale.com/kb/1282/docker) for
-the serve config format.
+With `network_mode: service:e-note-ion`, cloudflared shares e-note-ion's
+network stack and can reach the webhook listener at `http://localhost:8080`.
+Store `TUNNEL_TOKEN` in a `.env` file next to `docker-compose.yml` — do not
+commit it to version control.
 
 ---
 
 ## Option 2 — Tailscale direct (sender on tailnet)
 
 If the webhook sender is a device you control that already has Tailscale
-installed (e.g. an iPhone running iOS Shortcuts), you can skip Funnel
-entirely. All traffic between Tailscale nodes is WireGuard-encrypted, so
-plain HTTP over the tailnet is safe.
+installed (e.g. an iPhone running iOS Shortcuts), you can skip a public
+tunnel entirely. All traffic between Tailscale nodes is WireGuard-encrypted,
+so plain HTTP over the tailnet is safe.
 
 1. Ensure both the Unraid host and the sending device are on the same tailnet.
 2. Set `bind = "0.0.0.0"` in `config.toml`.
@@ -94,7 +93,7 @@ plain HTTP over the tailnet is safe.
    http://100.x.x.x:32800/webhook/<integration>?secret=<your-secret>
    ```
 
-No router changes, no TLS certificates, no Funnel quota.
+No router changes, no TLS certificates, no tunnel quota.
 
 ---
 
@@ -112,8 +111,9 @@ to your reverse proxy's own documentation for TLS and Let's Encrypt setup.
 
 ## What you do NOT need
 
-- **Router port forwarding** — Tailscale Funnel handles inbound connections
+- **Router port forwarding** — Cloudflare Tunnel handles inbound connections
   without any changes to your router or firewall.
-- **A custom domain** — Funnel provides a stable `*.ts.net` hostname.
-- **Certificate management** — Funnel provisions and renews TLS certificates
-  automatically.
+- **A custom domain** — Cloudflare provides a free `*.trycloudflare.com`
+  hostname, or you can use your own.
+- **Certificate management** — Cloudflare provisions and renews TLS
+  certificates automatically.
