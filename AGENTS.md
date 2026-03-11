@@ -91,7 +91,7 @@ content/
     plex.md                 # Sidecar doc: Plex Pass requirement and webhook setup
   user/                     # Personal content (always loaded, git-ignored)
 docs/
-  webhook-reverse-proxy.md  # Webhook TLS setup guide (Tailscale Funnel, reverse proxy)
+  webhook-reverse-proxy.md  # Webhook TLS setup guide (Cloudflare Tunnel, reverse proxy)
 .env.example                # Template for local integration test secrets (copy to .env, fill in, git-ignored)
 Dockerfile                  # Single-stage image using ghcr.io/astral-sh/uv
 .github/workflows/
