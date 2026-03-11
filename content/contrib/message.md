@@ -82,7 +82,7 @@ passphrase with the friend.
 
 **Build the admin Shortcut:**
 
-1. Open Shortcuts → tap **+** → name it "Register Board Friend"
+1. Open Shortcuts → tap **+** → name it "Register Vestaboard Friend"
 2. Add **Ask for Input** (Text) → prompt "Friend's name (e.g. Alice or Bob Smith)" → save as `name`
 3. Add **Choose from List** → items: Red, Orange, Yellow, Green, Blue, Violet, White, Black, Heart → save as `color`
 4. Generate the passphrase (3 random words from the wordlist — see below):
@@ -100,11 +100,9 @@ passphrase with the friend.
      { "action": "register", "name": "<name>", "color": "<color>", "passphrase": "<passphrase>" }
      ```
 6. Add **Show Result** → text "Share this with <name>: <passphrase>"
-7. Add import questions for the board URL and main webhook secret
+7. Add import questions for the Vestaboard URL and main webhook secret
 
 Share via iCloud link → send to yourself only. This Shortcut holds the main secret.
-
-The `display_name` field is optional — when omitted the board uses `name` (uppercased on display).
 
 ### Friend Shortcut
 
@@ -112,17 +110,20 @@ Each friend gets a copy of this Shortcut with their passphrase pre-filled.
 
 **Build the friend Shortcut:**
 
-1. Open Shortcuts → tap **+** → name it "Message the Board"
+1. Open Shortcuts → tap **+** → name it "Message Vestaboard"
 2. Add **Ask for Input** (Text) → prompt "Message" → save as `message`
 3. Add **Get Contents of URL**:
    - URL: `https://<your-board-host>/webhook/message`
    - Method: POST
    - Headers: `Content-Type: application/json`, `X-Webhook-Secret: <passphrase>`
    - Request Body (JSON): `{ "message": "<message>" }`
-4. Add import questions for the board URL and passphrase (clears them before sharing)
+4. Add import questions for the Vestaboard URL and passphrase (clears them before sharing)
 
-Share via iCloud link. When your friend imports it, they fill in the board URL and
+Share via iCloud link. When your friend imports it, they fill in the Vestaboard URL and
 their passphrase. The passphrase is their identity — keep it private.
+
+Before sharing, consider renaming the Shortcut to `Message Jason's Vestaboard` (or
+whatever personalises it for your friend) so it's clear whose board it reaches.
 
 ## Payload schema
 
