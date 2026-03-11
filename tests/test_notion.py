@@ -11,7 +11,7 @@ _TEMPLATE_CONFIG = {
   'timeout': 120,
   'priority': 7,
   'truncation': 'word',
-  'templates': [{'format': ['[W] FROM NOTION', '{message}']}],
+  'templates': [{'format': ['[W] NOTION', '{message}']}],
 }
 
 

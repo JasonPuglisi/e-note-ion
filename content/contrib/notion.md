@@ -1,7 +1,7 @@
 # notion.json
 
 Notion integration — displays automation-triggered notifications on the board
-via webhook. Each notification shows a `[W] FROM NOTION` header row followed
+via webhook. Each notification shows a `[W] NOTION` header row followed
 by the message body.
 
 Unlike cron-scheduled templates, this template is triggered entirely by
@@ -129,7 +129,7 @@ Urgent with a custom dedup tag:
 **Note (3×15):**
 
 ```
-[W] FROM NOTION
+[W] NOTION
 TASK COMPLETED
 Q1 PLANNING DOC
 ```
@@ -137,12 +137,12 @@ Q1 PLANNING DOC
 **Flagship (6×22):**
 
 ```
-[W] FROM NOTION
+[W] NOTION
 TASK COMPLETED
 Q1 PLANNING DOC
 ```
 
-- Row 1: `[W] FROM NOTION` (static header)
+- Row 1: `[W] NOTION` (static header)
 - Rows 2+: message body, word-wrapped to board width; excess rows are dropped
 
 ## Keeping data current

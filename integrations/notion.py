@@ -4,7 +4,7 @@
 #
 # Notion automations send an HTTP POST to the webhook endpoint with a
 # structured payload. This integration parses the payload and formats a
-# display message with a static "[W] FROM NOTION" header row.
+# display message with a static "[W] NOTION" header row.
 #
 # No config.toml keys are required for the integration itself. To override
 # hold/timeout/priority for the notification template, add a

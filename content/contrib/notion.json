@@ -12,7 +12,7 @@
       "templates": [
         {
           "format": [
-            "[W] FROM NOTION",
+            "[W] NOTION",
             "{message}"
           ]
         }
