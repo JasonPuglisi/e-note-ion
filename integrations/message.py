@@ -156,7 +156,7 @@ def _handle_register(
     name         (str, required): credential key; lowercase alphanumeric, hyphens, underscores
     display_name (str, optional): name shown on the board; defaults to name
     color        (str, optional): one of R O Y G B V W K H; defaults to W (white)
-    secret       (str, required): plaintext passphrase; hashed with argon2id before storing
+    passphrase   (str, required): plaintext passphrase; hashed with argon2id before storing
 
   Writes [webhook.credentials.<name>] and [message.friends.<name>] to config.toml.
   Re-registering an existing name overwrites the previous entry.
@@ -183,9 +183,9 @@ def _handle_register(
     logger.warning('message: registration rejected: invalid color %r', color)
     return None
 
-  passphrase = str(payload.get('secret', '')).strip()
+  passphrase = str(payload.get('passphrase', '')).strip()
   if len(passphrase) < 8:
-    logger.warning('message: registration rejected: secret too short (min 8 chars)')
+    logger.warning('message: registration rejected: passphrase too short (min 8 chars)')
     return None
 
   ph = PasswordHasher()

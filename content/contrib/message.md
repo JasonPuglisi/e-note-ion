@@ -102,7 +102,7 @@ passphrase with the friend.
    - Request Body (JSON):
      ```json
      { "action": "register", "name": "<name>", "display_name": "<display_name>",
-       "color": "<color>", "secret": "<passphrase>" }
+       "color": "<color>", "passphrase": "<passphrase>" }
      ```
 8. Add **Show Result** → text "Share this with <display_name>: <passphrase>"
 9. Add import questions for the board URL and main webhook secret
@@ -151,7 +151,7 @@ are needed — name and color come from the board's config.
   "name": "alice",
   "display_name": "Alice",
   "color": "R",
-  "secret": "river-candle-bench"
+  "passphrase": "river-candle-bench"
 }
 ```
 
@@ -161,7 +161,7 @@ are needed — name and color come from the board's config.
 | `name` | string | Yes | — | Credential key: lowercase alphanumeric, hyphens, underscores |
 | `display_name` | string | No | `name` | Name shown on the board header row |
 | `color` | string | No | `"W"` | Header color: R O Y G B V W K H |
-| `secret` | string | Yes | — | Plaintext passphrase (min 8 chars); hashed before storing |
+| `passphrase` | string | Yes | — | Plaintext passphrase (min 8 chars); hashed before storing |
 
 Re-registering an existing `name` overwrites the previous credential and display config.
 
