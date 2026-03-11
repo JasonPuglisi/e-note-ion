@@ -13,7 +13,7 @@ _TEMPLATE_CONFIG = {
   'truncation': 'ellipsis',
 }
 
-_FRIEND_ALICE = {'display_name': 'Alice', 'color': 'R'}
+_FRIEND_ALICE = {'color': 'R'}
 
 
 @pytest.fixture(autouse=True)
@@ -104,21 +104,21 @@ def test_unregistered_credential_returns_none() -> None:
 
 
 def test_header_uses_friend_color() -> None:
-  with patch('config.get_message_friend', return_value={'display_name': 'Alice', 'color': 'R'}):
+  with patch('config.get_message_friend', return_value={'color': 'R'}):
     result = message.handle_webhook(_make_payload(), credential_name='alice')
   assert isinstance(result, WebhookMessage)
   assert result.data['templates'][0]['format'][0] == '[R] FROM ALICE'
 
 
 def test_header_uses_heart_color() -> None:
-  with patch('config.get_message_friend', return_value={'display_name': 'Alice', 'color': 'H'}):
+  with patch('config.get_message_friend', return_value={'color': 'H'}):
     result = message.handle_webhook(_make_payload(), credential_name='alice')
   assert isinstance(result, WebhookMessage)
   assert result.data['templates'][0]['format'][0] == '❤️ FROM ALICE'
 
 
 def test_header_defaults_to_white_for_unknown_color() -> None:
-  with patch('config.get_message_friend', return_value={'display_name': 'Alice', 'color': 'Z'}):
+  with patch('config.get_message_friend', return_value={'color': 'Z'}):
     result = message.handle_webhook(_make_payload(), credential_name='alice')
   assert isinstance(result, WebhookMessage)
   assert result.data['templates'][0]['format'][0].startswith('[W] FROM')
@@ -126,27 +126,27 @@ def test_header_defaults_to_white_for_unknown_color() -> None:
 
 def test_name_hard_capped_to_note_budget() -> None:
   # Note: 15 cols. Header prefix = 7. Max name = 8.
-  # 'BARTHOLOMEW'[:8] = 'BARTHOLO'
-  with patch('config.get_message_friend', return_value={'display_name': 'Bartholomew', 'color': 'W'}):
-    result = message.handle_webhook(_make_payload(), credential_name='barth')
+  # credential_name 'bartholo' (8 chars) → 'BARTHOLO'
+  with patch('config.get_message_friend', return_value={'color': 'W'}):
+    result = message.handle_webhook(_make_payload(), credential_name='bartholo')
   assert isinstance(result, WebhookMessage)
   assert result.data['templates'][0]['format'][0] == '[W] FROM BARTHOLO'
 
 
 def test_name_hard_capped_to_flagship_budget() -> None:
   # Flagship: 22 cols. Header prefix = 7. Max name = 15.
-  # 'BARTHOLOMEW JONES'[:15] = 'BARTHOLOMEW JON'
+  # credential_name 'bartholomew-jones' → 'BARTHOLOMEW-JONE' (16 chars → capped at 15)
   with (
     patch('config.get_optional', return_value='flagship'),
-    patch('config.get_message_friend', return_value={'display_name': 'Bartholomew Jones', 'color': 'W'}),
+    patch('config.get_message_friend', return_value={'color': 'W'}),
   ):
-    result = message.handle_webhook(_make_payload(), credential_name='barth')
+    result = message.handle_webhook(_make_payload(), credential_name='bartholomew-jones')
   assert isinstance(result, WebhookMessage)
-  assert result.data['templates'][0]['format'][0] == '[W] FROM BARTHOLOMEW JON'
+  assert result.data['templates'][0]['format'][0] == '[W] FROM BARTHOLOMEW-JON'
 
 
-def test_display_name_falls_back_to_credential_name() -> None:
-  # display_name absent from friend config — use credential_name
+def test_header_uses_credential_name() -> None:
+  # Name on board comes from credential_name, not a stored display_name field.
   with patch('config.get_message_friend', return_value={'color': 'G'}):
     result = message.handle_webhook(_make_payload(), credential_name='bob')
   assert isinstance(result, WebhookMessage)
@@ -199,14 +199,12 @@ def test_interrupt_always_false() -> None:
 
 def _make_register_payload(
   name: str = 'alice',
-  display_name: str = 'Alice',
   color: str = 'R',
   passphrase: str = 'apple-river-bench',
 ) -> dict[str, Any]:
   return {
     'action': 'register',
     'name': name,
-    'display_name': display_name,
     'color': color,
     'passphrase': passphrase,
   }
@@ -238,10 +236,10 @@ def test_register_stores_credential_and_friend() -> None:
     },
   )
   assert cred_call.args[1]['secret_hash'].startswith('$argon2id$')
-  # Second call: friend display section
+  # Second call: friend display section (no display_name — name is the identity)
   assert mock_write.call_args_list[1] == call(
     'message.friends.alice',
-    {'display_name': 'Alice', 'color': 'R'},
+    {'color': 'R'},
   )
 
 
@@ -252,17 +250,14 @@ def test_register_overwrite_is_idempotent() -> None:
   assert mock_write.call_count == 4  # 2 calls per registration
 
 
-def test_register_display_name_defaults_to_name() -> None:
-  payload = _make_register_payload()
-  del payload['display_name']
+def test_register_spaces_in_name_converted_to_hyphens() -> None:
   with patch('config.write_config_section') as mock_write:
-    message.handle_webhook(payload, credential_name='')
-  friend_call = mock_write.call_args_list[1]
-  assert friend_call.args[1]['display_name'] == 'alice'
+    message.handle_webhook(_make_register_payload(name='Bob Smith'), credential_name='')
+  assert mock_write.call_args_list[0].args[0] == 'webhook.credentials.bob-smith'
 
 
 def test_register_invalid_name_returns_none(caplog: pytest.LogCaptureFixture) -> None:
-  result = message.handle_webhook(_make_register_payload(name='Alice With Spaces'), credential_name='')
+  result = message.handle_webhook(_make_register_payload(name='!invalid'), credential_name='')
   assert result is None
   assert 'invalid' in caplog.text.lower()
 
@@ -271,6 +266,27 @@ def test_register_invalid_color_returns_none(caplog: pytest.LogCaptureFixture) -
   result = message.handle_webhook(_make_register_payload(color='Z'), credential_name='')
   assert result is None
   assert 'invalid' in caplog.text.lower()
+
+
+def test_register_full_color_name_accepted() -> None:
+  with patch('config.write_config_section') as mock_write:
+    message.handle_webhook(_make_register_payload(color='Green'), credential_name='')
+  friend_call = mock_write.call_args_list[1]
+  assert friend_call.args[1]['color'] == 'G'
+
+
+def test_register_full_color_name_case_insensitive() -> None:
+  with patch('config.write_config_section') as mock_write:
+    message.handle_webhook(_make_register_payload(color='VIOLET'), credential_name='')
+  friend_call = mock_write.call_args_list[1]
+  assert friend_call.args[1]['color'] == 'V'
+
+
+def test_register_heart_full_name_accepted() -> None:
+  with patch('config.write_config_section') as mock_write:
+    message.handle_webhook(_make_register_payload(color='Heart'), credential_name='')
+  friend_call = mock_write.call_args_list[1]
+  assert friend_call.args[1]['color'] == 'H'
 
 
 def test_register_short_passphrase_returns_none(caplog: pytest.LogCaptureFixture) -> None:

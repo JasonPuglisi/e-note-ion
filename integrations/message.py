@@ -38,6 +38,19 @@ _COLOR_MAP: dict[str, str] = {
   'H': '❤️',
 }
 
+# Maps full color names → config key (for Shortcut convenience; single-letter codes also accepted).
+_COLOR_NAMES: dict[str, str] = {
+  'red': 'R',
+  'orange': 'O',
+  'yellow': 'Y',
+  'green': 'G',
+  'blue': 'B',
+  'violet': 'V',
+  'white': 'W',
+  'black': 'K',
+  'heart': 'H',
+}
+
 # Max characters for the friend name in the header row per model.
 # Header: {color}(1) + ' '(1) + 'FROM '(5) = 7 cols used; remainder is for name.
 # Note: 15 cols → 8 for name. Flagship: 22 cols → 15 for name.
@@ -78,11 +91,10 @@ def _build_header(friend: dict[str, Any], credential_name: str, model: str) -> s
   Format: '{color} FROM {NAME}' where the name is hard-capped to fit row 1.
   The color character always occupies exactly 1 display column.
   """
-  display_name = str(friend.get('display_name', credential_name)).upper()
   color_key = str(friend.get('color', 'W')).upper()
   color_char = _COLOR_MAP.get(color_key, '[W]')
   max_cols = _MAX_NAME_COLS.get(model, _MAX_NAME_COLS['note'])
-  return f'{color_char} FROM {display_name[:max_cols]}'
+  return f'{color_char} FROM {credential_name.upper()[:max_cols]}'
 
 
 def handle_webhook(
@@ -153,9 +165,8 @@ def _handle_register(
   """Register a new friend credential. Only the admin (main webhook secret) may call this.
 
   Expects payload fields:
-    name         (str, required): credential key; lowercase alphanumeric, hyphens, underscores
-    display_name (str, optional): name shown on the board; defaults to name
-    color        (str, optional): one of R O Y G B V W K H; defaults to W (white)
+    name         (str, required): friend's name; spaces→hyphens, lowercased; shown on board (uppercased)
+    color        (str, optional): color name (Red, Orange, …, Heart) or code (R O Y G B V W K H); defaults to White
     passphrase   (str, required): plaintext passphrase; hashed with argon2id before storing
 
   Writes [webhook.credentials.<name>] and [message.friends.<name>] to config.toml.
@@ -170,15 +181,13 @@ def _handle_register(
     logger.warning('message: registration rejected: must use main webhook secret')
     return None
 
-  name = str(payload.get('name', '')).strip().lower()
+  name = re.sub(r'\s+', '-', str(payload.get('name', '')).strip().lower())
   if not name or not re.match(r'^[a-z0-9][a-z0-9_-]*$', name):
     logger.warning('message: registration rejected: invalid or missing name %r', name)
     return None
 
-  raw_display = str(payload.get('display_name', name)).strip()
-  display_name = raw_display if raw_display else name
-
-  color = str(payload.get('color', 'W')).upper()
+  color_raw = str(payload.get('color', 'W')).strip()
+  color = _COLOR_NAMES.get(color_raw.lower(), color_raw.upper())
   if color not in _COLOR_MAP:
     logger.warning('message: registration rejected: invalid color %r', color)
     return None
@@ -197,13 +206,8 @@ def _handle_register(
   )
   _config_mod.write_config_section(
     f'message.friends.{name}',
-    {'display_name': display_name, 'color': color},
+    {'color': color},
   )
 
-  logger.info(
-    'message: registered friend %r (display_name=%r, color=%r)',
-    name,
-    display_name,
-    color,
-  )
+  logger.info('message: registered friend %r (color=%r)', name, color)
   return None
