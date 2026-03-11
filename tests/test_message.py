@@ -201,14 +201,14 @@ def _make_register_payload(
   name: str = 'alice',
   display_name: str = 'Alice',
   color: str = 'R',
-  secret: str = 'apple-river-bench',
+  passphrase: str = 'apple-river-bench',
 ) -> dict[str, Any]:
   return {
     'action': 'register',
     'name': name,
     'display_name': display_name,
     'color': color,
-    'secret': secret,
+    'passphrase': passphrase,
   }
 
 
@@ -273,8 +273,8 @@ def test_register_invalid_color_returns_none(caplog: pytest.LogCaptureFixture) -
   assert 'invalid' in caplog.text.lower()
 
 
-def test_register_short_secret_returns_none(caplog: pytest.LogCaptureFixture) -> None:
-  result = message.handle_webhook(_make_register_payload(secret='abc'), credential_name='')
+def test_register_short_passphrase_returns_none(caplog: pytest.LogCaptureFixture) -> None:
+  result = message.handle_webhook(_make_register_payload(passphrase='abc'), credential_name='')
   assert result is None
   assert 'short' in caplog.text.lower()
 
