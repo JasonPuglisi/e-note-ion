@@ -145,6 +145,11 @@ def test_truncate_ellipsis() -> None:
   assert vb.truncate_line('HELLO WORLD', 10, 'ellipsis') == 'HELLO W...'
 
 
+def test_truncate_ellipsis_strips_trailing_space() -> None:
+  # target=6 (9-3): hard-cuts to 'HELLO ' (trailing space), must strip before '...'
+  assert vb.truncate_line('HELLO WORLD', 9, 'ellipsis') == 'HELLO...'
+
+
 def test_truncate_ellipsis_no_word_backtrack() -> None:
   # ellipsis must NOT backtrack to the word boundary — result is longer than word cut
   word_result = vb.truncate_line('HELLO WORLD', 10, 'word')
