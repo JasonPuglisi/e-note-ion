@@ -426,7 +426,7 @@ def truncate_line(
     i += consumed
     count += tok_display
   if strategy == 'ellipsis':
-    return ''.join(result) + '...'
+    return ''.join(result).rstrip() + '...'
   if strategy == 'hard' or last_word_end < 0:
     return ''.join(result)
   return ''.join(result[:last_word_end])
