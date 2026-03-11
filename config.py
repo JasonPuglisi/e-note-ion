@@ -116,7 +116,7 @@ def write_section_values(section: str, values: dict[str, str | int]) -> None:
       section_lines.insert(insert_at, new_line)
 
   lines[section_start:section_end] = section_lines
-  _CONFIG_PATH.write_text(''.join(lines))  # lgtm[py/clear-text-storage-sensitive-data]
+  _CONFIG_PATH.write_text(''.join(lines))
   _config.setdefault(section, {}).update(values)
 
 
@@ -273,7 +273,7 @@ def write_config_section(section: str, values: dict[str, str | int | list[str]])
     for key, value in values.items():
       lines.append(f'{key} = {_render(value)}\n')
 
-  _CONFIG_PATH.write_text(''.join(lines))  # lgtm[py/clear-text-storage-sensitive-data]
+  _CONFIG_PATH.write_text(''.join(lines))
 
   # Update in-memory cache for dotted section names.
   parts = section.split('.')
