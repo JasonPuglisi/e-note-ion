@@ -48,7 +48,7 @@
       },
       "priority": 8,
       "private": true,
-      "truncation": "word",
+      "truncation": "ellipsis",
       "integration": "plex",
       "templates": [
         {

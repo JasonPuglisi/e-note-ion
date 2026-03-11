@@ -7,7 +7,7 @@
         "timeout": 120
       },
       "priority": 7,
-      "truncation": "word",
+      "truncation": "ellipsis",
       "integration": "notion",
       "templates": [
         {
