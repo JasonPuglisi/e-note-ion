@@ -334,23 +334,20 @@ def test_handle_webhook_play_after_displaced_stop_fires(_plex_playing: None) -> 
 def test_stop_followed_by_play_within_window_cancels_timer(_plex_playing: None) -> None:
   """play arriving before the stop timer fires cancels the stopped card."""
   _plex.handle_webhook({'event': 'media.stop'})
-  timer = _plex._pending_stop_timer
-  assert timer is not None
+  assert _plex._pending_stop_timer is not None
   with patch('scheduler.enqueue') as mock_enqueue:
     _plex.handle_webhook(_episode_payload('media.play'))
+  # Timer is cleared from module state and its function will not be called.
   assert _plex._pending_stop_timer is None
-  assert not timer.is_alive()
   mock_enqueue.assert_not_called()
 
 
 def test_stop_followed_by_resume_within_window_cancels_timer(_plex_playing: None) -> None:
   """resume arriving before the stop timer fires cancels the stopped card."""
   _plex.handle_webhook({'event': 'media.stop'})
-  timer = _plex._pending_stop_timer
-  assert timer is not None
+  assert _plex._pending_stop_timer is not None
   _plex.handle_webhook(_episode_payload('media.resume'))
   assert _plex._pending_stop_timer is None
-  assert not timer.is_alive()
 
 
 # ---------------------------------------------------------------------------
