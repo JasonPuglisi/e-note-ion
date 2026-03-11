@@ -183,13 +183,13 @@ def _handle_register(
     logger.warning('message: registration rejected: invalid color %r', color)
     return None
 
-  secret = str(payload.get('secret', '')).strip()
-  if len(secret) < 8:
+  passphrase = str(payload.get('secret', '')).strip()
+  if len(passphrase) < 8:
     logger.warning('message: registration rejected: secret too short (min 8 chars)')
     return None
 
   ph = PasswordHasher()
-  secret_hash = ph.hash(secret)
+  secret_hash = ph.hash(passphrase)
 
   _config_mod.write_config_section(
     f'webhook.credentials.{name}',
