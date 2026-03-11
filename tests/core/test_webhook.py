@@ -781,3 +781,117 @@ def test_multipart_invalid_json_in_payload_returns_400() -> None:
     assert status == 400
   finally:
     server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Named credential authentication
+# ---------------------------------------------------------------------------
+
+
+def test_named_credential_authenticates_scoped_endpoint() -> None:
+  """A valid credential scoped to the integration authenticates successfully."""
+  from argon2 import PasswordHasher
+
+  ph = PasswordHasher()
+  friend_secret = 'apple-river-bench'
+  friend_hash = ph.hash(friend_secret)
+
+  mock_mod = MagicMock()
+  mock_mod.handle_webhook.return_value = None
+
+  with patch.dict(
+    'config._config',
+    {'webhook': {'credentials': {'alice': {'secret_hash': friend_hash, 'webhooks': ['message']}}}},
+  ):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      server, port = _start_test_server()
+      try:
+        status, _ = _post(port, '/webhook/message', secret=friend_secret)
+        assert status == 200
+      finally:
+        server.shutdown()
+
+
+def test_named_credential_rejected_for_wrong_endpoint() -> None:
+  """A credential scoped to 'message' cannot authenticate '/webhook/notion'."""
+  from argon2 import PasswordHasher
+
+  ph = PasswordHasher()
+  friend_secret = 'apple-river-bench'
+  friend_hash = ph.hash(friend_secret)
+
+  with patch.dict(
+    'config._config',
+    {'webhook': {'credentials': {'alice': {'secret_hash': friend_hash, 'webhooks': ['message']}}}},
+  ):
+    server, port = _start_test_server()
+    try:
+      status, _ = _post(port, '/webhook/notion', secret=friend_secret)
+      assert status == 401
+    finally:
+      server.shutdown()
+
+
+def test_unknown_credential_secret_returns_401() -> None:
+  """A secret that matches neither the main secret nor any credential is rejected."""
+  from argon2 import PasswordHasher
+
+  ph = PasswordHasher()
+  real_hash = ph.hash('apple-river-bench')
+
+  with patch.dict(
+    'config._config',
+    {'webhook': {'credentials': {'alice': {'secret_hash': real_hash, 'webhooks': ['message']}}}},
+  ):
+    server, port = _start_test_server()
+    try:
+      status, _ = _post(port, '/webhook/message', secret='wrong-secret')
+      assert status == 401
+    finally:
+      server.shutdown()
+
+
+def test_credential_name_passed_to_handle_webhook() -> None:
+  """When a named credential matches, credential_name is passed to handle_webhook."""
+  from argon2 import PasswordHasher
+
+  ph = PasswordHasher()
+  friend_secret = 'apple-river-bench'
+  friend_hash = ph.hash(friend_secret)
+
+  import integrations.message as _msg_mod
+
+  with patch.dict(
+    'config._config',
+    {'webhook': {'credentials': {'alice': {'secret_hash': friend_hash, 'webhooks': ['message']}}}},
+  ):
+    # autospec=True preserves the real signature so inspect.signature finds credential_name.
+    with patch.object(_msg_mod, 'handle_webhook', autospec=True, return_value=None) as mock_hw:
+      with patch.dict(_mod._integrations, {'message': _msg_mod}):
+        server, port = _start_test_server()
+        try:
+          _post(port, '/webhook/message', secret=friend_secret)
+          time.sleep(0.05)
+          mock_hw.assert_called_once()
+          _, kwargs = mock_hw.call_args
+          assert kwargs.get('credential_name') == 'alice'
+        finally:
+          server.shutdown()
+
+
+def test_main_secret_passes_empty_credential_name() -> None:
+  """The main secret authenticates with credential_name='' (admin)."""
+  import integrations.message as _msg_mod
+
+  # autospec=True preserves the real signature so inspect.signature finds credential_name.
+  with patch.object(_msg_mod, 'handle_webhook', autospec=True, return_value=None) as mock_hw:
+    with patch.dict(_mod._integrations, {'message': _msg_mod}):
+      server, port = _start_test_server()
+      try:
+        _post(port, '/webhook/message', secret=_SECRET)
+        time.sleep(0.05)
+        mock_hw.assert_called_once()
+        _, kwargs = mock_hw.call_args
+        assert kwargs.get('credential_name') == ''
+      finally:
+        server.shutdown()

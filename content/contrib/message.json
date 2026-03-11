@@ -1,0 +1,14 @@
+{
+  "templates": {
+    "notification": {
+      "webhook": true,
+      "schedule": {
+        "hold": 120,
+        "timeout": 120
+      },
+      "priority": 8,
+      "truncation": "ellipsis",
+      "integration": "message"
+    }
+  }
+}

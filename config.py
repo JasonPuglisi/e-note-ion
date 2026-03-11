@@ -12,6 +12,7 @@ import re
 import sys
 import tomllib
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 _CONFIG_PATH = Path('config.toml')
@@ -115,7 +116,7 @@ def write_section_values(section: str, values: dict[str, str | int]) -> None:
       section_lines.insert(insert_at, new_line)
 
   lines[section_start:section_end] = section_lines
-  _CONFIG_PATH.write_text(''.join(lines))
+  _CONFIG_PATH.write_text(''.join(lines))  # lgtm[py/clear-text-storage-sensitive-data]
   _config.setdefault(section, {}).update(values)
 
 
@@ -188,6 +189,103 @@ def get_content_enabled() -> set[str] | None:
     return None
   value = scheduler_cfg['content_enabled']
   return set(value) if value else set()
+
+
+def get_credentials(integration_name: str) -> dict[str, dict[str, Any]]:
+  """Return named credentials scoped to the given integration, keyed by credential name.
+
+  Reads [[webhook.credentials.*]] sections from the loaded config. Each credential
+  entry must have a 'webhooks' list containing the integration name to be returned.
+  """
+  creds = _config.get('webhook', {}).get('credentials', {})
+  if not isinstance(creds, dict):
+    return {}
+  return {
+    name: data
+    for name, data in creds.items()
+    if isinstance(data, dict) and integration_name in data.get('webhooks', [])
+  }
+
+
+def get_message_friend(name: str) -> dict[str, Any] | None:
+  """Return [message.friends.<name>] config dict, or None if not configured."""
+  friend = _config.get('message', {}).get('friends', {}).get(name)
+  return dict(friend) if isinstance(friend, dict) else None
+
+
+def write_config_section(section: str, values: dict[str, str | int | list[str]]) -> None:
+  """Create-or-update a config section in config.toml.
+
+  Handles dotted section names (e.g. 'webhook.credentials.alice').
+  Supports str, int, and list[str] values (rendered as TOML inline arrays).
+  Creates the section if absent (appended to end of file).
+  Updates the in-memory config cache.
+  """
+  if not _CONFIG_PATH.exists():
+    raise FileNotFoundError(f'config.toml not found at {_CONFIG_PATH.resolve()}')
+
+  lines = _CONFIG_PATH.read_text().splitlines(keepends=True)
+  header = f'[{section}]'
+
+  section_start: int | None = None
+  section_end = len(lines)
+
+  for i, line in enumerate(lines):
+    stripped = line.strip()
+    if stripped == header:
+      section_start = i + 1
+    elif section_start is not None and stripped.startswith('[') and not stripped.startswith('#'):
+      section_end = i
+      break
+
+  def _render(v: str | int | list[str]) -> str:
+    if isinstance(v, list):
+      return '[' + ', '.join(f'"{item}"' for item in v) + ']'
+    if isinstance(v, int):
+      return str(v)
+    return f'"{v}"'
+
+  if section_start is not None:
+    section_lines = list(lines[section_start:section_end])
+    for key, value in values.items():
+      new_line = f'{key} = {_render(value)}\n'
+      found = False
+      for j, sl in enumerate(section_lines):
+        if re.match(rf'^{re.escape(key)}\s*=', sl):
+          section_lines[j] = new_line
+          found = True
+          break
+        if re.match(rf'^#\s*{re.escape(key)}\s*=', sl):
+          section_lines[j] = new_line
+          found = True
+          break
+      if not found:
+        insert_at = len(section_lines)
+        while insert_at > 0 and section_lines[insert_at - 1].strip() == '':
+          insert_at -= 1
+        section_lines.insert(insert_at, new_line)
+    lines[section_start:section_end] = section_lines
+  else:
+    if lines and not lines[-1].endswith('\n'):
+      lines[-1] += '\n'
+    lines.append('\n')
+    lines.append(f'{header}\n')
+    for key, value in values.items():
+      lines.append(f'{key} = {_render(value)}\n')
+
+  _CONFIG_PATH.write_text(''.join(lines))  # lgtm[py/clear-text-storage-sensitive-data]
+
+  # Update in-memory cache for dotted section names.
+  parts = section.split('.')
+  d = _config
+  for part in parts[:-1]:
+    d = d.setdefault(part, {})
+  last_part = parts[-1]
+  existing = d.get(last_part)
+  if isinstance(existing, dict):
+    existing.update(values)
+  else:
+    d[last_part] = dict(values)
 
 
 def get_schedule_override(template_id: str) -> dict:
