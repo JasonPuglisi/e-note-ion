@@ -264,6 +264,17 @@ def _current_hold_is_interruptible() -> bool:
   return cur is None or cur < _INTERRUPT_PRIORITY_THRESHOLD
 
 
+def fire_hold_interrupt(supersede_tag: str = '') -> None:
+  """Fire the hold interrupt if the current hold matches supersede_tag or is interruptible.
+
+  Intended for use by integration timer callbacks that enqueue directly (bypassing
+  the webhook handler) and need to cut the current hold short, e.g. plex stop debounce.
+  """
+  same_tag = bool(supersede_tag) and supersede_tag == current_hold_tag()
+  if same_tag or _current_hold_is_interruptible():
+    _hold_interrupt.set()
+
+
 def _get_min_hold() -> int:
   """Return the global minimum hold in seconds from config (default 60)."""
   raw = _config_mod.get_optional('scheduler', 'min_hold', '60')

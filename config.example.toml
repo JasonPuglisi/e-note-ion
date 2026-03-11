@@ -144,6 +144,12 @@ client_secret = "your-trakt-client-secret"
 # Optional: number of days ahead to show in the calendar (default 7, max 33)
 # calendar_days = 7
 
+[plex]
+# Optional: seconds to wait after a media.stop event before showing the stopped
+# card. If a media.play or media.resume arrives in this window (e.g. between
+# back-to-back episodes), the stopped card is suppressed entirely. Default: 3.
+# stop_debounce = 3
+
 [webhook]
 # Optional: enable the HTTP webhook listener so external systems (Plex,
 # iOS Shortcuts, etc.) can push display messages to the board in real time.

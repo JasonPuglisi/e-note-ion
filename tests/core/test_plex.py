@@ -1,3 +1,4 @@
+import threading
 from typing import Any
 from unittest.mock import patch
 
@@ -50,8 +51,11 @@ def _empty_config(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def _reset_plex_state(monkeypatch: pytest.MonkeyPatch) -> None:
-  """Reset _state to IDLE before each test."""
+  """Reset _state and cancel any pending stop timer before each test."""
+  if _plex._pending_stop_timer is not None:
+    _plex._pending_stop_timer.cancel()
   monkeypatch.setattr(_plex, '_state', _plex._State.IDLE)
+  monkeypatch.setattr(_plex, '_pending_stop_timer', None)
 
 
 @pytest.fixture()
@@ -71,6 +75,19 @@ def _board_shows_plex() -> Any:
   """Default: board tag is 'plex' so board-displacement checks pass."""
   with patch('scheduler.current_hold_tag', return_value='plex'):
     yield
+
+
+# ---------------------------------------------------------------------------
+# Helper: invoke stop timer callback synchronously without waiting
+# ---------------------------------------------------------------------------
+
+
+def _fire_stop_timer() -> None:
+  """Cancel the pending stop timer and invoke its callback synchronously."""
+  timer = _plex._pending_stop_timer
+  assert timer is not None, '_pending_stop_timer was not set'
+  timer.cancel()
+  timer.function(*timer.args, **timer.kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -168,24 +185,15 @@ def test_handle_webhook_pause_when_board_displaced_still_transitions_state(_plex
 
 
 # ---------------------------------------------------------------------------
-# stop → stopped card
+# stop → debounced stopped card
 # ---------------------------------------------------------------------------
 
 
-def test_handle_webhook_stop_returns_stopped_card(_plex_playing: None) -> None:
+def test_handle_webhook_stop_returns_none_and_starts_timer(_plex_playing: None) -> None:
+  """stop returns None immediately — the stopped card is enqueued via timer."""
   result = _plex.handle_webhook({'event': 'media.stop'})
-  assert isinstance(result, _mod.WebhookMessage)
-  assert result.interrupt_only is False
-  assert result.interrupt is True
-  assert result.indefinite is False
-  assert '[R] NOW PLAYING' in str(result.data['templates'])
-
-
-def test_handle_webhook_stop_has_finite_hold(_plex_playing: None) -> None:
-  result = _plex.handle_webhook({'event': 'media.stop'})
-  assert result is not None
-  assert result.hold > 0
-  assert result.timeout > 0
+  assert result is None
+  assert _plex._pending_stop_timer is not None
 
 
 def test_handle_webhook_stop_transitions_state_to_idle(_plex_playing: None) -> None:
@@ -193,10 +201,10 @@ def test_handle_webhook_stop_transitions_state_to_idle(_plex_playing: None) -> N
   assert _plex._state == _plex._State.IDLE
 
 
-def test_handle_webhook_stop_from_paused_returns_stopped_card(_plex_paused: None) -> None:
+def test_handle_webhook_stop_from_paused_starts_timer(_plex_paused: None) -> None:
   result = _plex.handle_webhook({'event': 'media.stop'})
-  assert isinstance(result, _mod.WebhookMessage)
-  assert result.interrupt is True
+  assert result is None
+  assert _plex._pending_stop_timer is not None
 
 
 def test_handle_webhook_stop_from_paused_transitions_state_to_idle(_plex_paused: None) -> None:
@@ -215,39 +223,83 @@ def test_handle_webhook_stop_in_idle_does_not_change_state() -> None:
   assert _plex._state == _plex._State.IDLE
 
 
-def test_handle_webhook_stop_with_episode_metadata_includes_show_variables(_plex_playing: None) -> None:
-  result = _plex.handle_webhook(_episode_payload('media.stop'))
-  assert result is not None
-  assert '[R] NOW PLAYING' in str(result.data['templates'])
-  variables = result.data['variables']
-  assert variables['show_name'] == [['THE BEAR']]
-  assert variables['episode_line'] == [['S2E1 BEEF']]
-  assert result.indefinite is False
-  assert result.interrupt is True
+def test_handle_webhook_stop_in_idle_does_not_start_timer() -> None:
+  _plex.handle_webhook({'event': 'media.stop'})
+  assert _plex._pending_stop_timer is None
 
 
-def test_handle_webhook_stop_with_movie_metadata_includes_show_variables(_plex_playing: None) -> None:
-  result = _plex.handle_webhook(_movie_payload('media.stop', 'Inception'))
-  assert result is not None
-  variables = result.data['variables']
-  assert variables['show_name'] == [['INCEPTION']]
-  assert variables['episode_line'] == [['']]
+def test_handle_webhook_stop_timer_enqueues_stopped_card(_plex_playing: None) -> None:
+  """When the debounce timer fires, enqueue() is called with stopped card data."""
+  with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+    _plex.handle_webhook({'event': 'media.stop'})
+    _fire_stop_timer()
+  mock_enqueue.assert_called_once()
+  kwargs = mock_enqueue.call_args.kwargs
+  assert '[R] NOW PLAYING' in str(kwargs['data']['templates'])
+  assert kwargs['supersede_tag'] == 'plex'
 
 
-def test_handle_webhook_stop_without_metadata_returns_bare_stopped_card(_plex_playing: None) -> None:
-  result = _plex.handle_webhook({'event': 'media.stop'})
-  assert result is not None
-  assert result.data['variables'] == {}
+def test_handle_webhook_stop_timer_fires_hold_interrupt(_plex_playing: None) -> None:
+  """When the debounce timer fires, fire_hold_interrupt is called."""
+  with patch('scheduler.enqueue'), patch('scheduler.fire_hold_interrupt') as mock_interrupt:
+    _plex.handle_webhook({'event': 'media.stop'})
+    _fire_stop_timer()
+  mock_interrupt.assert_called_once_with(supersede_tag='plex')
 
 
-def test_handle_webhook_stop_with_non_video_metadata_returns_bare_stopped_card(_plex_playing: None) -> None:
-  payload = {
-    'event': 'media.stop',
-    'Metadata': {'type': 'track', 'title': 'Some Song'},
-  }
-  result = _plex.handle_webhook(payload)
-  assert result is not None
-  assert result.data['variables'] == {}
+def test_handle_webhook_stop_timer_has_finite_hold(_plex_playing: None) -> None:
+  """Stopped card uses a finite hold (not indefinite)."""
+  with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+    _plex.handle_webhook({'event': 'media.stop'})
+    _fire_stop_timer()
+  kwargs = mock_enqueue.call_args.kwargs
+  assert kwargs['hold'] > 0
+  assert kwargs['timeout'] > 0
+  assert kwargs.get('indefinite', False) is False
+
+
+def test_handle_webhook_stop_timer_includes_episode_metadata(_plex_playing: None) -> None:
+  with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+    _plex.handle_webhook(_episode_payload('media.stop'))
+    _fire_stop_timer()
+  data = mock_enqueue.call_args.kwargs['data']
+  assert data['variables']['show_name'] == [['THE BEAR']]
+  assert data['variables']['episode_line'] == [['S2E1 BEEF']]
+
+
+def test_handle_webhook_stop_timer_includes_movie_metadata(_plex_playing: None) -> None:
+  with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+    _plex.handle_webhook(_movie_payload('media.stop', 'Inception'))
+    _fire_stop_timer()
+  data = mock_enqueue.call_args.kwargs['data']
+  assert data['variables']['show_name'] == [['INCEPTION']]
+  assert data['variables']['episode_line'] == [['']]
+
+
+def test_handle_webhook_stop_timer_no_metadata_uses_bare_card(_plex_playing: None) -> None:
+  with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+    _plex.handle_webhook({'event': 'media.stop'})
+    _fire_stop_timer()
+  data = mock_enqueue.call_args.kwargs['data']
+  assert data['variables'] == {}
+
+
+def test_handle_webhook_stop_timer_skips_if_state_not_idle(_plex_playing: None) -> None:
+  """If state changed before timer fires (another play arrived), skip enqueue."""
+  with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+    _plex.handle_webhook({'event': 'media.stop'})
+    _plex._state = _plex._State.PLAYING
+    _fire_stop_timer()
+  mock_enqueue.assert_not_called()
+
+
+def test_handle_webhook_stop_timer_skips_if_board_displaced(_plex_playing: None) -> None:
+  """If board no longer shows plex when timer fires, skip enqueue."""
+  with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+    _plex.handle_webhook({'event': 'media.stop'})
+    with patch('scheduler.current_hold_tag', return_value=''):
+      _fire_stop_timer()
+  mock_enqueue.assert_not_called()
 
 
 def test_handle_webhook_stop_when_board_displaced_returns_none(_plex_playing: None) -> None:
@@ -255,6 +307,7 @@ def test_handle_webhook_stop_when_board_displaced_returns_none(_plex_playing: No
   with patch('scheduler.current_hold_tag', return_value=''):
     result = _plex.handle_webhook({'event': 'media.stop'})
   assert result is None
+  assert _plex._pending_stop_timer is None
 
 
 def test_handle_webhook_stop_when_board_displaced_still_transitions_to_idle(_plex_playing: None) -> None:
@@ -268,10 +321,102 @@ def test_handle_webhook_play_after_displaced_stop_fires(_plex_playing: None) -> 
   """play always fires — even after a stop was suppressed due to displacement."""
   with patch('scheduler.current_hold_tag', return_value=''):
     _plex.handle_webhook({'event': 'media.stop'})
-  # State is now IDLE; new play should fire regardless of board
   with patch('scheduler.current_hold_tag', return_value=''):
     result = _plex.handle_webhook(_episode_payload('media.play'))
   assert isinstance(result, _mod.WebhookMessage)
+
+
+# ---------------------------------------------------------------------------
+# Debounce: stop followed by play/resume cancels the timer
+# ---------------------------------------------------------------------------
+
+
+def test_stop_followed_by_play_within_window_cancels_timer(_plex_playing: None) -> None:
+  """play arriving before the stop timer fires cancels the stopped card."""
+  _plex.handle_webhook({'event': 'media.stop'})
+  timer = _plex._pending_stop_timer
+  assert timer is not None
+  with patch('scheduler.enqueue') as mock_enqueue:
+    _plex.handle_webhook(_episode_payload('media.play'))
+  assert _plex._pending_stop_timer is None
+  assert not timer.is_alive()
+  mock_enqueue.assert_not_called()
+
+
+def test_stop_followed_by_resume_within_window_cancels_timer(_plex_playing: None) -> None:
+  """resume arriving before the stop timer fires cancels the stopped card."""
+  _plex.handle_webhook({'event': 'media.stop'})
+  timer = _plex._pending_stop_timer
+  assert timer is not None
+  _plex.handle_webhook(_episode_payload('media.resume'))
+  assert _plex._pending_stop_timer is None
+  assert not timer.is_alive()
+
+
+# ---------------------------------------------------------------------------
+# Debounce: configurable window
+# ---------------------------------------------------------------------------
+
+
+def test_stop_debounce_configurable(monkeypatch: pytest.MonkeyPatch, _plex_playing: None) -> None:
+  """[plex] stop_debounce = 5 is respected as the timer interval."""
+  monkeypatch.setattr(_cfg, '_config', {'plex': {'stop_debounce': 5}})
+  captured_interval: list[float] = []
+  orig_timer = threading.Timer
+
+  def _spy_timer(interval: float, fn: Any, *args: Any, **kwargs: Any) -> threading.Timer:
+    captured_interval.append(interval)
+    t = orig_timer(interval, fn, *args, **kwargs)
+    return t
+
+  with patch('integrations.plex.threading.Timer', side_effect=_spy_timer):
+    _plex.handle_webhook({'event': 'media.stop'})
+
+  assert captured_interval == [5]
+  if _plex._pending_stop_timer is not None:
+    _plex._pending_stop_timer.cancel()
+
+
+# ---------------------------------------------------------------------------
+# Duplicate stop suppression (replaced by state machine)
+# ---------------------------------------------------------------------------
+
+
+def test_handle_webhook_first_stop_starts_timer(_plex_playing: None) -> None:
+  """The first media.stop in a session starts the debounce timer."""
+  _plex.handle_webhook({'event': 'media.stop'})
+  assert _plex._pending_stop_timer is not None
+
+
+def test_handle_webhook_duplicate_stop_returns_none(_plex_playing: None) -> None:
+  """A second media.stop with no intervening play/resume is silently discarded."""
+  _plex.handle_webhook({'event': 'media.stop'})
+  if _plex._pending_stop_timer:
+    _plex._pending_stop_timer.cancel()
+    _plex._pending_stop_timer = None
+  result = _plex.handle_webhook({'event': 'media.stop'})
+  assert result is None
+
+
+def test_handle_webhook_stop_after_play_resets_and_starts_timer() -> None:
+  """media.play resets to PLAYING so the next stop starts a timer."""
+  _plex.handle_webhook(_episode_payload('media.play'))
+  _plex.handle_webhook({'event': 'media.stop'})
+  assert _plex._pending_stop_timer is not None
+
+
+def test_handle_webhook_stop_after_resume_resets_and_starts_timer() -> None:
+  """media.resume resets to PLAYING so the next stop starts a timer."""
+  _plex.handle_webhook(_episode_payload('media.resume'))
+  _plex.handle_webhook({'event': 'media.stop'})
+  assert _plex._pending_stop_timer is not None
+
+
+def test_handle_webhook_pause_does_not_allow_subsequent_pause(_plex_playing: None) -> None:
+  """media.pause transitions to PAUSED; a second pause is a no-op."""
+  _plex.handle_webhook(_episode_payload('media.pause'))
+  result = _plex.handle_webhook(_episode_payload('media.pause'))
+  assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -358,9 +503,7 @@ def test_handle_webhook_long_show_name_truncated_to_one_row() -> None:
   assert result is not None
   show_name = result.data['variables']['show_name'][0][0]
   upper = long_show.upper()
-  # Must fit in one display row.
   assert _vb.display_len(show_name) <= _vb.model.cols
-  # Must be a whole-word prefix of the original (no mid-word cut).
   assert upper.startswith(show_name)
   assert show_name == upper or upper[len(show_name)] == ' '
 
@@ -413,46 +556,9 @@ def test_handle_webhook_pause_has_supersede_tag(_plex_playing: None) -> None:
   assert result.supersede_tag == 'plex'
 
 
-def test_handle_webhook_stop_has_supersede_tag(_plex_playing: None) -> None:
-  result = _plex.handle_webhook({'event': 'media.stop'})
-  assert result is not None
-  assert result.supersede_tag == 'plex'
-
-
-# ---------------------------------------------------------------------------
-# Duplicate stop suppression (replaced by state machine)
-# ---------------------------------------------------------------------------
-
-
-def test_handle_webhook_first_stop_returns_message(_plex_playing: None) -> None:
-  """The first media.stop in a session is always processed."""
-  result = _plex.handle_webhook({'event': 'media.stop'})
-  assert isinstance(result, _mod.WebhookMessage)
-
-
-def test_handle_webhook_duplicate_stop_returns_none(_plex_playing: None) -> None:
-  """A second media.stop with no intervening play/resume is silently discarded."""
-  _plex.handle_webhook({'event': 'media.stop'})
-  result = _plex.handle_webhook({'event': 'media.stop'})
-  assert result is None
-
-
-def test_handle_webhook_stop_after_play_resets_and_fires() -> None:
-  """media.play resets to PLAYING so the next stop is processed normally."""
-  _plex.handle_webhook(_episode_payload('media.play'))
-  result = _plex.handle_webhook({'event': 'media.stop'})
-  assert isinstance(result, _mod.WebhookMessage)
-
-
-def test_handle_webhook_stop_after_resume_resets_and_fires() -> None:
-  """media.resume resets to PLAYING so the next stop is processed normally."""
-  _plex.handle_webhook(_episode_payload('media.resume'))
-  result = _plex.handle_webhook({'event': 'media.stop'})
-  assert isinstance(result, _mod.WebhookMessage)
-
-
-def test_handle_webhook_pause_does_not_allow_subsequent_pause(_plex_playing: None) -> None:
-  """media.pause transitions to PAUSED; a second pause is a no-op."""
-  _plex.handle_webhook(_episode_payload('media.pause'))
-  result = _plex.handle_webhook(_episode_payload('media.pause'))
-  assert result is None
+def test_handle_webhook_stop_timer_has_supersede_tag(_plex_playing: None) -> None:
+  """The stopped card enqueued by the timer carries supersede_tag='plex'."""
+  with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+    _plex.handle_webhook({'event': 'media.stop'})
+    _fire_stop_timer()
+  assert mock_enqueue.call_args.kwargs['supersede_tag'] == 'plex'
