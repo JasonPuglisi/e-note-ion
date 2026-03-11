@@ -7,7 +7,7 @@
         "timeout": 1800
       },
       "priority": 5,
-      "truncation": "word",
+      "truncation": "ellipsis",
       "integration": "weather",
       "templates": [
         {
