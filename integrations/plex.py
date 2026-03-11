@@ -7,6 +7,9 @@
 #   - media.play / media.resume → "NOW PLAYING" with show/movie title
 #   - media.pause               → "PAUSED" with show/movie title
 #   - media.stop                → short "stopped" card ([R] NOW PLAYING, hold=60s)
+#                                 debounced: if a play/resume arrives within the
+#                                 stop_debounce window, the stopped card is suppressed
+#                                 to avoid a flash between back-to-back episodes.
 #
 # Requires Plex Pass and a webhook configured in Plex Media Server settings
 # to POST to the scheduler's webhook endpoint. See content/contrib/plex.md
@@ -16,10 +19,12 @@
 # hold/timeout/priority for the now_playing or paused templates, add a
 # [plex.schedules.now_playing] or [plex.schedules.paused] section to
 # config.toml — the same override syntax used for scheduled templates.
+# To tune the stop debounce window, add [plex] stop_debounce = <seconds>.
 
 import enum
 import json
 import logging
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +56,23 @@ class _State(enum.Enum):
 # PLAYING. pause is only valid from PLAYING. stop is valid from PLAYING or
 # PAUSED. Invalid transitions return None without firing any display update.
 _state: _State = _State.IDLE
+
+# Pending debounce timer for media.stop. When a stop event arrives we delay
+# enqueueing the stopped card by _stop_debounce() seconds. If a play/resume
+# arrives in that window we cancel the timer — suppressing the stopped card
+# entirely to avoid a flash between back-to-back episodes.
+_pending_stop_timer: threading.Timer | None = None
+
+
+def _stop_debounce() -> int:
+  """Return the stop debounce window in seconds from config (default 3)."""
+  import config as _config_mod
+
+  raw = _config_mod.get_optional('plex', 'stop_debounce')
+  try:
+    return max(0, int(raw)) if raw is not None else 3
+  except ValueError:
+    return 3
 
 
 def _strip_leading_article(title: str) -> str:
@@ -107,10 +129,14 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
   the state still transitions (reflecting reality) but no message is returned —
   avoiding stale events interrupting unrelated content.
 
+  stop events are debounced: the stopped card is enqueued asynchronously after
+  _stop_debounce() seconds. If a play/resume arrives in that window the timer
+  is cancelled and the stopped card is suppressed entirely.
+
   Returns None for unrecognised events, invalid state transitions, non-video
   media, board displacement, or missing metadata.
   """
-  global _state
+  global _state, _pending_stop_timer
 
   try:
     event = payload.get('event', '')
@@ -129,6 +155,11 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
     # --- State machine transition and validity check ---
 
     if event in _PLAY_EVENTS:
+      # Cancel any pending stop debounce — a follow-up play supersedes the stop.
+      if _pending_stop_timer is not None:
+        _pending_stop_timer.cancel()
+        _pending_stop_timer = None
+        logger.debug('plex: cancelled pending stop timer (play/resume arrived)')
       _state = _State.PLAYING
     elif event == _PAUSE_EVENT:
       if _state != _State.PLAYING:
@@ -136,6 +167,10 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
         return None
       _state = _State.PAUSED
     elif event in _STOP_EVENTS:
+      # Cancel any stale pending stop timer (defensive — shouldn't normally exist).
+      if _pending_stop_timer is not None:
+        _pending_stop_timer.cancel()
+        _pending_stop_timer = None
       if _state == _State.IDLE:
         logger.debug('plex: discarding %s: state=idle', event)
         return None
@@ -176,19 +211,44 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
     if event in _STOP_EVENTS:
       cfg = _load_template_config('stopped')
       has_media = bool(show_name)
-      logger.debug('plex: enqueueing stopped (has_media=%s)', has_media)
-      return WebhookMessage(
-        data={
-          'templates': cfg['templates'],
-          'variables': {'show_name': [[show_name]], 'episode_line': [[episode_line]]} if has_media else {},
-          'truncation': cfg['truncation'],
-        },
-        priority=cfg['priority'],
-        hold=cfg['hold'],
-        timeout=cfg['timeout'],
-        interrupt=True,
-        supersede_tag='plex',
-      )
+      stop_data = {
+        'templates': cfg['templates'],
+        'variables': {'show_name': [[show_name]], 'episode_line': [[episode_line]]} if has_media else {},
+        'truncation': cfg['truncation'],
+      }
+      priority = cfg['priority']
+      hold = cfg['hold']
+      timeout = cfg['timeout']
+      debounce = _stop_debounce()
+
+      def _enqueue_stopped() -> None:
+        global _pending_stop_timer
+        _pending_stop_timer = None
+        if _state != _State.IDLE:
+          logger.debug('plex: stop timer fired but state=%s, skipping', _state.value)
+          return
+        import scheduler as _sched
+
+        hold_tag = _sched.current_hold_tag()
+        if hold_tag != 'plex':
+          logger.debug('plex: stop timer fired but board tag=%r, skipping', hold_tag)
+          return
+        logger.debug('plex: stop debounce elapsed, enqueueing stopped (has_media=%s)', has_media)
+        _sched.enqueue(
+          priority=priority,
+          data=stop_data,
+          hold=hold,
+          timeout=timeout,
+          name='webhook.plex',
+          supersede_tag='plex',
+        )
+        _sched.fire_hold_interrupt(supersede_tag='plex')
+
+      logger.debug('plex: stop debounce started (%ds)', debounce)
+      _pending_stop_timer = threading.Timer(debounce, _enqueue_stopped)
+      _pending_stop_timer.daemon = True
+      _pending_stop_timer.start()
+      return None
 
     if not show_name:
       logger.debug('plex: discarding %s: no show_name (media_type=%r)', event, media_type)

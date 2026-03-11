@@ -15,8 +15,7 @@ must have an active Plex Pass subscription to send webhooks.
 
 ## Configuration
 
-No `[plex]` section is needed in `config.toml`. Enable the webhook listener
-and the plex content:
+Enable the webhook listener and the plex content:
 
 ```toml
 [scheduler]
@@ -51,6 +50,19 @@ hold = 3600
 | `hold` | `14400` | Maximum seconds to show if no stop event arrives (safety ceiling) |
 | `timeout` | `30` | Seconds the message can wait in the queue before being discarded |
 | `priority` | `8` | Display priority (0–10) |
+
+To tune the stop debounce window, add a top-level `[plex]` key:
+
+```toml
+[plex]
+stop_debounce = 3  # seconds; default 3
+```
+
+When Plex stops playback and immediately starts the next episode, a `media.stop`
+followed by `media.play` arrive in rapid succession. The debounce window
+suppresses the "stopped" card if a play or resume arrives within that many
+seconds — avoiding a brief flash of the stopped state between episodes. Set to
+`0` to disable debouncing and always show the stopped card immediately.
 
 ## Webhook setup
 
