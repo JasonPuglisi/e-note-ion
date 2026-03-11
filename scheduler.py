@@ -19,6 +19,7 @@ import email.parser
 import heapq
 import importlib
 import importlib.metadata
+import inspect
 import json
 import logging
 import secrets
@@ -66,7 +67,7 @@ class _IndentedFormatter(logging.Formatter):
 # Allowlist of valid integration names. Must be extended when a new integration
 # is added to integrations/.
 _KNOWN_INTEGRATIONS: frozenset[str] = frozenset(
-  {'bart', 'calendar', 'discogs', 'moon', 'morning', 'notion', 'plex', 'trakt', 'weather'}
+  {'bart', 'calendar', 'discogs', 'message', 'moon', 'morning', 'notion', 'plex', 'trakt', 'weather'}
 )
 
 # Cache of loaded integration modules, keyed by name.
@@ -488,6 +489,48 @@ def worker() -> None:
 _MAX_WEBHOOK_BODY = 64 * 1024  # 64 KB — generous limit for any webhook payload
 
 
+def _authenticate_webhook(provided: str, integration: str, main_secret: str) -> str | None:
+  """Authenticate a webhook request against the main secret or a named credential.
+
+  Returns:
+    ''       — authenticated as admin (main secret matched)
+    '<name>' — authenticated as the named credential
+    None     — authentication failed
+
+  Credentials are scoped to the integration: a credential's 'webhooks' list must
+  include the integration name for it to be considered. Credential secrets are
+  verified using argon2id hashing. The main secret is checked first (fast path).
+  """
+  if secrets.compare_digest(provided, main_secret):
+    return ''
+
+  credentials = _config_mod.get_credentials(integration)
+  if not credentials:
+    return None
+
+  try:
+    from argon2 import PasswordHasher  # noqa: PLC0415
+    from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError  # noqa: PLC0415
+
+    ph = PasswordHasher()
+    for name, cred in credentials.items():
+      secret_hash = cred.get('secret_hash', '')
+      if not secret_hash:
+        continue
+      try:
+        ph.verify(secret_hash, provided)
+        return name
+      except VerifyMismatchError, VerificationError, InvalidHashError:
+        continue
+  except ImportError:
+    logger.error(
+      'argon2-cffi is required for named webhook credentials but is not installed; '
+      'install it with: pip install argon2-cffi'
+    )
+
+  return None
+
+
 def _make_webhook_handler(secret: str) -> type:
   """Return a BaseHTTPRequestHandler subclass bound to the given shared secret."""
 
@@ -507,11 +550,12 @@ def _make_webhook_handler(secret: str) -> type:
 
       # Accept secret from X-Webhook-Secret header (preferred) or ?secret=
       # query parameter (fallback for senders that cannot set custom headers,
-      # e.g. Plex Media Server). Constant-time comparison prevents timing attacks.
+      # e.g. Plex Media Server).
       header_secret = self.headers.get('X-Webhook-Secret', '')
       query_secret = parse_qs(parsed.query).get('secret', [''])[0]
       provided = header_secret or query_secret
-      if not secrets.compare_digest(provided, self._secret):
+      credential_name = _authenticate_webhook(provided, integration_name, self._secret)
+      if credential_name is None:
         logger.warning('Webhook: rejected request for %r — invalid or missing secret', integration_name)
         self._respond(401, 'Unauthorized')
         return
@@ -568,8 +612,17 @@ def _make_webhook_handler(secret: str) -> type:
         return
 
       # Dispatch to the integration handler.
+      # Pass credential_name if the handler declares it; fall back to payload-only
+      # for existing integrations that haven't been updated yet (see #361).
       try:
-        result: WebhookMessage | None = mod.handle_webhook(payload)
+        sig = inspect.signature(mod.handle_webhook)
+        if 'credential_name' in sig.parameters:
+          result: WebhookMessage | None = mod.handle_webhook(payload, credential_name=credential_name)
+        else:
+          result = mod.handle_webhook(payload)
+      except ValueError:
+        # inspect.signature can raise ValueError for some callable types (e.g. mocks).
+        result = mod.handle_webhook(payload)
       except Exception as e:  # noqa: BLE001
         logger.error('Webhook error in %r: %s', integration_name, e)
         self._respond(500, 'Internal error')
