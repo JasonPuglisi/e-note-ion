@@ -10,7 +10,7 @@ _TEMPLATE_CONFIG = {
   'hold': 120,
   'timeout': 120,
   'priority': 8,
-  'truncation': 'ellipsis',
+  'truncation': 'wrap_ellipsis',
 }
 
 _FRIEND_ALICE = {'color': 'R'}

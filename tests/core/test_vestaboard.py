@@ -225,6 +225,36 @@ def test_wrap_lines_ellipsis_preserves_fixed_layout() -> None:
   assert result[2] == 'TEAM CHERRY'
 
 
+# --- wrap_ellipsis ---
+
+
+def test_wrap_ellipsis_wraps_long_line() -> None:
+  # A line that exceeds cols should wrap rather than truncate on the first row.
+  # Note board: 3 rows x 15 cols. Header uses row 1; body has 2 rows.
+  lines = ['[R] FROM ALICE', 'HEY THE FOOD IS READY']  # body is 21 chars
+  result = vb._wrap_lines(lines, truncation='wrap_ellipsis')  # noqa: SLF001
+  assert result[0] == '[R] FROM ALICE'
+  assert result[1] == 'HEY THE FOOD IS'
+  assert result[2] == 'READY'
+
+
+def test_wrap_ellipsis_adds_ellipsis_on_row_overflow() -> None:
+  # When wrapped content exceeds model.rows, the last kept row gets '...'.
+  # Note board: 3 rows. Header + 3 body words that wrap to 3 rows = overflow.
+  lines = ['[R] FROM ALICE', 'WORD ONE TWO THREE FOUR FIVE SIX SEVEN']
+  result = vb._wrap_lines(lines, truncation='wrap_ellipsis')  # noqa: SLF001
+  assert len(result) == vb.model.rows
+  assert result[-1].endswith('...')
+
+
+def test_wrap_ellipsis_no_ellipsis_when_fits() -> None:
+  # No ellipsis when content fits within model.rows without overflow.
+  lines = ['[R] FROM ALICE', 'SHORT MSG']
+  result = vb._wrap_lines(lines, truncation='wrap_ellipsis')  # noqa: SLF001
+  assert result == ['[R] FROM ALICE', 'SHORT MSG']
+  assert not result[-1].endswith('...')
+
+
 # --- _strip_unsupported ---
 
 

@@ -152,10 +152,11 @@ _CHAR_CODES['❤️'] = 62  # U+2764 + U+FE0F variation selector
 _CHAR_CODES['°'] = 62  # degree sign on the Flagship (same code as ❤ on Note)
 
 # Truncation strategy: how to shorten a line that exceeds model.cols.
-#   hard     — cut at the column limit, mid-word if necessary (default)
-#   word     — cut at the last full word that fits
-#   ellipsis — cut at the last full word and append '...'
-TruncationStrategy = Literal['hard', 'word', 'ellipsis']
+#   hard          — cut at the column limit, mid-word if necessary (default)
+#   word          — cut at the last full word that fits
+#   ellipsis      — truncate each line to one row with '...' (no wrapping; preserves fixed layouts)
+#   wrap_ellipsis — word-wrap across rows first; append '...' to the last row only if rows overflow
+TruncationStrategy = Literal['hard', 'word', 'ellipsis', 'wrap_ellipsis']
 
 # Short color tags usable in format strings and integration output.
 # Each tag is exactly 3 characters and encodes to a Vestaboard color square.
@@ -443,9 +444,14 @@ def _wrap_lines(
   are never joined together — wrapping only splits; short lines pass through
   unchanged.
 
-  Exception: when `truncation` is 'ellipsis', long lines are truncated to one
-  row with '...' rather than wrapped. This preserves fixed-layout templates
-  where each format entry must occupy exactly one row.
+  When `truncation` is 'ellipsis': long lines are truncated to one row with
+  '...' rather than wrapped. This preserves fixed-layout templates where each
+  format entry must occupy exactly one row.
+
+  When `truncation` is 'wrap_ellipsis': lines are word-wrapped normally across
+  rows; if the total result exceeds model.rows, '...' is appended to the last
+  kept row. Use this for free-form text that should fill available rows before
+  truncating.
   """
   cols = model.cols
   result: list[str] = []
@@ -468,7 +474,7 @@ def _wrap_lines(
           result.append(' '.join(current))
           current = []
           current_len = 0
-        result.append(truncate_line(word, cols, truncation))
+        result.append(truncate_line(word, cols, 'hard'))
         continue
       if not current:
         current = [word]
@@ -482,6 +488,11 @@ def _wrap_lines(
         current_len = word_len
     if current:
       result.append(' '.join(current))
+  if truncation == 'wrap_ellipsis' and len(result) > model.rows:
+    result = result[: model.rows]
+    # Truncate the last kept row to cols-3 (hard cut) then append '...',
+    # even if it already fits in cols — there is content beyond it.
+    result[-1] = truncate_line(result[-1], cols - 3, 'hard').rstrip() + '...'
   return result[: model.rows]
 
 
