@@ -87,6 +87,12 @@ city = "San Francisco"
 # password = "xxxx-xxxx-xxxx-xxxx"
 # calendar_names = ["Work", "Personal"]  # optional; default: all calendars
 
+# CardDAV mode — iCloud Contacts birthdays (birthdays.json).
+# Uses the same username and password as CalDAV mode above.
+# Omit carddav_url to disable the birthdays integration entirely.
+# carddav_url = "https://contacts.icloud.com/"
+# birthdays_lookahead_days = 7  # optional; default: 7
+
 # [calendar.schedules.today]
 # cron = "30 * * * *"
 # hold = 300

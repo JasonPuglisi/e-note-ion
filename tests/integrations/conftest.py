@@ -9,6 +9,7 @@ _INTEGRATION_VARS: list[tuple[str, str]] = [
   ('CALENDAR_CALDAV_URL', 'Calendar integration (CalDAV mode)'),
   ('CALENDAR_USERNAME', 'Calendar integration (CalDAV mode)'),
   ('CALENDAR_PASSWORD', 'Calendar integration (CalDAV mode)'),
+  ('CALENDAR_CARDDAV_URL', 'Calendar integration (birthdays/CardDAV mode)'),
   ('BART_API_KEY', 'BART integration'),
   ('TRAKT_CLIENT_ID', 'Trakt integration'),
   ('TRAKT_CLIENT_SECRET', 'Trakt integration'),

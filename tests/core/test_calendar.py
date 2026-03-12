@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Generator
 from unittest.mock import patch
@@ -505,3 +506,153 @@ def test_get_variables_caldav_absent_does_not_block_ics(monkeypatch: pytest.Monk
 
   lines = result['events'][0]
   assert any('ICS ONLY EVENT' in ln for ln in lines)
+
+
+# ── Birthday tests ─────────────────────────────────────────────────────────────
+
+_BDAY_CONFIG = {
+  'calendar': {
+    'carddav_url': 'https://contacts.icloud.com/',
+    'username': 'user@icloud.com',
+    'password': 'xxxx-xxxx-xxxx-xxxx',
+  },
+  'scheduler': {},
+}
+
+# Fixed date for birthday tests: Thursday 2026-01-15.
+_BDAY_TODAY = _FIXED_NOW.date()
+
+
+@pytest.fixture(autouse=True)
+def reset_birthday_caches() -> Generator[None, None, None]:
+  calendar._carddav_addressbook_url = None
+  calendar._birthday_cache = None
+  yield
+  calendar._carddav_addressbook_url = None
+  calendar._birthday_cache = None
+
+
+def _patch_birthdays(
+  monkeypatch: pytest.MonkeyPatch,
+  contacts: list[tuple[str, int, int]],
+  config: dict | None = None,
+) -> None:
+  """Patch config, birthday cache, and now for birthday unit tests."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', config or _BDAY_CONFIG)
+  monkeypatch.setattr(calendar, '_birthday_cache', (contacts, time.monotonic()))
+  monkeypatch.setattr(calendar, '_carddav_addressbook_url', 'https://fake/ab/')
+  monkeypatch.setattr(calendar, '_display_tz', lambda: _UTC)
+  monkeypatch.setattr(calendar, '_get_now', lambda tz: _FIXED_NOW)
+
+
+def test_birthday_formats_today(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Birthday today → 'FIRSTNAME TODAY'."""
+  _patch_birthdays(monkeypatch, [('ADAM', _BDAY_TODAY.month, _BDAY_TODAY.day)])
+  result = calendar.get_variables_birthdays()
+  assert result['birthdays'][0] == ['ADAM TODAY']
+
+
+def test_birthday_formats_day_name(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Birthday in 3 days → 'FIRSTNAME <DAY>'."""
+  target = _BDAY_TODAY + timedelta(days=3)
+  expected_day = target.strftime('%a').upper()
+  _patch_birthdays(monkeypatch, [('BRIANNA', target.month, target.day)])
+  result = calendar.get_variables_birthdays()
+  assert result['birthdays'][0] == [f'BRIANNA {expected_day}']
+
+
+def test_birthday_uses_first_name_only(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Contacts are already stored as first names — pass-through check."""
+  _patch_birthdays(monkeypatch, [('ADAM', _BDAY_TODAY.month, _BDAY_TODAY.day)])
+  result = calendar.get_variables_birthdays()
+  assert result['birthdays'][0][0].startswith('ADAM')
+
+
+def test_birthday_filters_outside_window(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Birthdays beyond lookahead_days are excluded."""
+  far = _BDAY_TODAY + timedelta(days=30)
+  _patch_birthdays(monkeypatch, [('FAR', far.month, far.day)])
+  with pytest.raises(IntegrationDataUnavailableError):
+    calendar.get_variables_birthdays()
+
+
+def test_birthday_multiple_sorted(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Multiple birthdays sorted: today first, then ascending days, then name."""
+  day3 = _BDAY_TODAY + timedelta(days=3)
+  day1 = _BDAY_TODAY + timedelta(days=1)
+  contacts = [
+    ('ZARA', day3.month, day3.day),
+    ('ADAM', _BDAY_TODAY.month, _BDAY_TODAY.day),
+    ('BLAKE', day1.month, day1.day),
+  ]
+  _patch_birthdays(monkeypatch, contacts)
+  result = calendar.get_variables_birthdays()
+  lines = result['birthdays'][0]
+  assert lines[0].startswith('ADAM')
+  assert lines[1].startswith('BLAKE')
+  assert lines[2].startswith('ZARA')
+
+
+def test_birthday_no_results_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Empty window raises IntegrationDataUnavailableError."""
+  _patch_birthdays(monkeypatch, [])
+  with pytest.raises(IntegrationDataUnavailableError):
+    calendar.get_variables_birthdays()
+
+
+def test_birthday_no_carddav_url_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Missing carddav_url raises IntegrationDataUnavailableError immediately."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'calendar': {}, 'scheduler': {}})
+  with pytest.raises(IntegrationDataUnavailableError, match='carddav_url'):
+    calendar.get_variables_birthdays()
+
+
+def test_birthday_cache_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Stale cache (> 24h) triggers a real HTTP fetch; fresh cache does not."""
+  from unittest.mock import MagicMock
+
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _BDAY_CONFIG)
+  monkeypatch.setattr(calendar, '_carddav_addressbook_url', 'https://fake/ab/')
+  monkeypatch.setattr(calendar, '_display_tz', lambda: _UTC)
+  monkeypatch.setattr(calendar, '_get_now', lambda tz: _FIXED_NOW)
+
+  contacts = [('ADAM', _BDAY_TODAY.month, _BDAY_TODAY.day)]
+  fresh_time = time.monotonic()
+  stale_time = fresh_time - calendar._BIRTHDAY_CACHE_TTL - 1
+
+  # Fresh cache — no HTTP request should be made.
+  monkeypatch.setattr(calendar, '_birthday_cache', (contacts, fresh_time))
+  with patch('integrations.calendar.requests.request') as mock_req:
+    calendar.get_variables_birthdays()
+    mock_req.assert_not_called()
+
+  # Stale cache — HTTP request should be made.
+  fake_response = MagicMock()
+  fake_response.content = (
+    b'<?xml version="1.0"?>'
+    b'<multistatus xmlns="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">'
+    b'<response><href>/ab/1.vcf</href>'
+    b'<propstat><prop><card:address-data>'
+    b'FN:Adam Test\r\nBDAY:2000-01-15\r\n'
+    b'</card:address-data></prop>'
+    b'<status>HTTP/1.1 200 OK</status></propstat></response>'
+    b'</multistatus>'
+  )
+  monkeypatch.setattr(calendar, '_birthday_cache', (contacts, stale_time))
+  with patch('integrations.calendar.requests.request', return_value=fake_response):
+    calendar.get_variables_birthdays()
+
+
+def test_parse_bday_formats() -> None:
+  """_parse_bday handles all supported BDAY formats."""
+  assert calendar._parse_bday('1997-03-10') == (3, 10)
+  assert calendar._parse_bday('19970310') == (3, 10)
+  assert calendar._parse_bday('--03-10') == (3, 10)
+  assert calendar._parse_bday('--0310') == (3, 10)
+  assert calendar._parse_bday('not-a-date') is None

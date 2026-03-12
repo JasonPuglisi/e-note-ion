@@ -359,7 +359,7 @@ prevention here — not just a one-off fix. See #65 for extended notes.
    ```
    gh api repos/JasonPuglisi/e-note-ion/rulesets/13082160 --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'
    ```
-9. **Integration test hygiene** — advisory CI job passing on `main`; GitHub environment secrets/vars present (`VESTABOARD_VIRTUAL_API_KEY`, `CALENDAR_URL`, `CALENDAR_CALDAV_URL`, `CALENDAR_USERNAME`, `CALENDAR_PASSWORD`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `DISCOGS_TOKEN` as secrets; `TRAKT_CLIENT_ID` as a variable); new integrations have `test_<name>_integration.py` and env vars in `tests/integrations/conftest.py`
+9. **Integration test hygiene** — advisory CI job passing on `main`; GitHub environment secrets/vars present (`VESTABOARD_VIRTUAL_API_KEY`, `CALENDAR_URL`, `CALENDAR_CALDAV_URL`, `CALENDAR_USERNAME`, `CALENDAR_PASSWORD`, `CALENDAR_CARDDAV_URL`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `DISCOGS_TOKEN` as secrets; `TRAKT_CLIENT_ID` as a variable); new integrations have `test_<name>_integration.py` and env vars in `tests/integrations/conftest.py`
    - **`TRAKT_ACCESS_TOKEN` expires every ~90 days** — if the Trakt integration tests start failing with an auth error, copy the current `access_token` from `config.toml` (kept fresh by the prod refresh flow) into the `integration` environment secret
 10. **Issue/milestone hygiene**:
     - Every open issue has a milestone (no orphans); scope is right-sized

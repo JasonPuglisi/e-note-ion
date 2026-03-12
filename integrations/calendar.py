@@ -25,12 +25,24 @@
 # Timed events that have already ended are excluded.
 # Events with no SUMMARY or STATUS:CANCELLED are silently skipped.
 # If no events remain after filtering, raises IntegrationDataUnavailableError.
+#
+# Birthdays mode — iCloud Contacts via CardDAV:
+#   [calendar]
+#   carddav_url = "https://contacts.icloud.com/"
+#   username = "you@icloud.com"
+#   password = "xxxx-xxxx-xxxx-xxxx"   # same app-specific password
+#   birthdays_lookahead_days = 7        # optional; default 7
+#
+# Omit carddav_url to disable birthdays entirely. get_variables_birthdays()
+# raises IntegrationDataUnavailableError immediately if carddav_url is absent.
 
 import logging
 import math
 import time
 from datetime import date, datetime, timedelta
 from typing import Any
+from urllib.parse import urljoin
+from xml.etree import ElementTree as ET  # nosec B405 — XML from authenticated Apple API
 
 import recurring_ical_events
 import requests
@@ -64,6 +76,14 @@ _ICS_CACHE_TTL = 30 * 60  # 30 minutes
 # CalDAV calendar cache: list of (caldav.Calendar, color_tag | None) pairs.
 # None = not yet populated.
 _caldav_cache: list[tuple[Any, str | None]] | None = None
+
+# CardDAV addressbook URL cache (process lifetime — URL structure never changes).
+_carddav_addressbook_url: str | None = None
+
+# Birthday contacts cache: (contacts, monotonic_fetch_time) or None.
+# contacts is a list of (first_name, month, day).
+_birthday_cache: tuple[list[tuple[str, int, int]], float] | None = None
+_BIRTHDAY_CACHE_TTL = 24 * 60 * 60  # 24 hours
 
 
 # ── Color helpers ──────────────────────────────────────────────────────────────
@@ -423,6 +443,189 @@ def _collect_candidates_caldav(
   return candidates
 
 
+# ── CardDAV / birthdays ────────────────────────────────────────────────────────
+
+
+def _parse_bday(bday_str: str) -> tuple[int, int] | None:
+  """Parse a BDAY vCard value into (month, day), or None if unparseable.
+
+  Handles: YYYY-MM-DD, YYYYMMDD, --MM-DD, --MMDD.
+  """
+  s = bday_str.strip()
+  try:
+    if s.startswith('--'):
+      digits = s[2:].replace('-', '')
+      if len(digits) == 4:
+        return int(digits[:2]), int(digits[2:])
+    elif len(s) == 10 and s[4] == '-' and s[7] == '-':
+      return int(s[5:7]), int(s[8:10])
+    elif len(s) == 8 and s.isdigit():
+      return int(s[4:6]), int(s[6:8])
+  except ValueError:
+    pass
+  return None
+
+
+def _get_addressbook_url(carddav_url: str, username: str, password: str) -> str:
+  """Discover the CardDAV addressbook URL. Cached for process lifetime.
+
+  Performs a three-step PROPFIND discovery: root → principal →
+  addressbook-home → first addressbook collection.
+  Raises IntegrationDataUnavailableError on failure.
+  """
+  global _carddav_addressbook_url
+
+  if _carddav_addressbook_url is not None:
+    logger.debug('calendar: CardDAV addressbook cache hit')
+    return _carddav_addressbook_url
+
+  auth = (username, password)
+  ns = {'d': 'DAV:', 'card': 'urn:ietf:params:xml:ns:carddav'}
+
+  try:
+    # Step 1: current-user-principal
+    r = requests.request(
+      'PROPFIND',
+      carddav_url,
+      headers={'Depth': '0', 'Content-Type': 'application/xml'},
+      data=(
+        '<?xml version="1.0" encoding="utf-8"?><propfind xmlns="DAV:"><prop><current-user-principal/></prop></propfind>'
+      ),
+      auth=auth,
+      timeout=15,
+    )
+    r.raise_for_status()
+    root = ET.fromstring(r.content)  # nosec B314 — XML from authenticated Apple API
+    principal_href = root.findtext('.//d:current-user-principal/d:href', namespaces=ns)
+    if not principal_href:
+      raise IntegrationDataUnavailableError('calendar: CardDAV principal not found')
+    principal_url = urljoin(carddav_url, principal_href)
+
+    # Step 2: addressbook-home-set
+    r = requests.request(
+      'PROPFIND',
+      principal_url,
+      headers={'Depth': '0', 'Content-Type': 'application/xml'},
+      data=(
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<propfind xmlns="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">'
+        '<prop><card:addressbook-home-set/></prop></propfind>'
+      ),
+      auth=auth,
+      timeout=15,
+    )
+    r.raise_for_status()
+    root = ET.fromstring(r.content)  # nosec B314 — XML from authenticated Apple API
+    home_href = root.findtext('.//card:addressbook-home-set/d:href', namespaces=ns)
+    if not home_href:
+      raise IntegrationDataUnavailableError('calendar: CardDAV addressbook home not found')
+    home_url = urljoin(carddav_url, home_href)
+
+    # Step 3: first addressbook collection
+    r = requests.request(
+      'PROPFIND',
+      home_url,
+      headers={'Depth': '1', 'Content-Type': 'application/xml'},
+      data=(
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<propfind xmlns="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">'
+        '<prop><resourcetype/></prop></propfind>'
+      ),
+      auth=auth,
+      timeout=15,
+    )
+    r.raise_for_status()
+    root = ET.fromstring(r.content)  # nosec B314 — XML from authenticated Apple API
+    addressbook_url: str | None = None
+    for resp in root.findall('d:response', ns):
+      rtype = resp.find('.//d:resourcetype', ns)
+      if rtype is not None and rtype.find('card:addressbook', ns) is not None:
+        href = resp.findtext('d:href', namespaces=ns)
+        if href:
+          addressbook_url = urljoin(home_url, href)
+          break
+    if not addressbook_url:
+      raise IntegrationDataUnavailableError('calendar: no CardDAV addressbook found')
+
+  except requests.RequestException as e:
+    raise IntegrationDataUnavailableError(f'calendar: CardDAV discovery failed — {e}') from None
+
+  logger.debug('calendar: CardDAV addressbook discovered: %r', addressbook_url)
+  _carddav_addressbook_url = addressbook_url
+  return addressbook_url
+
+
+def _fetch_birthday_contacts(
+  addressbook_url: str,
+  username: str,
+  password: str,
+) -> list[tuple[str, int, int]]:
+  """Fetch contacts with BDAY fields from a CardDAV addressbook.
+
+  Returns a list of (first_name, month, day) tuples. Results are cached
+  for _BIRTHDAY_CACHE_TTL seconds.
+  """
+  global _birthday_cache
+
+  if _birthday_cache is not None:
+    contacts, fetched_at = _birthday_cache
+    age = time.monotonic() - fetched_at
+    if age <= _BIRTHDAY_CACHE_TTL:
+      logger.debug('calendar: birthday cache hit (%.0fs old)', age)
+      return contacts
+
+  try:
+    r = requests.request(
+      'REPORT',
+      addressbook_url,
+      headers={'Depth': '1', 'Content-Type': 'application/xml'},
+      data=(
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<card:addressbook-query'
+        ' xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">'
+        '<d:prop><card:address-data>'
+        '<card:prop name="FN"/><card:prop name="BDAY"/>'
+        '</card:address-data></d:prop>'
+        '</card:addressbook-query>'
+      ),
+      auth=(username, password),
+      timeout=15,
+    )
+    r.raise_for_status()
+  except requests.RequestException as e:
+    raise IntegrationDataUnavailableError(f'calendar: birthday contacts fetch failed — {e}') from None
+
+  ns = {'d': 'DAV:', 'card': 'urn:ietf:params:xml:ns:carddav'}
+  root = ET.fromstring(r.content)  # nosec B314 — XML from authenticated Apple API
+  contacts: list[tuple[str, int, int]] = []
+
+  for resp in root.findall('d:response', ns):
+    data = resp.findtext('.//card:address-data', namespaces=ns)
+    if not data:
+      continue
+    fn: str | None = None
+    bday_raw: str | None = None
+    for line in data.splitlines():
+      upper = line.upper()
+      if upper.startswith('FN:'):
+        fn = line[3:].strip()
+      elif upper.startswith('BDAY') and ':' in line:
+        bday_raw = line.split(':', 1)[1].strip()
+    if not fn or not bday_raw:
+      continue
+    parsed = _parse_bday(bday_raw)
+    if parsed is None:
+      continue
+    parts = fn.split()
+    if not parts:
+      continue
+    contacts.append((parts[0].upper(), parsed[0], parsed[1]))
+
+  logger.debug('calendar: fetched %d birthday contact(s)', len(contacts))
+  _birthday_cache = (contacts, time.monotonic())
+  return contacts
+
+
 # ── Sorting and formatting ─────────────────────────────────────────────────────
 
 
@@ -514,3 +717,57 @@ def get_variables() -> dict[str, list[list[str]]]:
     raise IntegrationDataUnavailableError('calendar: no events today')
 
   return {'events': [lines]}
+
+
+def get_variables_birthdays() -> dict[str, list[list[str]]]:
+  """Return upcoming birthdays as a variables dict for template rendering.
+
+  Returns key 'birthdays' as a single option containing one line per birthday,
+  formatted as 'FIRSTNAME TODAY' or 'FIRSTNAME MON'.
+  Requires carddav_url in [calendar] config — omit it to disable birthdays.
+  Raises IntegrationDataUnavailableError if not configured or no birthdays
+  fall within the lookahead window.
+  """
+  import config as _cfg
+
+  cal_cfg: dict[str, Any] = _cfg._config.get('calendar', {})
+  carddav_url = cal_cfg.get('carddav_url', '')
+  username = cal_cfg.get('username', '')
+  password = cal_cfg.get('password', '')
+
+  if not carddav_url:
+    raise IntegrationDataUnavailableError('calendar: birthdays require carddav_url in [calendar] config')
+  if not username or not password:
+    raise IntegrationDataUnavailableError('calendar: birthdays require username and password in [calendar] config')
+
+  lookahead = int(cal_cfg.get('birthdays_lookahead_days', 7))
+
+  tz = _display_tz()
+  now = _get_now(tz)
+  today = now.date()
+
+  addressbook_url = _get_addressbook_url(carddav_url, username, password)
+  contacts = _fetch_birthday_contacts(addressbook_url, username, password)
+
+  entries: list[tuple[int, str, str]] = []  # (days_ahead, first_name, line)
+  for first_name, month, day in contacts:
+    try:
+      candidate = today.replace(month=month, day=day)
+    except ValueError:
+      continue  # e.g. Feb 29 on a non-leap year — skip
+    if candidate < today:
+      try:
+        candidate = candidate.replace(year=today.year + 1)
+      except ValueError:
+        continue
+    days_ahead = (candidate - today).days
+    if days_ahead > lookahead:
+      continue
+    day_label = 'TODAY' if days_ahead == 0 else candidate.strftime('%a').upper()
+    entries.append((days_ahead, first_name, f'{first_name} {day_label}'))
+
+  if not entries:
+    raise IntegrationDataUnavailableError(f'calendar: no birthdays in the next {lookahead} days')
+
+  entries.sort(key=lambda x: (x[0], x[1]))
+  return {'birthdays': [[line for _, _, line in entries]]}

@@ -176,6 +176,7 @@ template to keep everything playing nicely together.
 | `:00` every 4h | `trakt.calendar` | 4 | 1200s | 1800s | Private; queues behind weather |
 | `:30` every hour | `calendar` | 5 | 300s | 1800s | |
 | `8:30` daily | `discogs` | 5 | 600s | 3600s | Queues behind calendar at :30 |
+| `9:00` daily | `birthdays` | 5 | 600s | 3600s | Queues behind weather at :00; done by ~9:20 |
 | `*/5` 07–09 Mon–Fri | `bart` | 8 | 290s | 60s | Refresh 60s; dominates mornings |
 | `*/3` always | `trakt.watching` | 7 | 180s | 120s | Refresh 30s; no-op when idle |
 | webhook only | `plex` | 8 | indef | 30s | Private; interrupts on state change |
@@ -238,6 +239,7 @@ Don't inflate priority to "win" — see the priority guidelines above.
 |---|---|
 | [`weather.json`](contrib/weather.md) | Current weather conditions via Open-Meteo |
 | [`calendar.json`](contrib/calendar.md) | Today's calendar events (ICS and iCloud CalDAV) |
+| [`birthdays.json`](contrib/birthdays.md) | Upcoming birthdays from iCloud Contacts |
 | [`bart.json`](contrib/bart.md) | BART real-time departure board |
 | [`discogs.json`](contrib/discogs.md) | Daily vinyl suggestion from your Discogs collection |
 | [`trakt.json`](contrib/trakt.md) | Trakt.tv upcoming calendar and now-playing |
