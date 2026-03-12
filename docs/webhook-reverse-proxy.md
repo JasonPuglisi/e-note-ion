@@ -109,6 +109,55 @@ to your reverse proxy's own documentation for TLS and Let's Encrypt setup.
 
 ---
 
+## Rate limiting
+
+The webhook listener has no built-in rate limiting. For deployments exposed to
+the public internet, rate limiting at the infrastructure layer is strongly
+recommended to protect credential endpoints from brute-force guessing.
+
+### Cloudflare (free plan)
+
+Applies when using **Option 1** with a custom domain in your Cloudflare
+account. Rate limiting rules are zone-level and require your own domain — they
+are not available on `*.trycloudflare.com` hostnames.
+
+> **Dashboard path:** Your domain → **Security → WAF → Rate limiting rules →
+> Create rule**
+
+Suggested rule:
+
+| Field | Value |
+|---|---|
+| Name | `Webhook rate limit` |
+| When incoming requests match… | `URI Path contains /webhook/` |
+| And rate exceeds | `5 requests` in `10 seconds` per IP (free plan window and duration are fixed at 10s) |
+| Then take action | **Block** |
+
+The free plan includes **one rate limiting rule**; spending it here is the
+highest-value use. It fires at Cloudflare's edge before the request reaches
+`cloudflared`, so the origin never sees the blocked traffic.
+
+### Nginx
+
+```nginx
+# In the http block:
+limit_req_zone $binary_remote_addr zone=webhook:10m rate=15r/m;
+
+# In the server/location block for the webhook path:
+location /webhook/ {
+    limit_req zone=webhook burst=5 nodelay;
+    proxy_pass http://127.0.0.1:8080;
+}
+```
+
+### Caddy
+
+Caddy does not include rate limiting in its standard build. Use the
+[`caddy-ratelimit`](https://github.com/mholt/caddy-ratelimit) plugin, or
+rely on Cloudflare edge rules if your domain is proxied through Cloudflare.
+
+---
+
 ## What you do NOT need
 
 - **Router port forwarding** — Cloudflare Tunnel handles inbound connections
