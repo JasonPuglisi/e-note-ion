@@ -155,6 +155,28 @@ def test_config_override_applied() -> None:
   assert result.priority == 9
 
 
+# --- Color tag handling ---
+
+
+def test_color_tag_replaced_with_letter() -> None:
+  # [R] → R (brackets not in VB charset; keep the letter)
+  result = notion.handle_webhook(_make_payload('[R] alert'))
+  assert isinstance(result, WebhookMessage)
+  assert result.data['variables']['message'] == [['R ALERT']]
+
+
+def test_all_color_tags_replaced() -> None:
+  result = notion.handle_webhook(_make_payload('[R][O][Y][G][B][V][W][K]'))
+  assert isinstance(result, WebhookMessage)
+  assert result.data['variables']['message'] == [['ROYGBVWK']]
+
+
+def test_inline_color_tag_replaced() -> None:
+  result = notion.handle_webhook(_make_payload('[G]reen light'))
+  assert isinstance(result, WebhookMessage)
+  assert result.data['variables']['message'] == [['GREEN LIGHT']]
+
+
 # --- Error handling ---
 
 

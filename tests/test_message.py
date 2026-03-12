@@ -193,6 +193,41 @@ def test_interrupt_always_false() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Color tag handling
+# ---------------------------------------------------------------------------
+
+
+def test_color_tag_replaced_with_letter() -> None:
+  # [R] → R (brackets not in VB charset; keep the letter)
+  with patch('config.get_message_friend', return_value=_FRIEND_ALICE):
+    result = message.handle_webhook(_make_payload('[R] HEY'), credential_name='alice')
+  assert isinstance(result, WebhookMessage)
+  assert result.data['variables']['message'] == [['R HEY']]
+
+
+def test_all_color_tags_replaced() -> None:
+  with patch('config.get_message_friend', return_value=_FRIEND_ALICE):
+    result = message.handle_webhook(_make_payload('[R][O][Y][G][B][V][W][K]'), credential_name='alice')
+  assert isinstance(result, WebhookMessage)
+  assert result.data['variables']['message'] == [['ROYGBVWK']]
+
+
+def test_inline_color_tag_replaced() -> None:
+  # [B]ob → BOB after upper
+  with patch('config.get_message_friend', return_value=_FRIEND_ALICE):
+    result = message.handle_webhook(_make_payload('[B]ob called'), credential_name='alice')
+  assert isinstance(result, WebhookMessage)
+  assert result.data['variables']['message'] == [['BOB CALLED']]
+
+
+def test_heart_emoji_preserved() -> None:
+  with patch('config.get_message_friend', return_value=_FRIEND_ALICE):
+    result = message.handle_webhook(_make_payload('❤️ love you'), credential_name='alice')
+  assert isinstance(result, WebhookMessage)
+  assert result.data['variables']['message'] == [['❤️ LOVE YOU']]
+
+
+# ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
 
