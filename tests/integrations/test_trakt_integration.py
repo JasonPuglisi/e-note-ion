@@ -35,6 +35,9 @@ def _patch_config(monkeypatch: pytest.MonkeyPatch) -> None:
       }
     },
   )
+  # Prevent any config writes (e.g. _clear_tokens after a failed refresh) from
+  # touching the filesystem — config.toml does not exist in CI.
+  monkeypatch.setattr(_cfg, 'write_section_values', lambda section, values: None)
 
 
 @pytest.mark.integration
