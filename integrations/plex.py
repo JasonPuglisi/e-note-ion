@@ -100,8 +100,13 @@ def _canonicalize_plex_title(raw_title: str, guids: list[dict[str, Any]], media_
     return raw_title
   tmdb_id = _parse_tmdb_id_from_guids(guids)
   if tmdb_id is None:
+    logger.debug('plex: no tmdb:// guid for %r, using raw title', raw_title)
     return raw_title
   canonical = _tmdb.get_show_title(tmdb_id) if media_type == 'show' else _tmdb.get_movie_title(tmdb_id)
+  if canonical:
+    logger.debug('plex: tmdb canonical %r -> %r', raw_title, canonical)
+  else:
+    logger.debug('plex: tmdb lookup failed for id=%d, using raw title %r', tmdb_id, raw_title)
   return canonical if canonical else raw_title
 
 
