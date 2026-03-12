@@ -15,7 +15,7 @@ must have an active Plex Pass subscription to send webhooks.
 
 ## Configuration
 
-Enable the webhook listener and the plex content:
+Enable the webhook listener and the plex content, and create a named credential:
 
 ```toml
 [scheduler]
@@ -25,7 +25,12 @@ content_enabled = ["plex"]
 # Bind to 0.0.0.0 so Plex (which may run in a separate container) can reach it.
 # port defaults to 8080 (container-internal); map it to a host port in Docker/Unraid.
 bind = "0.0.0.0"
-# secret is auto-generated on first start and saved to config.toml — check the log.
+
+[webhook.credentials.plex]
+# Generate a hash from your chosen plaintext secret:
+#   python -c "from argon2 import PasswordHasher; print(PasswordHasher().hash('your-secret'))"
+secret_hash = "$argon2id$v=19$m=65536,t=3,p=4$..."
+webhooks = ["plex"]
 ```
 
 **Unraid:** the Unraid template pre-configures the port mapping (container
@@ -68,25 +73,20 @@ seconds — avoiding a brief flash of the stopped state between episodes. Set to
 
 ### 1. Enable and expose the webhook listener
 
-Add the `[webhook]` block shown in Configuration above. On first start, a
-shared secret is auto-generated, printed to the log, and saved to
-`config.toml` — it persists across restarts:
-
-```
-Webhook secret generated and saved to config.toml:
-  <your-secret-here>
-Copy this into your webhook sender (Plex, Shortcuts, etc.).
-```
+Add the `[webhook]` blocks shown in Configuration above. Choose any plaintext
+secret for Plex, hash it, and store the hash in `[webhook.credentials.plex]`.
+Keep the plaintext secret — you will paste it into Plex's webhook URL.
 
 ### 2. Build the webhook URL
 
-Plex cannot send custom HTTP headers, so pass the secret as a query parameter:
+Plex cannot send custom HTTP headers, so pass the plaintext secret as a query
+parameter:
 
 ```
-http://<host-ip>:<host-port>/webhook/plex?secret=<your-secret-here>
+http://<host-ip>:<host-port>/webhook/plex?secret=<your-plaintext-secret>
 ```
 
-**Unraid example** (replace with your server's LAN IP, chosen host port, and generated secret):
+**Unraid example** (replace with your server's LAN IP, chosen host port, and secret):
 ```
 http://192.168.1.100:32800/webhook/plex?secret=abc123xyz
 ```
@@ -111,7 +111,7 @@ the same host, you can inject the secret as a header and keep it out of the URL:
 ```nginx
 location /webhook/plex {
     proxy_pass http://127.0.0.1:32800/webhook/plex;
-    proxy_set_header X-Webhook-Secret "your-secret-here";
+    proxy_set_header X-Webhook-Secret "your-plaintext-secret";
 }
 ```
 

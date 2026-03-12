@@ -62,7 +62,7 @@ def _load_template_config(template_name: str) -> dict[str, Any]:
   return effective
 
 
-def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
+def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) -> WebhookMessage | None:
   """Process a Notion webhook payload and return a WebhookMessage or None.
 
   Expects the Notion automation webhook format, where page data is nested under
@@ -72,6 +72,8 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
     tag     (select, optional, default "notion"): deduplication key — queued messages
             with the same namespaced tag are replaced by this one. Set to "" to
             disable superseding entirely.
+
+  credential_name identifies the named credential that authenticated this request.
 
   Returns None if message is missing or blank, or on any unexpected error.
   """
@@ -109,7 +111,12 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
 
     cfg = _load_template_config('notification')
 
-    logger.debug('notion: enqueueing notification (urgent=%s, tag=%r)', urgent, supersede_tag)
+    logger.debug(
+      'notion: enqueueing notification (urgent=%s, tag=%r, credential=%r)',
+      urgent,
+      supersede_tag,
+      credential_name,
+    )
     return WebhookMessage(
       data={
         'templates': cfg['templates'],

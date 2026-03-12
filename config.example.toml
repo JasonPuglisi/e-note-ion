@@ -159,12 +159,9 @@ client_secret = "your-trakt-client-secret"
 # by the registration action. Example (do not edit manually):
 #
 # [message.friends.alice]
-# display_name = "Alice"
 # color = "R"          # R O Y G B V W K H (H = heart ❤️)
 #
-# [webhook.credentials.alice]
-# secret_hash = "$argon2id$..."
-# webhooks = ["message"]
+# (The corresponding [webhook.credentials.alice] entry is written to [webhook] above.)
 #
 # To override hold/timeout/priority for the notification template:
 # [message.schedules.notification]
@@ -179,15 +176,26 @@ client_secret = "your-trakt-client-secret"
 #
 # ⚠  Security: external webhook senders (outside your LAN) require TLS.
 # Recommended: use Cloudflare Tunnel — no domain or cert management needed.
-# Never send the shared secret over plaintext HTTP across the internet.
 # See: https://github.com/JasonPuglisi/e-note-ion/blob/main/docs/webhook-reverse-proxy.md
 #
 # port = 8080
-# secret is auto-generated on first startup if omitted — check logs for the
-# value and copy it into your webhook sender (as ?secret= in the URL, or via
-# X-Webhook-Secret header if your sender supports custom headers).
-# secret = "..."
 # Bind to 0.0.0.0 to accept connections from outside localhost (e.g. Docker/Unraid).
 # Unraid: the template maps container port 8080 → host port 32800 by default.
 # Requires a TLS-terminating reverse proxy for external webhook sources.
 # bind = "0.0.0.0"
+
+# Named credentials — one section per integration.
+# Each credential is scoped to specific webhook endpoints via the webhooks list.
+# To generate an argon2id hash for a plaintext secret:
+#   python -c "from argon2 import PasswordHasher; print(PasswordHasher().hash('your-secret'))"
+#
+# [webhook.credentials.plex]
+# secret_hash = "$argon2id$v=19$m=65536,t=3,p=4$..."
+# webhooks = ["plex"]
+#
+# [webhook.credentials.notion]
+# secret_hash = "$argon2id$v=19$m=65536,t=3,p=4$..."
+# webhooks = ["notion"]
+#
+# Friend credentials for the message integration are written here automatically
+# by the registration action — see content/contrib/message.md.

@@ -86,9 +86,9 @@ def test_no_credential_returns_none() -> None:
   assert result is None
 
 
-def test_admin_credential_returns_none() -> None:
-  # Admin (empty string = main secret) cannot post messages.
-  result = message.handle_webhook(_make_payload(), credential_name='')
+def test_empty_credential_returns_none() -> None:
+  # Empty credential_name (defensive; cannot occur in practice) is rejected.
+  result = message.handle_webhook(_make_payload(), credential_name='message-admin')
   assert result is None
 
 
@@ -245,10 +245,11 @@ def _make_register_payload(
   }
 
 
-def test_register_requires_admin() -> None:
-  # Friend credential (non-empty) must be rejected.
-  result = message.handle_webhook(_make_register_payload(), credential_name='alice')
-  assert result is None
+def test_register_with_named_credential_allowed() -> None:
+  # Any named (non-None) credential may register.
+  with patch('config.write_config_section'):
+    result = message.handle_webhook(_make_register_payload(), credential_name='message-admin')
+  assert result is None  # registration always returns None (no display message)
 
 
 def test_register_with_none_credential_rejected() -> None:
@@ -258,7 +259,7 @@ def test_register_with_none_credential_rejected() -> None:
 
 def test_register_stores_credential_and_friend() -> None:
   with patch('config.write_config_section') as mock_write:
-    result = message.handle_webhook(_make_register_payload(), credential_name='')
+    result = message.handle_webhook(_make_register_payload(), credential_name='message-admin')
   assert result is None
   assert mock_write.call_count == 2
   # First call: credential section
@@ -280,52 +281,52 @@ def test_register_stores_credential_and_friend() -> None:
 
 def test_register_overwrite_is_idempotent() -> None:
   with patch('config.write_config_section') as mock_write:
-    message.handle_webhook(_make_register_payload(), credential_name='')
-    message.handle_webhook(_make_register_payload(), credential_name='')
+    message.handle_webhook(_make_register_payload(), credential_name='message-admin')
+    message.handle_webhook(_make_register_payload(), credential_name='message-admin')
   assert mock_write.call_count == 4  # 2 calls per registration
 
 
 def test_register_spaces_in_name_converted_to_hyphens() -> None:
   with patch('config.write_config_section') as mock_write:
-    message.handle_webhook(_make_register_payload(name='Bob Smith'), credential_name='')
+    message.handle_webhook(_make_register_payload(name='Bob Smith'), credential_name='message-admin')
   assert mock_write.call_args_list[0].args[0] == 'webhook.credentials.bob-smith'
 
 
 def test_register_invalid_name_returns_none(caplog: pytest.LogCaptureFixture) -> None:
-  result = message.handle_webhook(_make_register_payload(name='!invalid'), credential_name='')
+  result = message.handle_webhook(_make_register_payload(name='!invalid'), credential_name='message-admin')
   assert result is None
   assert 'invalid' in caplog.text.lower()
 
 
 def test_register_invalid_color_returns_none(caplog: pytest.LogCaptureFixture) -> None:
-  result = message.handle_webhook(_make_register_payload(color='Z'), credential_name='')
+  result = message.handle_webhook(_make_register_payload(color='Z'), credential_name='message-admin')
   assert result is None
   assert 'invalid' in caplog.text.lower()
 
 
 def test_register_full_color_name_accepted() -> None:
   with patch('config.write_config_section') as mock_write:
-    message.handle_webhook(_make_register_payload(color='Green'), credential_name='')
+    message.handle_webhook(_make_register_payload(color='Green'), credential_name='message-admin')
   friend_call = mock_write.call_args_list[1]
   assert friend_call.args[1]['color'] == 'G'
 
 
 def test_register_full_color_name_case_insensitive() -> None:
   with patch('config.write_config_section') as mock_write:
-    message.handle_webhook(_make_register_payload(color='VIOLET'), credential_name='')
+    message.handle_webhook(_make_register_payload(color='VIOLET'), credential_name='message-admin')
   friend_call = mock_write.call_args_list[1]
   assert friend_call.args[1]['color'] == 'V'
 
 
 def test_register_heart_full_name_accepted() -> None:
   with patch('config.write_config_section') as mock_write:
-    message.handle_webhook(_make_register_payload(color='Heart'), credential_name='')
+    message.handle_webhook(_make_register_payload(color='Heart'), credential_name='message-admin')
   friend_call = mock_write.call_args_list[1]
   assert friend_call.args[1]['color'] == 'H'
 
 
 def test_register_short_passphrase_returns_none(caplog: pytest.LogCaptureFixture) -> None:
-  result = message.handle_webhook(_make_register_payload(passphrase='abc'), credential_name='')
+  result = message.handle_webhook(_make_register_payload(passphrase='abc'), credential_name='message-admin')
   assert result is None
   assert 'short' in caplog.text.lower()
 

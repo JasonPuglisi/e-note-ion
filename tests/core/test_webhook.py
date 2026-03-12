@@ -16,15 +16,34 @@ import scheduler as _mod  # noqa: E402
 # Helpers
 # ---------------------------------------------------------------------------
 
-_SECRET = 'test-secret-value'
+# Test credential — plaintext used in _post(), hash stored in config for auth.
+_CRED_SECRET = 'test-credential-secret'
+
+try:
+  from argon2 import PasswordHasher as _PH
+
+  _CRED_HASH: str | None = _PH().hash(_CRED_SECRET)
+except ImportError:
+  _CRED_HASH = None
 
 # Boundary used by multipart helper; must be ASCII-safe.
 _BOUNDARY = 'TestBoundary1234'
 
 
-def _start_test_server(secret: str = _SECRET) -> tuple[HTTPServer, int]:
+def _cred_config(integration: str = 'bart') -> dict[str, Any]:
+  """Return a config dict with a test named credential scoped to the given integration."""
+  return {
+    'webhook': {
+      'credentials': {
+        'test': {'secret_hash': _CRED_HASH, 'webhooks': [integration]},
+      },
+    },
+  }
+
+
+def _start_test_server() -> tuple[HTTPServer, int]:
   """Start a webhook server on an OS-assigned port and return (server, port)."""
-  handler = _mod._make_webhook_handler(secret)
+  handler = _mod._make_webhook_handler()
   server = HTTPServer(('127.0.0.1', 0), handler)
   port = server.server_address[1]
   threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -35,7 +54,7 @@ def _post(
   port: int,
   path: str,
   body: dict[str, Any] | None = None,
-  secret: str = _SECRET,
+  secret: str = _CRED_SECRET,
 ) -> tuple[int, str]:
   """POST to the test server and return (status_code, response_body)."""
   encoded = json.dumps(body or {}).encode()
@@ -62,7 +81,7 @@ def _post_multipart(
   port: int,
   path: str,
   payload_json: str,
-  secret: str = _SECRET,
+  secret: str = _CRED_SECRET,
 ) -> tuple[int, str]:
   body = _multipart_body(payload_json)
   conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
@@ -123,7 +142,7 @@ def test_webhook_server_not_started_when_no_section(
 def test_webhook_server_started_when_section_present(
   monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-  monkeypatch.setattr(_cfg, '_config', {'webhook': {'port': '8080', 'secret': 'x'}})
+  monkeypatch.setattr(_cfg, '_config', {'webhook': {'port': '8080'}})
   mock_sched = MagicMock()
   mock_sched.get_jobs.return_value = []
   with patch.object(_mod, '_start_webhook_server') as mock_start:
@@ -150,13 +169,14 @@ def test_valid_secret_returns_200() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = None  # discard — just testing auth
 
-  with patch.object(_mod, '_get_integration', return_value=mock_mod):
-    server, port = _start_test_server()
-    try:
-      status, _ = _post(port, '/webhook/bart')
-      assert status == 200
-    finally:
-      server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      server, port = _start_test_server()
+      try:
+        status, _ = _post(port, '/webhook/bart')
+        assert status == 200
+      finally:
+        server.shutdown()
 
 
 def test_wrong_secret_returns_401() -> None:
@@ -170,7 +190,7 @@ def test_wrong_secret_returns_401() -> None:
 
 
 def test_missing_secret_returns_401() -> None:
-  handler = _mod._make_webhook_handler(_SECRET)
+  handler = _mod._make_webhook_handler()
   server = HTTPServer(('127.0.0.1', 0), handler)
   port = server.server_address[1]
   threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -194,22 +214,23 @@ def test_query_param_secret_accepted() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = None
 
-  with patch.object(_mod, '_get_integration', return_value=mock_mod):
-    server, port = _start_test_server()
-    try:
-      # Pass secret as ?secret= query param with no header
-      encoded = b'{}'
-      conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
-      conn.request(
-        'POST',
-        f'/webhook/bart?secret={_SECRET}',
-        body=encoded,
-        headers={'Content-Type': 'application/json', 'Content-Length': str(len(encoded))},
-      )
-      resp = conn.getresponse()
-      assert resp.status == 200
-    finally:
-      server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      server, port = _start_test_server()
+      try:
+        # Pass secret as ?secret= query param with no header
+        encoded = b'{}'
+        conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+        conn.request(
+          'POST',
+          f'/webhook/bart?secret={_CRED_SECRET}',
+          body=encoded,
+          headers={'Content-Type': 'application/json', 'Content-Length': str(len(encoded))},
+        )
+        resp = conn.getresponse()
+        assert resp.status == 200
+      finally:
+        server.shutdown()
 
 
 def test_query_param_wrong_secret_returns_401() -> None:
@@ -234,26 +255,27 @@ def test_header_takes_precedence_over_query_param() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = None
 
-  with patch.object(_mod, '_get_integration', return_value=mock_mod):
-    server, port = _start_test_server()
-    try:
-      encoded = b'{}'
-      conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
-      # Correct header + wrong query param → should pass (header wins)
-      conn.request(
-        'POST',
-        '/webhook/bart?secret=wrong-secret',
-        body=encoded,
-        headers={
-          'Content-Type': 'application/json',
-          'Content-Length': str(len(encoded)),
-          'X-Webhook-Secret': _SECRET,
-        },
-      )
-      resp = conn.getresponse()
-      assert resp.status == 200
-    finally:
-      server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      server, port = _start_test_server()
+      try:
+        encoded = b'{}'
+        conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+        # Correct header + wrong query param → should pass (header wins)
+        conn.request(
+          'POST',
+          '/webhook/bart?secret=wrong-secret',
+          body=encoded,
+          headers={
+            'Content-Type': 'application/json',
+            'Content-Length': str(len(encoded)),
+            'X-Webhook-Secret': _CRED_SECRET,
+          },
+        )
+        resp = conn.getresponse()
+        assert resp.status == 200
+      finally:
+        server.shutdown()
 
 
 # ---------------------------------------------------------------------------
@@ -262,15 +284,17 @@ def test_header_takes_precedence_over_query_param() -> None:
 
 
 def test_unknown_integration_returns_404() -> None:
-  server, port = _start_test_server()
-  try:
-    status, _ = _post(port, '/webhook/notareal')
-    assert status == 404
-  finally:
-    server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('notareal')):
+    server, port = _start_test_server()
+    try:
+      status, _ = _post(port, '/webhook/notareal')
+      assert status == 404
+    finally:
+      server.shutdown()
 
 
 def test_bad_path_returns_404() -> None:
+  # Path check fires before auth — no credential needed.
   server, port = _start_test_server()
   try:
     status, _ = _post(port, '/notwebhook/bart')
@@ -284,7 +308,7 @@ def test_non_post_method_returns_501() -> None:
   server, port = _start_test_server()
   try:
     conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
-    conn.request('GET', '/webhook/bart', headers={'X-Webhook-Secret': _SECRET})
+    conn.request('GET', '/webhook/bart', headers={'X-Webhook-Secret': _CRED_SECRET})
     resp = conn.getresponse()
     assert resp.status == 501
   finally:
@@ -294,14 +318,15 @@ def test_non_post_method_returns_501() -> None:
 def test_integration_without_handle_webhook_returns_404() -> None:
   mock_mod = MagicMock(spec=[])  # no handle_webhook attribute
 
-  with patch.object(_mod, '_get_integration', return_value=mock_mod):
-    server, port = _start_test_server()
-    try:
-      status, body = _post(port, '/webhook/bart')
-      assert status == 404
-      assert 'does not support webhooks' in body
-    finally:
-      server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      server, port = _start_test_server()
+      try:
+        status, body = _post(port, '/webhook/bart')
+        assert status == 404
+        assert 'does not support webhooks' in body
+      finally:
+        server.shutdown()
 
 
 # ---------------------------------------------------------------------------
@@ -313,16 +338,17 @@ def test_handle_webhook_none_returns_200_no_enqueue() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = None
 
-  with patch.object(_mod, '_get_integration', return_value=mock_mod):
-    with patch.object(_mod, 'enqueue') as mock_enqueue:
-      server, port = _start_test_server()
-      try:
-        status, body = _post(port, '/webhook/bart', {'event': 'pause'})
-        assert status == 200
-        assert 'Discarded' in body
-        mock_enqueue.assert_not_called()
-      finally:
-        server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      with patch.object(_mod, 'enqueue') as mock_enqueue:
+        server, port = _start_test_server()
+        try:
+          status, body = _post(port, '/webhook/bart', {'event': 'pause'})
+          assert status == 200
+          assert 'Discarded' in body
+          mock_enqueue.assert_not_called()
+        finally:
+          server.shutdown()
 
 
 def test_handle_webhook_result_enqueues_message() -> None:
@@ -336,24 +362,25 @@ def test_handle_webhook_result_enqueues_message() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = wm
 
-  with patch.object(_mod, '_get_integration', return_value=mock_mod):
-    with patch.object(_mod, 'enqueue') as mock_enqueue:
-      server, port = _start_test_server()
-      try:
-        status, body = _post(port, '/webhook/bart', {'event': 'play'})
-        assert status == 200
-        assert 'Enqueued' in body
-        mock_enqueue.assert_called_once_with(
-          priority=7,
-          data=wm.data,
-          hold=30,
-          timeout=60,
-          name='test.webhook',
-          indefinite=False,
-          supersede_tag='',
-        )
-      finally:
-        server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      with patch.object(_mod, 'enqueue') as mock_enqueue:
+        server, port = _start_test_server()
+        try:
+          status, body = _post(port, '/webhook/bart', {'event': 'play'})
+          assert status == 200
+          assert 'Enqueued' in body
+          mock_enqueue.assert_called_once_with(
+            priority=7,
+            data=wm.data,
+            hold=30,
+            timeout=60,
+            name='test.webhook',
+            indefinite=False,
+            supersede_tag='',
+          )
+        finally:
+          server.shutdown()
 
 
 def test_enqueue_uses_default_name_when_blank() -> None:
@@ -367,16 +394,17 @@ def test_enqueue_uses_default_name_when_blank() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = wm
 
-  with patch.object(_mod, '_get_integration', return_value=mock_mod):
-    with patch.object(_mod, 'enqueue') as mock_enqueue:
-      server, port = _start_test_server()
-      try:
-        _post(port, '/webhook/bart')
-        time.sleep(0.05)  # allow handler thread to complete
-        call_kwargs = mock_enqueue.call_args.kwargs
-        assert call_kwargs['name'] == 'webhook.bart'
-      finally:
-        server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      with patch.object(_mod, 'enqueue') as mock_enqueue:
+        server, port = _start_test_server()
+        try:
+          _post(port, '/webhook/bart')
+          time.sleep(0.05)  # allow handler thread to complete
+          call_kwargs = mock_enqueue.call_args.kwargs
+          assert call_kwargs['name'] == 'webhook.bart'
+        finally:
+          server.shutdown()
 
 
 # ---------------------------------------------------------------------------
@@ -395,15 +423,16 @@ def test_interrupt_false_does_not_set_event() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = wm
 
-  with patch.object(_mod, '_get_integration', return_value=mock_mod):
-    with patch.object(_mod, 'enqueue'):
-      server, port = _start_test_server()
-      try:
-        _post(port, '/webhook/bart')
-        time.sleep(0.05)  # allow handler thread to complete
-        assert not _mod._hold_interrupt.is_set()
-      finally:
-        server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      with patch.object(_mod, 'enqueue'):
+        server, port = _start_test_server()
+        try:
+          _post(port, '/webhook/bart')
+          time.sleep(0.05)  # allow handler thread to complete
+          assert not _mod._hold_interrupt.is_set()
+        finally:
+          server.shutdown()
 
 
 def test_interrupt_true_sets_hold_interrupt_event() -> None:
@@ -417,15 +446,16 @@ def test_interrupt_true_sets_hold_interrupt_event() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = wm
 
-  with patch.object(_mod, '_get_integration', return_value=mock_mod):
-    with patch.object(_mod, 'enqueue'):
-      server, port = _start_test_server()
-      try:
-        _post(port, '/webhook/bart')
-        time.sleep(0.05)  # allow handler thread to complete
-        assert _mod._hold_interrupt.is_set()
-      finally:
-        server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      with patch.object(_mod, 'enqueue'):
+        server, port = _start_test_server()
+        try:
+          _post(port, '/webhook/bart')
+          time.sleep(0.05)  # allow handler thread to complete
+          assert _mod._hold_interrupt.is_set()
+        finally:
+          server.shutdown()
 
 
 def test_interrupt_only_sets_hold_interrupt_without_enqueue() -> None:
@@ -439,18 +469,19 @@ def test_interrupt_only_sets_hold_interrupt_without_enqueue() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = wm
 
-  with patch.object(_mod, '_get_integration', return_value=mock_mod):
-    with patch.object(_mod, 'enqueue') as mock_enqueue:
-      server, port = _start_test_server()
-      try:
-        status, body = _post(port, '/webhook/bart')
-        time.sleep(0.05)
-        assert status == 200
-        assert 'Interrupted' in body
-        mock_enqueue.assert_not_called()
-        assert _mod._hold_interrupt.is_set()
-      finally:
-        server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      with patch.object(_mod, 'enqueue') as mock_enqueue:
+        server, port = _start_test_server()
+        try:
+          status, body = _post(port, '/webhook/bart')
+          time.sleep(0.05)
+          assert status == 200
+          assert 'Interrupted' in body
+          mock_enqueue.assert_not_called()
+          assert _mod._hold_interrupt.is_set()
+        finally:
+          server.shutdown()
 
 
 def test_interrupt_blocked_when_current_hold_is_high_priority() -> None:
@@ -470,15 +501,16 @@ def test_interrupt_blocked_when_current_hold_is_high_priority() -> None:
     _mod._current_hold_priority = 8  # active high-priority hold
     _mod._current_hold_supersede_tag = 'plex'  # different source
 
-  with patch.object(_mod, '_get_integration', return_value=mock_mod):
-    with patch.object(_mod, 'enqueue'):
-      server, port = _start_test_server()
-      try:
-        _post(port, '/webhook/bart')
-        time.sleep(0.05)
-        assert not _mod._hold_interrupt.is_set()
-      finally:
-        server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      with patch.object(_mod, 'enqueue'):
+        server, port = _start_test_server()
+        try:
+          _post(port, '/webhook/bart')
+          time.sleep(0.05)
+          assert not _mod._hold_interrupt.is_set()
+        finally:
+          server.shutdown()
 
 
 def test_interrupt_bypasses_threshold_when_same_supersede_tag() -> None:
@@ -502,15 +534,16 @@ def test_interrupt_bypasses_threshold_when_same_supersede_tag() -> None:
     _mod._current_hold_priority = 8  # active high-priority hold — same source
     _mod._current_hold_supersede_tag = 'plex'
 
-  with patch.object(_mod, '_get_integration', return_value=mock_mod):
-    with patch.object(_mod, 'enqueue'):
-      server, port = _start_test_server()
-      try:
-        _post(port, '/webhook/bart')
-        time.sleep(0.05)
-        assert _mod._hold_interrupt.is_set()
-      finally:
-        server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      with patch.object(_mod, 'enqueue'):
+        server, port = _start_test_server()
+        try:
+          _post(port, '/webhook/bart')
+          time.sleep(0.05)
+          assert _mod._hold_interrupt.is_set()
+        finally:
+          server.shutdown()
 
 
 def test_interrupt_blocked_for_different_tag_high_priority_hold() -> None:
@@ -530,15 +563,16 @@ def test_interrupt_blocked_for_different_tag_high_priority_hold() -> None:
     _mod._current_hold_priority = 8  # active high-priority hold — different source
     _mod._current_hold_supersede_tag = 'plex'
 
-  with patch.object(_mod, '_get_integration', return_value=mock_mod):
-    with patch.object(_mod, 'enqueue'):
-      server, port = _start_test_server()
-      try:
-        _post(port, '/webhook/bart')
-        time.sleep(0.05)
-        assert not _mod._hold_interrupt.is_set()
-      finally:
-        server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      with patch.object(_mod, 'enqueue'):
+        server, port = _start_test_server()
+        try:
+          _post(port, '/webhook/bart')
+          time.sleep(0.05)
+          assert not _mod._hold_interrupt.is_set()
+        finally:
+          server.shutdown()
 
 
 def test_interrupt_allowed_when_current_hold_is_low_priority() -> None:
@@ -556,15 +590,16 @@ def test_interrupt_allowed_when_current_hold_is_low_priority() -> None:
   with _mod._current_hold_lock:
     _mod._current_hold_priority = 7  # active low-priority hold
 
-  with patch.object(_mod, '_get_integration', return_value=mock_mod):
-    with patch.object(_mod, 'enqueue'):
-      server, port = _start_test_server()
-      try:
-        _post(port, '/webhook/bart')
-        time.sleep(0.05)
-        assert _mod._hold_interrupt.is_set()
-      finally:
-        server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      with patch.object(_mod, 'enqueue'):
+        server, port = _start_test_server()
+        try:
+          _post(port, '/webhook/bart')
+          time.sleep(0.05)
+          assert _mod._hold_interrupt.is_set()
+        finally:
+          server.shutdown()
 
 
 def test_interrupt_only_blocked_when_current_hold_is_high_priority() -> None:
@@ -582,18 +617,19 @@ def test_interrupt_only_blocked_when_current_hold_is_high_priority() -> None:
   with _mod._current_hold_lock:
     _mod._current_hold_priority = 8  # active high-priority hold
 
-  with patch.object(_mod, '_get_integration', return_value=mock_mod):
-    with patch.object(_mod, 'enqueue') as mock_enqueue:
-      server, port = _start_test_server()
-      try:
-        status, body = _post(port, '/webhook/bart')
-        time.sleep(0.05)
-        assert status == 200
-        assert 'Interrupted' in body
-        mock_enqueue.assert_not_called()
-        assert not _mod._hold_interrupt.is_set()
-      finally:
-        server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      with patch.object(_mod, 'enqueue') as mock_enqueue:
+        server, port = _start_test_server()
+        try:
+          status, body = _post(port, '/webhook/bart')
+          time.sleep(0.05)
+          assert status == 200
+          assert 'Interrupted' in body
+          mock_enqueue.assert_not_called()
+          assert not _mod._hold_interrupt.is_set()
+        finally:
+          server.shutdown()
 
 
 def test_interrupt_only_allowed_when_current_hold_is_low_priority() -> None:
@@ -611,18 +647,19 @@ def test_interrupt_only_allowed_when_current_hold_is_low_priority() -> None:
   with _mod._current_hold_lock:
     _mod._current_hold_priority = 7  # active low-priority hold
 
-  with patch.object(_mod, '_get_integration', return_value=mock_mod):
-    with patch.object(_mod, 'enqueue') as mock_enqueue:
-      server, port = _start_test_server()
-      try:
-        status, body = _post(port, '/webhook/bart')
-        time.sleep(0.05)
-        assert status == 200
-        assert 'Interrupted' in body
-        mock_enqueue.assert_not_called()
-        assert _mod._hold_interrupt.is_set()
-      finally:
-        server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      with patch.object(_mod, 'enqueue') as mock_enqueue:
+        server, port = _start_test_server()
+        try:
+          status, body = _post(port, '/webhook/bart')
+          time.sleep(0.05)
+          assert status == 200
+          assert 'Interrupted' in body
+          mock_enqueue.assert_not_called()
+          assert _mod._hold_interrupt.is_set()
+        finally:
+          server.shutdown()
 
 
 def test_webhook_normal_indefinite_enqueues_with_indefinite_flag() -> None:
@@ -637,19 +674,20 @@ def test_webhook_normal_indefinite_enqueues_with_indefinite_flag() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = wm
 
-  with patch.object(_mod, '_get_integration', return_value=mock_mod):
-    with patch.object(_mod, 'enqueue') as mock_enqueue:
-      server, port = _start_test_server()
-      try:
-        status, body = _post(port, '/webhook/bart', {'event': 'play'})
-        time.sleep(0.05)
-        assert status == 200
-        assert 'Enqueued' in body
-        mock_enqueue.assert_called_once()
-        call_kwargs = mock_enqueue.call_args.kwargs
-        assert call_kwargs['indefinite'] is True
-      finally:
-        server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      with patch.object(_mod, 'enqueue') as mock_enqueue:
+        server, port = _start_test_server()
+        try:
+          status, body = _post(port, '/webhook/bart', {'event': 'play'})
+          time.sleep(0.05)
+          assert status == 200
+          assert 'Enqueued' in body
+          mock_enqueue.assert_called_once()
+          call_kwargs = mock_enqueue.call_args.kwargs
+          assert call_kwargs['indefinite'] is True
+        finally:
+          server.shutdown()
 
 
 # ---------------------------------------------------------------------------
@@ -658,48 +696,50 @@ def test_webhook_normal_indefinite_enqueues_with_indefinite_flag() -> None:
 
 
 def test_malformed_json_returns_400() -> None:
-  server, port = _start_test_server()
-  try:
-    conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
-    bad_body = b'not json{'
-    conn.request(
-      'POST',
-      '/webhook/bart',
-      body=bad_body,
-      headers={
-        'Content-Type': 'application/json',
-        'Content-Length': str(len(bad_body)),
-        'X-Webhook-Secret': _SECRET,
-      },
-    )
-    resp = conn.getresponse()
-    assert resp.status == 400
-  finally:
-    server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    server, port = _start_test_server()
+    try:
+      conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+      bad_body = b'not json{'
+      conn.request(
+        'POST',
+        '/webhook/bart',
+        body=bad_body,
+        headers={
+          'Content-Type': 'application/json',
+          'Content-Length': str(len(bad_body)),
+          'X-Webhook-Secret': _CRED_SECRET,
+        },
+      )
+      resp = conn.getresponse()
+      assert resp.status == 400
+    finally:
+      server.shutdown()
 
 
 def test_handle_webhook_exception_returns_500_server_survives() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.side_effect = RuntimeError('boom')
 
-  with patch.object(_mod, '_get_integration', return_value=mock_mod):
-    server, port = _start_test_server()
-    try:
-      status, _ = _post(port, '/webhook/bart')
-      assert status == 500
-      # Server should still be alive after the error.
-      status2, _ = _post(port, '/webhook/bart')
-      assert status2 == 500  # still responding (integration still throws)
-    finally:
-      server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('bart')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      server, port = _start_test_server()
+      try:
+        status, _ = _post(port, '/webhook/bart')
+        assert status == 500
+        # Server should still be alive after the error.
+        status2, _ = _post(port, '/webhook/bart')
+        assert status2 == 500  # still responding (integration still throws)
+      finally:
+        server.shutdown()
 
 
 # ---------------------------------------------------------------------------
-# Secret auto-generation
+# Per-integration credential auto-generation
 # ---------------------------------------------------------------------------
 
 
-def test_secret_autogenerated_when_absent(
+def test_credential_autogenerated_when_absent(
   tmp_path: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
   config_file = tmp_path / 'config.toml'
@@ -712,26 +752,69 @@ def test_secret_autogenerated_when_absent(
     with patch('threading.Thread'):
       _mod._start_webhook_server()
 
-  assert 'generated' in caplog.text.lower()
-  assert _cfg._config.get('webhook', {}).get('secret')
+  assert 'auto-generated' in caplog.text.lower()
+  creds = _cfg._config.get('webhook', {}).get('credentials', {})
+  assert creds  # at least one credential was created
 
 
-def test_existing_secret_not_overwritten(
+def test_existing_credential_not_regenerated(
   tmp_path: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-  existing = 'already-set-secret-value'
+  existing_hash = '$argon2id$v=19$test$placeholder'
   config_file = tmp_path / 'config.toml'
-  config_file.write_text(f'[webhook]\nport = 8080\nsecret = "{existing}"\n')
+  config_file.write_text(
+    f'[webhook]\nport = 8080\n\n[webhook.credentials.plex-auto]\nsecret_hash = "{existing_hash}"\nwebhooks = ["plex"]\n'
+  )
   monkeypatch.chdir(tmp_path)
-  monkeypatch.setattr(_cfg, '_config', {'webhook': {'port': '8080', 'secret': existing}})
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {
+      'webhook': {
+        'port': '8080',
+        'credentials': {'plex-auto': {'secret_hash': existing_hash, 'webhooks': ['plex']}},
+      }
+    },
+  )
 
   with patch('scheduler.HTTPServer') as mock_http:
     mock_http.return_value = MagicMock()
     with patch('threading.Thread'):
       _mod._start_webhook_server()
 
-  assert 'generated' not in caplog.text.lower()
-  assert _cfg._config['webhook']['secret'] == existing
+  # plex-auto should not be regenerated.
+  assert "auto-generated for 'plex'" not in caplog.text
+  assert _cfg._config['webhook']['credentials']['plex-auto']['secret_hash'] == existing_hash
+
+
+def test_message_admin_autogenerated_even_when_friends_present(
+  tmp_path: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+  """message-admin is auto-generated even if friend credentials already exist."""
+  config_file = tmp_path / 'config.toml'
+  config_file.write_text('[webhook]\nport = 8080\n')
+  monkeypatch.chdir(tmp_path)
+  monkeypatch.setattr(
+    _cfg,
+    '_config',
+    {
+      'webhook': {
+        'port': '8080',
+        'credentials': {
+          'alice': {'secret_hash': '$argon2id$alice', 'webhooks': ['message']},
+        },
+      }
+    },
+  )
+
+  with patch('scheduler.HTTPServer') as mock_http:
+    mock_http.return_value = MagicMock()
+    with patch('threading.Thread'):
+      _mod._start_webhook_server()
+
+  assert "auto-generated for 'message'" in caplog.text
+  creds = _cfg._config.get('webhook', {}).get('credentials', {})
+  assert 'message-admin' in creds
 
 
 # ---------------------------------------------------------------------------
@@ -743,44 +826,51 @@ def test_multipart_payload_field_is_parsed_as_json() -> None:
   """Plex-style multipart/form-data body is unwrapped and dispatched correctly."""
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = None
-  server, port = _start_test_server()
-  try:
-    with patch.dict('scheduler._integrations', {'plex': mock_mod}):
-      status, _ = _post_multipart(port, '/webhook/plex', '{"event": "media.play"}')
-    assert status == 200
-    mock_mod.handle_webhook.assert_called_once_with({'event': 'media.play'})
-  finally:
-    server.shutdown()
+
+  with patch.dict(_cfg._config, _cred_config('plex')):
+    with patch.object(_mod, '_get_integration', return_value=mock_mod):
+      server, port = _start_test_server()
+      try:
+        status, _ = _post_multipart(port, '/webhook/plex', '{"event": "media.play"}')
+        assert status == 200
+        mock_mod.handle_webhook.assert_called_once()
+        call_args = mock_mod.handle_webhook.call_args
+        assert call_args.args[0].get('event') == 'media.play'
+      finally:
+        server.shutdown()
 
 
 def test_multipart_missing_payload_field_returns_400() -> None:
   body = f'--{_BOUNDARY}\r\nContent-Disposition: form-data; name="other"\r\n\r\nvalue\r\n--{_BOUNDARY}--\r\n'.encode()
-  server, port = _start_test_server()
-  try:
-    conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
-    conn.request(
-      'POST',
-      '/webhook/plex',
-      body=body,
-      headers={
-        'Content-Type': f'multipart/form-data; boundary={_BOUNDARY}',
-        'Content-Length': str(len(body)),
-        'X-Webhook-Secret': _SECRET,
-      },
-    )
-    resp = conn.getresponse()
-    assert resp.status == 400
-  finally:
-    server.shutdown()
+
+  with patch.dict(_cfg._config, _cred_config('plex')):
+    server, port = _start_test_server()
+    try:
+      conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+      conn.request(
+        'POST',
+        '/webhook/plex',
+        body=body,
+        headers={
+          'Content-Type': f'multipart/form-data; boundary={_BOUNDARY}',
+          'Content-Length': str(len(body)),
+          'X-Webhook-Secret': _CRED_SECRET,
+        },
+      )
+      resp = conn.getresponse()
+      assert resp.status == 400
+    finally:
+      server.shutdown()
 
 
 def test_multipart_invalid_json_in_payload_returns_400() -> None:
-  server, port = _start_test_server()
-  try:
-    status, _ = _post_multipart(port, '/webhook/plex', 'not json{')
-    assert status == 400
-  finally:
-    server.shutdown()
+  with patch.dict(_cfg._config, _cred_config('plex')):
+    server, port = _start_test_server()
+    try:
+      status, _ = _post_multipart(port, '/webhook/plex', 'not json{')
+      assert status == 400
+    finally:
+      server.shutdown()
 
 
 # ---------------------------------------------------------------------------
@@ -833,7 +923,7 @@ def test_named_credential_rejected_for_wrong_endpoint() -> None:
 
 
 def test_unknown_credential_secret_returns_401() -> None:
-  """A secret that matches neither the main secret nor any credential is rejected."""
+  """A secret that doesn't match any named credential is rejected."""
   from argon2 import PasswordHasher
 
   ph = PasswordHasher()
@@ -865,7 +955,6 @@ def test_credential_name_passed_to_handle_webhook() -> None:
     'config._config',
     {'webhook': {'credentials': {'alice': {'secret_hash': friend_hash, 'webhooks': ['message']}}}},
   ):
-    # autospec=True preserves the real signature so inspect.signature finds credential_name.
     with patch.object(_msg_mod, 'handle_webhook', autospec=True, return_value=None) as mock_hw:
       with patch.dict(_mod._integrations, {'message': _msg_mod}):
         server, port = _start_test_server()
@@ -877,21 +966,3 @@ def test_credential_name_passed_to_handle_webhook() -> None:
           assert kwargs.get('credential_name') == 'alice'
         finally:
           server.shutdown()
-
-
-def test_main_secret_passes_empty_credential_name() -> None:
-  """The main secret authenticates with credential_name='' (admin)."""
-  import integrations.message as _msg_mod
-
-  # autospec=True preserves the real signature so inspect.signature finds credential_name.
-  with patch.object(_msg_mod, 'handle_webhook', autospec=True, return_value=None) as mock_hw:
-    with patch.dict(_mod._integrations, {'message': _msg_mod}):
-      server, port = _start_test_server()
-      try:
-        _post(port, '/webhook/message', secret=_SECRET)
-        time.sleep(0.05)
-        mock_hw.assert_called_once()
-        _, kwargs = mock_hw.call_args
-        assert kwargs.get('credential_name') == ''
-      finally:
-        server.shutdown()

@@ -19,7 +19,6 @@ import email.parser
 import heapq
 import importlib
 import importlib.metadata
-import inspect
 import json
 import logging
 import secrets
@@ -489,21 +488,17 @@ def worker() -> None:
 _MAX_WEBHOOK_BODY = 64 * 1024  # 64 KB — generous limit for any webhook payload
 
 
-def _authenticate_webhook(provided: str, integration: str, main_secret: str) -> str | None:
-  """Authenticate a webhook request against the main secret or a named credential.
+def _authenticate_webhook(provided: str, integration: str) -> str | None:
+  """Authenticate a webhook request against named credentials.
 
   Returns:
-    ''       — authenticated as admin (main secret matched)
     '<name>' — authenticated as the named credential
     None     — authentication failed
 
   Credentials are scoped to the integration: a credential's 'webhooks' list must
   include the integration name for it to be considered. Credential secrets are
-  verified using argon2id hashing. The main secret is checked first (fast path).
+  verified using argon2id hashing.
   """
-  if secrets.compare_digest(provided, main_secret):
-    return ''
-
   credentials = _config_mod.get_credentials(integration)
   if not credentials:
     return None
@@ -531,12 +526,10 @@ def _authenticate_webhook(provided: str, integration: str, main_secret: str) -> 
   return None
 
 
-def _make_webhook_handler(secret: str) -> type:
-  """Return a BaseHTTPRequestHandler subclass bound to the given shared secret."""
+def _make_webhook_handler() -> type:
+  """Return a BaseHTTPRequestHandler subclass for the webhook listener."""
 
   class _WebhookHandler(BaseHTTPRequestHandler):
-    _secret: str = secret
-
     def do_POST(self) -> None:  # noqa: N802
       # Validate path: must be /webhook/<integration>
       # Parse separately from query string so ?secret= is handled cleanly.
@@ -554,7 +547,7 @@ def _make_webhook_handler(secret: str) -> type:
       header_secret = self.headers.get('X-Webhook-Secret', '')
       query_secret = parse_qs(parsed.query).get('secret', [''])[0]
       provided = header_secret or query_secret
-      credential_name = _authenticate_webhook(provided, integration_name, self._secret)
+      credential_name = _authenticate_webhook(provided, integration_name)
       if credential_name is None:
         logger.warning('Webhook: rejected request for %r — invalid or missing secret', integration_name)
         self._respond(401, 'Unauthorized')
@@ -612,17 +605,9 @@ def _make_webhook_handler(secret: str) -> type:
         return
 
       # Dispatch to the integration handler.
-      # Pass credential_name if the handler declares it; fall back to payload-only
-      # for existing integrations that haven't been updated yet (see #361).
+      # All integrations must accept credential_name as a keyword argument.
       try:
-        sig = inspect.signature(mod.handle_webhook)
-        if 'credential_name' in sig.parameters:
-          result: WebhookMessage | None = mod.handle_webhook(payload, credential_name=credential_name)
-        else:
-          result = mod.handle_webhook(payload)
-      except ValueError:
-        # inspect.signature can raise ValueError for some callable types (e.g. mocks).
-        result = mod.handle_webhook(payload)
+        result: WebhookMessage | None = mod.handle_webhook(payload, credential_name=credential_name)
       except Exception as e:  # noqa: BLE001
         logger.error('Webhook error in %r: %s', integration_name, e)
         self._respond(500, 'Internal error')
@@ -674,13 +659,56 @@ def _make_webhook_handler(secret: str) -> type:
   return _WebhookHandler
 
 
+# Integrations that get a named credential auto-generated on first startup
+# if none exists yet. The credential name is '<integration>-auto'.
+# For message, the credential name is 'message-admin'.
+_WEBHOOK_AUTOGEN: dict[str, str] = {
+  'plex': 'plex-auto',
+  'notion': 'notion-auto',
+  'message': 'message-admin',
+}
+
+
+def _autogen_webhook_credential(integration: str, cred_name: str) -> None:
+  """Auto-generate and persist a named credential for the given integration.
+
+  Hashes a random 32-byte URL-safe secret with argon2id and writes it to
+  [webhook.credentials.<cred_name>] in config.toml. The plaintext secret is
+  logged once so the user can copy it into their webhook sender.
+  """
+  try:
+    from argon2 import PasswordHasher  # noqa: PLC0415
+  except ImportError:
+    logger.warning(
+      'argon2-cffi is required to auto-generate webhook credentials; install it with: pip install argon2-cffi'
+    )
+    return
+
+  plaintext = secrets.token_urlsafe(32)
+  ph = PasswordHasher()
+  secret_hash = ph.hash(plaintext)
+  _config_mod.write_config_section(
+    f'webhook.credentials.{cred_name}',
+    {'secret_hash': secret_hash, 'webhooks': [integration]},
+  )
+  logger.info(
+    'Webhook credential auto-generated for %r and saved to config.toml '
+    'as [webhook.credentials.%s]. '
+    'Copy this into your webhook sender (as X-Webhook-Secret header or ?secret= query param): %s',
+    integration,
+    cred_name,
+    plaintext,
+  )
+
+
 def _start_webhook_server() -> None:
   """Start the HTTP webhook listener in a background daemon thread.
 
   Reads [webhook] config for port (default 8080) and bind address (default
-  127.0.0.1). Auto-generates a shared secret if none is configured, persists
-  it to config.toml, and logs it once so the user can copy it into their
-  webhook sender. Raises OSError if the port is already in use.
+  127.0.0.1). Authentication is handled entirely via named credentials defined
+  in [webhook.credentials.*] sections of config.toml. Auto-generates a
+  credential for each integration in _WEBHOOK_AUTOGEN on first startup if none
+  exists yet. Raises OSError if the port is already in use.
   """
   try:
     port = int(_config_mod.get_optional('webhook', 'port', '8080'))
@@ -691,16 +719,18 @@ def _start_webhook_server() -> None:
 
   bind = _config_mod.get_optional('webhook', 'bind', '127.0.0.1')
 
-  secret = _config_mod.get_optional('webhook', 'secret')
-  if not secret:
-    secret = secrets.token_urlsafe(32)
-    _config_mod.write_section_values('webhook', {'secret': secret})
-    logger.info(
-      'Webhook secret generated and saved to config.toml. '
-      'Copy the secret value from [webhook] into your webhook sender (Plex, Shortcuts, etc.).'
-    )
+  # Auto-generate credentials for integrations that have none yet.
+  for integration, cred_name in sorted(_WEBHOOK_AUTOGEN.items()):
+    existing = _config_mod.get_credentials(integration)
+    if integration == 'message':
+      # For message, ensure the admin credential exists even when friends are present.
+      needs_autogen = cred_name not in existing
+    else:
+      needs_autogen = not existing
+    if needs_autogen:
+      _autogen_webhook_credential(integration, cred_name)
 
-  handler = _make_webhook_handler(secret)
+  handler = _make_webhook_handler()
   server = HTTPServer((bind, port), handler)
   threading.Thread(target=server.serve_forever, daemon=True).start()
   logger.info('Webhook listener started on %s:%d', bind, port)

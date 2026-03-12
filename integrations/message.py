@@ -9,7 +9,7 @@
 #
 # Two actions are handled:
 #   message  (default) — post a message; requires a registered friend credential
-#   register           — register a new friend; requires the main webhook secret
+#   register           — register a new friend; requires any named credential
 #
 # See content/contrib/message.md for setup instructions and iOS Shortcut templates.
 
@@ -109,11 +109,11 @@ def handle_webhook(
   """Process a friend message or registration webhook payload.
 
   For message posting: credential_name must identify a registered friend with a
-  [message.friends.<name>] config entry. Anonymous and admin posts are rejected.
+  [message.friends.<name>] config entry. Unauthenticated posts are rejected.
 
-  For registration ('action': 'register'): only the admin (main webhook secret,
-  credential_name == '') may register friends. Returns None always for registration
-  (no display message; the admin Shortcut presents the secret to the user directly).
+  For registration ('action': 'register'): any named credential (non-None)
+  may register friends. Returns None always for registration (no display message;
+  the admin Shortcut presents the passphrase to the user directly).
 
   Returns a WebhookMessage for message posts, None for registration or on any error.
   """
@@ -124,9 +124,8 @@ def handle_webhook(
       return _handle_register(payload, credential_name)
 
     # Message posting — requires a registered friend credential.
-    # Explicitly reject the admin (empty string) and unauthenticated (None) callers.
     if not credential_name:
-      logger.debug('message: discarding: no credential or admin secret used')
+      logger.debug('message: discarding: unauthenticated or empty credential')
       return None
 
     import config as _config_mod
@@ -170,7 +169,7 @@ def _handle_register(
   payload: dict[str, Any],
   credential_name: str | None,
 ) -> None:
-  """Register a new friend credential. Only the admin (main webhook secret) may call this.
+  """Register a new friend credential. Any named credential may call this.
 
   Expects payload fields:
     name         (str, required): friend's name; spaces→hyphens, lowercased; shown on board (uppercased)
@@ -184,9 +183,9 @@ def _handle_register(
 
   import config as _config_mod
 
-  # Only admin (credential_name == '') can register.
-  if credential_name != '':
-    logger.warning('message: registration rejected: must use main webhook secret')
+  # Require an authenticated named credential.
+  if credential_name is None:
+    logger.warning('message: registration rejected: must use a named credential')
     return None
 
   name = re.sub(r'\s+', '-', str(payload.get('name', '')).strip().lower())

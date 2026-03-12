@@ -18,15 +18,19 @@ directly to the webhook listener. You only need:
 
 ## Configuration
 
-No `[notion]` section is needed in `config.toml`. Enable the webhook listener
-and the notion content:
+Enable the webhook listener and the notion content, and create a named credential:
 
 ```toml
 [scheduler]
 content_enabled = ["notion"]
 
 [webhook]
-# secret is auto-generated on first start and saved to config.toml — check the log.
+
+[webhook.credentials.notion]
+# Generate a hash from your chosen plaintext secret:
+#   python -c "from argon2 import PasswordHasher; print(PasswordHasher().hash('your-secret'))"
+secret_hash = "$argon2id$v=19$m=65536,t=3,p=4$..."
+webhooks = ["notion"]
 ```
 
 To override hold, timeout, or priority, add a section to `config.toml`:
@@ -48,15 +52,10 @@ priority = 8
 
 ### 1. Enable the webhook listener
 
-Add the `[webhook]` block shown in Configuration above. On first start, a
-shared secret is auto-generated, printed to the log, and saved to
-`config.toml` — it persists across restarts:
-
-```
-Webhook secret generated and saved to config.toml:
-  <your-secret-here>
-Copy this into your webhook sender (Plex, Shortcuts, etc.).
-```
+Add the `[webhook]` and `[webhook.credentials.notion]` blocks shown in
+Configuration above. Choose any plaintext secret, hash it with the provided
+command, and store the hash. Keep the plaintext secret — you will paste it into
+the Notion automation header.
 
 ### 2. Build the webhook URL
 
@@ -64,12 +63,12 @@ Copy this into your webhook sender (Plex, Shortcuts, etc.).
 http://<host-ip>:<host-port>/webhook/notion
 ```
 
-Pass the secret via the `X-Webhook-Secret` header (preferred) or the
+Pass the plaintext secret via the `X-Webhook-Secret` header (preferred) or the
 `?secret=` query parameter. Notion's HTTP request action supports custom
 headers, so the header approach is recommended:
 
 ```
-X-Webhook-Secret: <your-secret-here>
+X-Webhook-Secret: <your-plaintext-secret>
 ```
 
 ### 3. Configure a Notion automation
