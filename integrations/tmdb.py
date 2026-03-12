@@ -90,12 +90,14 @@ def get_movie_title(tmdb_movie_id: int) -> str | None:
 
 
 @functools.lru_cache(maxsize=512)
-def find_episode_by_tvdb_id(tvdb_episode_id: int) -> tuple[int, int, str] | None:
-  """Return (season, episode, title) from TMDb for a TVDb episode ID.
+def find_episode_by_tvdb_id(tvdb_episode_id: int) -> tuple[int, int, str, int] | None:
+  """Return (season, episode, title, show_id) from TMDb for a TVDb episode ID.
 
   Uses TMDb's /find endpoint with external_source=tvdb_id to resolve the
   canonical TMDb season and episode numbers. This corrects Trakt's TVDb-based
   single-flat-season numbering for anime to the proper multi-season form.
+  The returned show_id is the TMDb series ID and can be passed to
+  get_show_title() to retrieve the canonical show name.
 
   Result is cached in-memory by TVDb episode ID for the lifetime of the
   process. Returns None if the lookup fails or returns no results.
@@ -114,10 +116,11 @@ def find_episode_by_tvdb_id(tvdb_episode_id: int) -> tuple[int, int, str] | None
       ep = results[0]
       season = ep.get('season_number')
       episode = ep.get('episode_number')
+      show_id = ep.get('show_id')
       title: str = ep.get('name') or ''
-      if season is not None and episode is not None:
-        logger.debug('TMDb: tvdb_ep %d → S%dE%d %r', tvdb_episode_id, season, episode, title)
-        return (season, episode, title)
+      if season is not None and episode is not None and show_id is not None:
+        logger.debug('TMDb: tvdb_ep %d → S%dE%d %r (show=%d)', tvdb_episode_id, season, episode, title, show_id)
+        return (season, episode, title, show_id)
   except Exception as e:  # noqa: BLE001
     logger.debug('TMDb: find_episode_by_tvdb_id(%d) failed — %s', tvdb_episode_id, e)
   return None
