@@ -177,6 +177,19 @@ def test_inline_color_tag_replaced() -> None:
   assert result.data['variables']['message'] == [['GREEN LIGHT']]
 
 
+# --- credential_name ---
+
+
+def test_credential_name_none_accepted() -> None:
+  result = notion.handle_webhook(_make_payload(), credential_name=None)
+  assert isinstance(result, WebhookMessage)
+
+
+def test_credential_name_passed() -> None:
+  result = notion.handle_webhook(_make_payload(), credential_name='notion-auto')
+  assert isinstance(result, WebhookMessage)
+
+
 # --- Error handling ---
 
 

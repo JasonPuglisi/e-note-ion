@@ -234,14 +234,20 @@ the same integration stale — so only the latest state reaches the display.
 
 The webhook listener is activated by adding a `[webhook]` section to
 `config.toml` (see `config.example.toml`). It binds to `127.0.0.1:8080` by
-default. A shared secret is auto-generated on first startup if not configured;
-check the startup log to copy it into your webhook sender. Endpoint:
-`POST /webhook/<integration>` — secret accepted as `X-Webhook-Secret: <secret>`
-header (preferred) or `?secret=<secret>` query parameter (for senders like Plex
-that cannot set custom headers).
+default. Authentication is handled entirely via **named credentials** defined
+in `[webhook.credentials.<name>]` sections — each scoped to one or more
+integrations via the `webhooks` list. Credentials for plex, notion, and
+message-admin are auto-generated on first startup if absent (check the log for
+the plaintext secret to copy into your sender). Endpoint:
+`POST /webhook/<integration>` — credential secret accepted as
+`X-Webhook-Secret: <secret>` header (preferred) or `?secret=<secret>` query
+parameter (for senders like Plex that cannot set custom headers). All
+`handle_webhook` implementations must accept `credential_name: str | None = None`
+as a keyword argument.
 
 When adding a new webhook-capable integration, also add its name to
-`_KNOWN_INTEGRATIONS` in `scheduler.py`.
+`_KNOWN_INTEGRATIONS` in `scheduler.py`. If the integration should auto-generate
+a credential on first startup, also add it to `_WEBHOOK_AUTOGEN` in `scheduler.py`.
 
 ### Integration dependencies
 

@@ -116,7 +116,7 @@ def _load_template_config(template_name: str) -> dict[str, Any]:
   return effective
 
 
-def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
+def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) -> WebhookMessage | None:
   """Process a Plex webhook event and return a WebhookMessage or None.
 
   Enforces a state machine (IDLE → PLAYING ↔ PAUSED → IDLE):
@@ -255,7 +255,7 @@ def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
       return None
 
     template_name = 'paused' if event == _PAUSE_EVENT else 'now_playing'
-    logger.debug('plex: enqueueing %s: %r', template_name, show_name)
+    logger.debug('plex: enqueueing %s: %r (credential=%r)', template_name, show_name, credential_name)
     cfg = _load_template_config(template_name)
 
     return WebhookMessage(

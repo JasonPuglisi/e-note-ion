@@ -559,3 +559,18 @@ def test_handle_webhook_stop_timer_has_supersede_tag(_plex_playing: None) -> Non
     _plex.handle_webhook({'event': 'media.stop'})
     _fire_stop_timer()
   assert mock_enqueue.call_args.kwargs['supersede_tag'] == 'plex'
+
+
+# ---------------------------------------------------------------------------
+# credential_name
+# ---------------------------------------------------------------------------
+
+
+def test_credential_name_none_accepted() -> None:
+  result = _plex.handle_webhook(_episode_payload('media.play'), credential_name=None)
+  assert isinstance(result, _mod.WebhookMessage)
+
+
+def test_credential_name_passed() -> None:
+  result = _plex.handle_webhook(_episode_payload('media.play'), credential_name='plex-auto')
+  assert isinstance(result, _mod.WebhookMessage)

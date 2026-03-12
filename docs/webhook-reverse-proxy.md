@@ -3,7 +3,7 @@
 The built-in webhook listener speaks plain HTTP. For **local senders** — Plex
 Media Server on the same host or LAN, iOS Shortcuts on Wi-Fi — that is fine:
 traffic never leaves your network. For **external senders** — iOS Shortcuts
-over cellular, any service originating outside your LAN — the shared secret
+over cellular, any service originating outside your LAN — the credential secret
 would be transmitted in plaintext, so TLS is required.
 
 This page covers the recommended setup options.
@@ -90,7 +90,7 @@ so plain HTTP over the tailnet is safe.
 3. Use the Unraid node's **Tailscale IP** (e.g. `100.x.x.x`) as the webhook
    host:
    ```
-   http://100.x.x.x:32800/webhook/<integration>?secret=<your-secret>
+   http://100.x.x.x:32800/webhook/<integration>?secret=<your-plaintext-secret>
    ```
 
 No router changes, no TLS certificates, no tunnel quota.
@@ -103,8 +103,8 @@ If you already have a reverse proxy running and want to use a custom domain,
 point it at the webhook host port (`32800` by default on Unraid) and enable
 HTTPS as you normally would.
 
-The listener reads the secret from the `X-Webhook-Secret` header or the
-`?secret=` query parameter — no special header rewriting is required. Refer
+The listener reads the credential secret from the `X-Webhook-Secret` header or
+the `?secret=` query parameter — no special header rewriting is required. Refer
 to your reverse proxy's own documentation for TLS and Let's Encrypt setup.
 
 ---

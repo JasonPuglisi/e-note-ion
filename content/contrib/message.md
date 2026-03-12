@@ -32,7 +32,6 @@ Enable the webhook listener and message content:
 content_enabled = ["message"]
 
 [webhook]
-# secret is auto-generated on first start — check the log.
 ```
 
 To override hold, timeout, or priority, add a section to `config.toml`:
@@ -54,7 +53,6 @@ Friend display metadata is stored per-friend by the registration flow:
 
 ```toml
 [message.friends.alice]
-display_name = "Alice"
 color = "R"
 ```
 
@@ -76,9 +74,12 @@ These are managed by the registration flow — do not edit manually.
 
 ### Register a friend (admin Shortcut)
 
-The admin uses the main webhook secret to register a friend. The Shortcut generates
+The admin uses their named credential to register a friend. The Shortcut generates
 a random 3-word passphrase client-side, registers it with the board, then shares the
 passphrase with the friend.
+
+The admin credential can be any `[webhook.credentials.*]` entry scoped to `message`.
+Use the same `python -c "from argon2 import PasswordHasher; print(PasswordHasher().hash('your-secret'))"` command to hash it, and put the plaintext in the Shortcut's import question.
 
 A template Shortcut is available at `content/contrib/shortcuts/Register Vestaboard Friend.shortcut`.
 Import it and fill in the two import questions. To build manually:
@@ -122,7 +123,7 @@ Import it and fill in the two import questions. To build manually:
     - Question: `Webhook URL`, Parameter: URL field of Get Contents of URL, Default: blank
     - Question: `Webhook secret`, Parameter: the Text action from step 6, Default: blank
 
-Share via iCloud link → send to yourself only. This Shortcut holds the main secret.
+Share via iCloud link → send to yourself only. This Shortcut holds your admin credential secret.
 
 ### Friend Shortcut
 
@@ -191,7 +192,7 @@ The passphrase is their identity — keep each friend's iCloud link private.
 The sender is identified by their `X-Webhook-Secret` passphrase. No other fields
 are needed — name and color come from the board's config.
 
-### Registration (admin only)
+### Registration
 
 ```json
 {
@@ -211,7 +212,8 @@ are needed — name and color come from the board's config.
 
 Re-registering an existing `name` overwrites the previous credential and display config.
 
-Registration must be sent using the main webhook secret, not a friend passphrase.
+Registration must be sent using any named credential (not a friend passphrase that has
+no `[webhook.credentials.*]` entry with `webhooks = ["message"]`).
 
 ## Display format
 
