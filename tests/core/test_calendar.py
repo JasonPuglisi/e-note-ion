@@ -526,10 +526,14 @@ _BDAY_TODAY = _FIXED_NOW.date()
 @pytest.fixture(autouse=True)
 def reset_birthday_caches() -> Generator[None, None, None]:
   calendar._carddav_addressbook_url = None
+  calendar._carddav_home_url = None
   calendar._birthday_cache = None
+  calendar._self_contact_cache = None
   yield
   calendar._carddav_addressbook_url = None
+  calendar._carddav_home_url = None
   calendar._birthday_cache = None
+  calendar._self_contact_cache = None
 
 
 def _patch_birthdays(
@@ -656,3 +660,151 @@ def test_parse_bday_formats() -> None:
   assert calendar._parse_bday('--03-10') == (3, 10)
   assert calendar._parse_bday('--0310') == (3, 10)
   assert calendar._parse_bday('not-a-date') is None
+
+
+# ── Self-birthday tests ────────────────────────────────────────────────────────
+
+_SELF_BDAY_TODAY = _BDAY_TODAY  # reuse the fixed date: 2026-01-15
+
+# Minimal vCard for the self contact, with BDAY matching _SELF_BDAY_TODAY.
+_SELF_VCARD = (
+  'BEGIN:VCARD\r\n'
+  'VERSION:3.0\r\n'
+  'FN:Alex Smith\r\n'
+  f'BDAY;value=date:{_SELF_BDAY_TODAY.year}-{_SELF_BDAY_TODAY.month:02d}-{_SELF_BDAY_TODAY.day:02d}\r\n'
+  'END:VCARD\r\n'
+)
+
+_SELF_ME_CARD_PROPFIND_RESPONSE = (
+  '<?xml version="1.0"?>'
+  '<multistatus xmlns="DAV:">'
+  '<response><href>/home/</href>'
+  '<propstat><prop>'
+  '<me-card xmlns="http://calendarserver.org/ns/">'
+  '<href xmlns="DAV:">/home/card/self.vcf</href>'
+  '</me-card>'
+  '</prop><status>HTTP/1.1 200 OK</status></propstat>'
+  '</response>'
+  '</multistatus>'
+)
+
+
+def _patch_self_birthday(
+  monkeypatch: pytest.MonkeyPatch,
+  vcard_text: str = _SELF_VCARD,
+  config: dict | None = None,
+) -> None:
+  """Patch config, home URL, and _get_now for self-birthday unit tests.
+
+  Mocks the me-card PROPFIND and vCard GET so no real HTTP is made.
+  """
+  from unittest.mock import MagicMock
+
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', config or _BDAY_CONFIG)
+  monkeypatch.setattr(calendar, '_carddav_addressbook_url', 'https://fake/ab/')
+  monkeypatch.setattr(calendar, '_carddav_home_url', 'https://fake/home/')
+  monkeypatch.setattr(calendar, '_display_tz', lambda: _UTC)
+  monkeypatch.setattr(calendar, '_get_now', lambda tz: _FIXED_NOW)
+
+  propfind_resp = MagicMock()
+  propfind_resp.content = _SELF_ME_CARD_PROPFIND_RESPONSE.encode()
+  propfind_resp.raise_for_status = lambda: None
+
+  vcard_resp = MagicMock()
+  vcard_resp.text = vcard_text
+  vcard_resp.raise_for_status = lambda: None
+
+  def _mock_request(method: str, url: str, **kwargs: object) -> MagicMock:
+    if method == 'PROPFIND':
+      return propfind_resp
+    return vcard_resp
+
+  monkeypatch.setattr(calendar.requests, 'request', _mock_request)
+  monkeypatch.setattr(calendar.requests, 'get', lambda url, **kw: vcard_resp)
+
+
+def test_self_birthday_today(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Birthday matches today → returns {'name': [['ALEX']]}."""
+  _patch_self_birthday(monkeypatch)
+  result = calendar.get_variables_self_birthday()
+  assert result == {'name': [['ALEX']]}
+
+
+def test_self_birthday_not_today(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Birthday is not today → raises IntegrationDataUnavailableError."""
+  tomorrow = _SELF_BDAY_TODAY + timedelta(days=1)
+  vcard = (
+    'BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Alex Smith\r\n'
+    f'BDAY;value=date:{tomorrow.year}-{tomorrow.month:02d}-{tomorrow.day:02d}\r\n'
+    'END:VCARD\r\n'
+  )
+  _patch_self_birthday(monkeypatch, vcard_text=vcard)
+  with pytest.raises(IntegrationDataUnavailableError, match='not the owner'):
+    calendar.get_variables_self_birthday()
+
+
+def test_self_birthday_no_carddav_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Missing carddav_url → raises immediately."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'calendar': {}, 'scheduler': {}})
+  with pytest.raises(IntegrationDataUnavailableError, match='carddav_url'):
+    calendar.get_variables_self_birthday()
+
+
+def test_self_birthday_no_bday_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+  """me-card vCard has no BDAY → raises."""
+  vcard = 'BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Alex Smith\r\nEND:VCARD\r\n'
+  _patch_self_birthday(monkeypatch, vcard_text=vcard)
+  with pytest.raises(IntegrationDataUnavailableError, match='could not be resolved'):
+    calendar.get_variables_self_birthday()
+
+
+def test_self_birthday_cache_hit(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Cached self contact is returned without any HTTP request."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _BDAY_CONFIG)
+  monkeypatch.setattr(calendar, '_display_tz', lambda: _UTC)
+  monkeypatch.setattr(calendar, '_get_now', lambda tz: _FIXED_NOW)
+  monkeypatch.setattr(
+    calendar,
+    '_self_contact_cache',
+    ('ALEX', _SELF_BDAY_TODAY.month, _SELF_BDAY_TODAY.day),
+  )
+  with patch('integrations.calendar.requests.request') as mock_req:
+    result = calendar.get_variables_self_birthday()
+    mock_req.assert_not_called()
+  assert result == {'name': [['ALEX']]}
+
+
+def test_self_birthday_me_card_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Full me-card PROPFIND + vCard GET path populates _self_contact_cache."""
+  _patch_self_birthday(monkeypatch)
+  assert calendar._self_contact_cache is None
+  calendar.get_variables_self_birthday()
+  assert calendar._self_contact_cache == ('ALEX', _SELF_BDAY_TODAY.month, _SELF_BDAY_TODAY.day)
+
+
+def test_birthdays_suppresses_self(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Self contact is excluded from get_variables_birthdays() results."""
+  # Pre-populate self contact cache so _resolve_self_contact() returns it.
+  monkeypatch.setattr(
+    calendar,
+    '_self_contact_cache',
+    ('ALEX', _SELF_BDAY_TODAY.month, _SELF_BDAY_TODAY.day),
+  )
+  # Contacts include self (ALEX) and one other (BLAKE, also today).
+  _patch_birthdays(
+    monkeypatch,
+    [
+      ('ALEX', _SELF_BDAY_TODAY.month, _SELF_BDAY_TODAY.day),
+      ('BLAKE', _SELF_BDAY_TODAY.month, _SELF_BDAY_TODAY.day),
+    ],
+  )
+  result = calendar.get_variables_birthdays()
+  names = [line.split()[0] for line in result['birthdays'][0]]
+  assert 'ALEX' not in names
+  assert 'BLAKE' in names

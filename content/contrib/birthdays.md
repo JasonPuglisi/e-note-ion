@@ -1,15 +1,15 @@
 # birthdays.json
 
-Upcoming birthdays from iCloud Contacts, shown once daily at 9am. Displays
-contacts whose birthday falls today or within the lookahead window, one per
-line. Requires the same iCloud app-specific password as the CalDAV calendar
-integration.
+Two birthday templates, both requiring iCloud CardDAV:
 
-Omit `carddav_url` from `[calendar]` to disable this integration entirely.
+- **`today`** — upcoming birthdays from contacts, shown once daily at 9am
+- **`self`** — prominent happy birthday display on the board owner's own
+  birthday, shown at 8am (priority 9). The owner is suppressed from the
+  `today` list — their birthday is shown exclusively via `self`.
+
+Omit `carddav_url` from `[calendar]` to disable both templates entirely.
 
 ## Configuration
-
-Add the following to your `[calendar]` section in `config.toml`:
 
 ```toml
 [calendar]
@@ -24,13 +24,18 @@ password = "xxxx-xxxx-xxxx-xxxx"
 | `carddav_url` | Yes | CardDAV server URL. iCloud: `https://contacts.icloud.com/` |
 | `username` | Yes | Apple ID email address (shared with CalDAV mode if both are enabled) |
 | `password` | Yes | App-specific password. Generate at https://appleid.apple.com → Security → App-Specific Passwords. |
-| `birthdays_lookahead_days` | No | How many days ahead to show birthdays. Default: `7`. |
+| `birthdays_lookahead_days` | No | How many days ahead to show birthdays in `today`. Default: `7`. |
 
 The `username` and `password` keys are shared with CalDAV calendar mode — if
 both are configured under `[calendar]`, one set of credentials serves both.
 
+The `self` template requires iCloud CardDAV specifically — it uses Apple's
+CalendarServer me-card extension (`{http://calendarserver.org/ns/}me-card`)
+to identify the board owner. See issue #393 for planned Google support.
+
 ## Display format
 
+**`today` template:**
 ```
 ❤️ BIRTHDAYS
 ADAM TODAY
@@ -40,6 +45,15 @@ BRIANNA FRI
 Each line shows the contact's first name and either `TODAY` or a 3-letter
 weekday abbreviation (`MON`–`SUN`). Lines are sorted: today first, then
 ascending days ahead, then alphabetically by name.
+
+**`self` template:**
+```
+HAPPY BIRTHDAY
+YOURNAME! ❤️
+```
+
+On the Note (3×15), both lines fit for most first names. If your name and `!`
+fill the full row, `❤️` wraps to row 3.
 
 ## Keeping data current
 
