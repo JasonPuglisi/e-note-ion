@@ -80,10 +80,17 @@ _caldav_cache: list[tuple[Any, str | None]] | None = None
 # CardDAV addressbook URL cache (process lifetime — URL structure never changes).
 _carddav_addressbook_url: str | None = None
 
+# CardDAV home URL cache (process lifetime — populated alongside addressbook URL).
+_carddav_home_url: str | None = None
+
 # Birthday contacts cache: (contacts, monotonic_fetch_time) or None.
 # contacts is a list of (first_name, month, day).
 _birthday_cache: tuple[list[tuple[str, int, int]], float] | None = None
 _BIRTHDAY_CACHE_TTL = 24 * 60 * 60  # 24 hours
+
+# Self contact cache: (first_name, month, day) or None (process lifetime).
+# Populated by _resolve_self_contact(); BDAY never changes in practice.
+_self_contact_cache: tuple[str, int, int] | None = None
 
 
 # ── Color helpers ──────────────────────────────────────────────────────────────
@@ -473,7 +480,7 @@ def _get_addressbook_url(carddav_url: str, username: str, password: str) -> str:
   addressbook-home → first addressbook collection.
   Raises IntegrationDataUnavailableError on failure.
   """
-  global _carddav_addressbook_url
+  global _carddav_addressbook_url, _carddav_home_url
 
   if _carddav_addressbook_url is not None:
     logger.debug('calendar: CardDAV addressbook cache hit')
@@ -551,6 +558,7 @@ def _get_addressbook_url(carddav_url: str, username: str, password: str) -> str:
     raise IntegrationDataUnavailableError(f'calendar: CardDAV discovery failed — {e}') from None
 
   logger.debug('calendar: CardDAV addressbook discovered: %r', addressbook_url)
+  _carddav_home_url = home_url
   _carddav_addressbook_url = addressbook_url
   return addressbook_url
 
@@ -624,6 +632,92 @@ def _fetch_birthday_contacts(
   logger.debug('calendar: fetched %d birthday contact(s)', len(contacts))
   _birthday_cache = (contacts, time.monotonic())
   return contacts
+
+
+def _resolve_self_contact(
+  carddav_url: str,
+  username: str,
+  password: str,
+) -> tuple[str, int, int] | None:
+  """Resolve the owner's contact as (first_name, birth_month, birth_day).
+
+  Uses the CalendarServer me-card extension: PROPFIND on the CardDAV home
+  with {http://calendarserver.org/ns/}me-card to get the self vCard href,
+  then GET the vCard and parse FN and BDAY.
+
+  Returns None on any failure (property absent, server doesn't support the
+  extension, network error, no BDAY set). Caches for process lifetime.
+  Only supported for iCloud (calendarserver.org extension required).
+  """
+  global _self_contact_cache
+
+  if _self_contact_cache is not None:
+    return _self_contact_cache
+
+  try:
+    # Ensure home URL is populated (triggers discovery if not yet done).
+    _get_addressbook_url(carddav_url, username, password)
+    if not _carddav_home_url:
+      return None
+
+    auth = (username, password)
+    ns = {
+      'd': 'DAV:',
+      'cs': 'http://calendarserver.org/ns/',
+    }
+
+    # Step 1: PROPFIND home for me-card href.
+    r = requests.request(
+      'PROPFIND',
+      _carddav_home_url,
+      headers={'Depth': '0', 'Content-Type': 'application/xml'},
+      data=(
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<propfind xmlns="DAV:" xmlns:cs="http://calendarserver.org/ns/">'
+        '<prop><cs:me-card/></prop></propfind>'
+      ),
+      auth=auth,
+      timeout=15,
+    )
+    r.raise_for_status()
+    root = ET.fromstring(r.content)  # nosec B314 — XML from authenticated Apple API
+    me_card_href = root.findtext('.//cs:me-card/d:href', namespaces=ns)
+    if not me_card_href:
+      logger.debug('calendar: me-card property absent — self-birthday unavailable')
+      return None
+
+    vcard_url = urljoin(_carddav_home_url, me_card_href)
+
+    # Step 2: GET the self vCard.
+    r = requests.get(vcard_url, auth=auth, timeout=15)
+    r.raise_for_status()
+
+    fn: str | None = None
+    bday_raw: str | None = None
+    for line in r.text.splitlines():
+      upper = line.upper()
+      if upper.startswith('FN:'):
+        fn = line[3:].strip()
+      elif upper.startswith('BDAY') and ':' in line:
+        bday_raw = line.split(':', 1)[1].strip()
+
+    if not fn or not bday_raw:
+      logger.debug('calendar: me-card missing FN or BDAY — self-birthday unavailable')
+      return None
+
+    parsed = _parse_bday(bday_raw)
+    if parsed is None:
+      logger.debug('calendar: me-card BDAY unparseable — self-birthday unavailable')
+      return None
+
+    first_name = fn.split()[0].upper()
+    _self_contact_cache = (first_name, parsed[0], parsed[1])
+    logger.debug('calendar: self contact resolved')
+    return _self_contact_cache
+
+  except Exception:  # noqa: BLE001  # nosec B112 — broad catch; me-card is best-effort
+    logger.debug('calendar: me-card discovery failed — self-birthday unavailable')
+    return None
 
 
 # ── Sorting and formatting ─────────────────────────────────────────────────────
@@ -749,8 +843,12 @@ def get_variables_birthdays() -> dict[str, list[list[str]]]:
   addressbook_url = _get_addressbook_url(carddav_url, username, password)
   contacts = _fetch_birthday_contacts(addressbook_url, username, password)
 
+  self_contact = _resolve_self_contact(carddav_url, username, password)
+
   entries: list[tuple[int, str, str]] = []  # (days_ahead, first_name, line)
   for first_name, month, day in contacts:
+    if self_contact and (first_name, month, day) == self_contact:
+      continue  # shown exclusively via birthday_self.json
     try:
       candidate = today.replace(month=month, day=day)
     except ValueError:
@@ -771,3 +869,44 @@ def get_variables_birthdays() -> dict[str, list[list[str]]]:
 
   entries.sort(key=lambda x: (x[0], x[1]))
   return {'birthdays': [[line for _, _, line in entries]]}
+
+
+def get_variables_self_birthday() -> dict[str, list[list[str]]]:
+  """Return the owner's first name when today is their birthday.
+
+  Returns key 'name' for use in birthday_self.json format strings.
+  Requires carddav_url in [calendar] config and iCloud CardDAV (me-card
+  CalendarServer extension). Raises IntegrationDataUnavailableError when
+  not configured, me-card unavailable, or today is not the owner's birthday.
+  """
+  import config as _cfg
+
+  cal_cfg: dict[str, Any] = _cfg._config.get('calendar', {})
+  carddav_url = cal_cfg.get('carddav_url', '')
+  username = cal_cfg.get('username', '')
+  password = cal_cfg.get('password', '')
+
+  if not carddav_url:
+    raise IntegrationDataUnavailableError('calendar: self-birthday requires carddav_url in [calendar] config')
+  if not username or not password:
+    raise IntegrationDataUnavailableError('calendar: self-birthday requires username and password in [calendar] config')
+
+  self_contact = _resolve_self_contact(carddav_url, username, password)
+  if self_contact is None:
+    raise IntegrationDataUnavailableError('calendar: self contact could not be resolved (iCloud me-card required)')
+
+  first_name, month, day = self_contact
+
+  tz = _display_tz()
+  now = _get_now(tz)
+  today = now.date()
+
+  try:
+    birthday_this_year = today.replace(month=month, day=day)
+  except ValueError:
+    raise IntegrationDataUnavailableError('calendar: self birthday (Feb 29) skipped on non-leap year') from None
+
+  if today != birthday_this_year:
+    raise IntegrationDataUnavailableError("calendar: today is not the owner's birthday")
+
+  return {'name': [[first_name]]}

@@ -18,12 +18,9 @@ directly to the webhook listener. You only need:
 
 ## Configuration
 
-Enable the webhook listener and the notion content, and create a named credential:
+Enable the webhook listener and create a named credential:
 
 ```toml
-[scheduler]
-content_enabled = ["notion"]
-
 [webhook]
 
 [webhook.credentials.notion]

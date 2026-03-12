@@ -18,6 +18,25 @@
           ]
         }
       ]
+    },
+    "self": {
+      "schedule": {
+        "cron": "0 8 * * *",
+        "hold": 3600,
+        "timeout": 7200
+      },
+      "priority": 9,
+      "truncation": "word",
+      "integration": "calendar",
+      "integration_fn": "get_variables_self_birthday",
+      "templates": [
+        {
+          "format": [
+            "HAPPY BIRTHDAY",
+            "{name}! \u2764\ufe0f"
+          ]
+        }
+      ]
     }
   }
 }

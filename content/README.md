@@ -30,6 +30,11 @@ content_enabled = ["my_quotes"]      # only my_quotes.json from content/user/
 When the key is absent, user files always load and no contrib files load.
 When the key is set, the filter applies to both `user/` and `contrib/`.
 
+This filter only affects **cron-scheduled** templates. Webhook-only
+integrations (`plex`, `message`, `notion`) route incoming webhook events
+directly through the webhook listener — their `.json` files never need to be
+in `content_enabled` for webhooks to work.
+
 ## Content file format
 
 Each JSON file can contain multiple named templates, each with its own
@@ -239,7 +244,7 @@ Don't inflate priority to "win" — see the priority guidelines above.
 |---|---|
 | [`weather.json`](contrib/weather.md) | Current weather conditions via Open-Meteo |
 | [`calendar.json`](contrib/calendar.md) | Today's calendar events (ICS and iCloud CalDAV) |
-| [`birthdays.json`](contrib/birthdays.md) | Upcoming birthdays from iCloud Contacts |
+| [`birthdays.json`](contrib/birthdays.md) | Upcoming birthdays from iCloud Contacts; prominent self-birthday display |
 | [`bart.json`](contrib/bart.md) | BART real-time departure board |
 | [`discogs.json`](contrib/discogs.md) | Daily vinyl suggestion from your Discogs collection |
 | [`trakt.json`](contrib/trakt.md) | Trakt.tv upcoming calendar and now-playing |

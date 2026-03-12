@@ -25,12 +25,9 @@ and color automatically.
 
 ## Configuration
 
-Enable the webhook listener and message content:
+Enable the webhook listener:
 
 ```toml
-[scheduler]
-content_enabled = ["message"]
-
 [webhook]
 ```
 

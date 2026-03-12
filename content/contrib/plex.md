@@ -15,12 +15,9 @@ must have an active Plex Pass subscription to send webhooks.
 
 ## Configuration
 
-Enable the webhook listener and the plex content, and create a named credential:
+Enable the webhook listener and create a named credential:
 
 ```toml
-[scheduler]
-content_enabled = ["plex"]
-
 [webhook]
 # Bind to 0.0.0.0 so Plex (which may run in a separate container) can reach it.
 # port defaults to 8080 (container-internal); map it to a host port in Docker/Unraid.
