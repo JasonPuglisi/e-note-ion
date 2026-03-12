@@ -458,7 +458,7 @@ def test_get_variables_both_modes_merged(monkeypatch: pytest.MonkeyPatch) -> Non
   # Build a fake CalDAV calendar that returns a CalDAV event.
   caldav_event_ics = _make_ics([_future_event('CALDAV EVENT', hours_ahead=3)])
   fake_cal_obj = MagicMock()
-  fake_cal_obj.icalendar_object = Calendar.from_ical(caldav_event_ics)
+  fake_cal_obj.icalendar_instance = Calendar.from_ical(caldav_event_ics)
   fake_caldav_cal = MagicMock()
   fake_caldav_cal.events.return_value = [fake_cal_obj]
 
