@@ -1,0 +1,23 @@
+{
+  "templates": {
+    "today": {
+      "schedule": {
+        "cron": "0 9 * * *",
+        "hold": 600,
+        "timeout": 3600
+      },
+      "priority": 5,
+      "truncation": "ellipsis",
+      "integration": "calendar",
+      "integration_fn": "get_variables_birthdays",
+      "templates": [
+        {
+          "format": [
+            "\u2764\ufe0f BIRTHDAYS",
+            "{birthdays}"
+          ]
+        }
+      ]
+    }
+  }
+}
