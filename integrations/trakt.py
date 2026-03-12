@@ -24,9 +24,11 @@ import logging
 import threading
 import time
 from datetime import datetime, timezone
+from typing import Any
 
 import requests
 
+import integrations.media as _media
 import integrations.vestaboard as _vb
 from exceptions import IntegrationDataUnavailableError
 from integrations.http import CacheEntry, fetch_with_retry, user_agent
@@ -297,19 +299,51 @@ def _ensure_authenticated() -> None:
 # --- Integration functions ---
 
 
-_LEADING_ARTICLES = ('THE ', 'AN ', 'A ')
+def _canonicalize_episode(
+  show_data: dict[str, Any],
+  ep_data: dict[str, Any],
+) -> tuple[str, int, int, str]:
+  """Return (show_name, season, number, ep_title) canonicalized via TMDb if configured.
+
+  Uses the show's TMDb ID for the canonical title and the episode's TVDb ID to
+  resolve the correct TMDb season/episode numbers (important for anime, where
+  Trakt uses TVDb single-season ordering). Falls back to Trakt data if TMDb is
+  unconfigured or any lookup fails.
+  """
+  import integrations.tmdb as _tmdb
+
+  title = show_data['title']
+  season: int = ep_data['season']
+  number: int = ep_data['number']
+  ep_title: str = ep_data.get('title') or ''
+
+  if _tmdb.is_configured():
+    tmdb_show_id = show_data.get('ids', {}).get('tmdb')
+    if tmdb_show_id:
+      canonical = _tmdb.get_show_title(int(tmdb_show_id))
+      if canonical:
+        title = canonical
+    tvdb_ep_id = ep_data.get('ids', {}).get('tvdb')
+    if tvdb_ep_id:
+      resolved = _tmdb.find_episode_by_tvdb_id(int(tvdb_ep_id))
+      if resolved:
+        season, number, ep_title = resolved
+
+  show_name = _vb.truncate_line(title.upper(), _vb.model.cols, 'word')
+  return show_name, season, number, ep_title
 
 
-def _format_episode_ref(season: int, number: int) -> str:
-  """Return a compact episode ref, e.g. S9E8 (no zero-padding)."""
-  return f'S{season}E{number}'
+def _canonicalize_movie(movie_data: dict[str, Any]) -> str:
+  """Return the canonical movie title via TMDb if configured, else the raw title."""
+  import integrations.tmdb as _tmdb
 
-
-def _strip_leading_article(title: str) -> str:
-  """Remove a leading article (A, An, The) from an uppercased title."""
-  for article in _LEADING_ARTICLES:
-    if title.startswith(article):
-      return title[len(article) :]
+  title: str = movie_data['title']
+  if _tmdb.is_configured():
+    tmdb_movie_id = movie_data.get('ids', {}).get('tmdb')
+    if tmdb_movie_id:
+      canonical = _tmdb.get_movie_title(int(tmdb_movie_id))
+      if canonical:
+        title = canonical
   return title
 
 
@@ -366,10 +400,10 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
   future_entries.sort(key=lambda e: e['first_aired'])
   entry = future_entries[0]
 
-  show_name = _vb.truncate_line(entry['show']['title'].upper(), _vb.model.cols, 'word')
   ep = entry['episode']
-  episode_ref = _format_episode_ref(ep['season'], ep['number'])
-  episode_title = _strip_leading_article((ep.get('title') or '').upper())
+  show_name, season, number, ep_title = _canonicalize_episode(entry['show'], ep)
+  episode_ref = _media.format_episode_ref(season, number)
+  episode_title = _media.strip_leading_article(ep_title.upper())
 
   # Convert UTC first_aired → display timezone (config [scheduler].timezone,
   # or system local if unset).
@@ -464,12 +498,12 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
   media_type = data.get('type')
 
   if media_type == 'episode':
-    show_name = _vb.truncate_line(data['show']['title'].upper(), _vb.model.cols, 'word')
     ep = data['episode']
-    episode_ref = _format_episode_ref(ep['season'], ep['number'])
-    episode_title = _strip_leading_article((ep.get('title') or '').upper())
+    show_name, season, number, ep_title = _canonicalize_episode(data['show'], ep)
+    episode_ref = _media.format_episode_ref(season, number)
+    episode_title = _media.strip_leading_article(ep_title.upper())
   elif media_type == 'movie':
-    show_name = _vb.truncate_line(data['movie']['title'].upper(), _vb.model.cols, 'word')
+    show_name = _vb.truncate_line(_canonicalize_movie(data['movie']).upper(), _vb.model.cols, 'word')
     episode_ref = 'MOVIE'
     episode_title = ''
   else:
@@ -550,9 +584,9 @@ def get_variables_next_up() -> dict[str, list[list[str]]]:
 
     ep = r2.json().get('next_episode')
     if ep is not None:
-      show_name = _vb.truncate_line(entry['show']['title'].upper(), _vb.model.cols, 'word')
-      episode_ref = _format_episode_ref(ep['season'], ep['number'])
-      episode_title = _strip_leading_article((ep.get('title') or '').upper())
+      show_name, season, number, ep_title = _canonicalize_episode(entry['show'], ep)
+      episode_ref = _media.format_episode_ref(season, number)
+      episode_title = _media.strip_leading_article(ep_title.upper())
       result = {
         'show_name': [[show_name]],
         'episode_ref': [[episode_ref]],

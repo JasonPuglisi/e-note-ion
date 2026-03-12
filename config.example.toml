@@ -150,6 +150,17 @@ client_secret = "your-trakt-client-secret"
 # Optional: number of days ahead to show in the calendar (default 7, max 33)
 # calendar_days = 7
 
+[tmdb]
+# Optional: canonical media metadata authority for the Plex and Trakt integrations.
+# When set, show/movie titles are resolved to their TMDb canonical form and Trakt
+# episode numbers are corrected via TMDb (important for anime, which Trakt numbers
+# using TVDb's single-season convention). When absent, integrations use their native
+# titles and episode numbers unchanged.
+#
+# Free read access token — sign up at https://www.themoviedb.org and generate one at
+# https://www.themoviedb.org/settings/api (under "API Read Access Token").
+# api_read_access_token = "your-tmdb-api-read-access-token"
+
 [plex]
 # Optional: seconds to wait after a media.stop event before showing the stopped
 # card. If a media.play or media.resume arrives in this window (e.g. between

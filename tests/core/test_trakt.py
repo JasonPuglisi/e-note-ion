@@ -591,52 +591,111 @@ def test_auth_thread_logs_error_on_denied(config_without_tokens: Path, caplog: p
   assert 'denied' in caplog.text.lower()
 
 
-# --- _format_episode_ref ---
+# --- _canonicalize_episode ---
 
 
-def test_format_episode_ref_no_padding() -> None:
-  assert trakt._format_episode_ref(9, 8) == 'S9E8'  # noqa: SLF001
+def test_canonicalize_episode_no_tmdb_uses_trakt_data(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Without TMDb configured, returns Trakt native title and episode numbers."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {})  # no [tmdb] section
+
+  show_data = {'title': 'Attack on Titan', 'ids': {'tmdb': 1429}}
+  ep_data = {'season': 1, 'number': 45, 'title': 'Above and Below', 'ids': {'tvdb': 8765432}}
+
+  show_name, season, number, ep_title = trakt._canonicalize_episode(show_data, ep_data)  # noqa: SLF001
+
+  assert show_name == 'ATTACK ON TITAN'
+  assert season == 1
+  assert number == 45
+  assert ep_title == 'Above and Below'
 
 
-def test_format_episode_ref_double_digit() -> None:
-  assert trakt._format_episode_ref(12, 24) == 'S12E24'  # noqa: SLF001
+def test_canonicalize_episode_with_tmdb_uses_canonical_data(monkeypatch: pytest.MonkeyPatch) -> None:
+  """With TMDb configured, returns canonical title and re-numbered episode."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+
+  show_data = {'title': 'Attack on Titan', 'ids': {'tmdb': 1429}}
+  ep_data = {'season': 1, 'number': 45, 'title': 'Wrong Title', 'ids': {'tvdb': 8765432}}
+
+  with (
+    patch('integrations.tmdb.get_show_title', return_value='Attack on Titan') as mock_show,
+    patch('integrations.tmdb.find_episode_by_tvdb_id', return_value=(4, 16, 'Above and Below')) as mock_ep,
+  ):
+    show_name, season, number, ep_title = trakt._canonicalize_episode(show_data, ep_data)  # noqa: SLF001
+
+  mock_show.assert_called_once_with(1429)
+  mock_ep.assert_called_once_with(8765432)
+  assert show_name == 'ATTACK ON TITAN'
+  assert season == 4
+  assert number == 16
+  assert ep_title == 'Above and Below'
 
 
-def test_format_episode_ref_single_digit_each() -> None:
-  assert trakt._format_episode_ref(1, 1) == 'S1E1'  # noqa: SLF001
+def test_canonicalize_episode_tmdb_show_lookup_fails_uses_trakt_title(monkeypatch: pytest.MonkeyPatch) -> None:
+  """When TMDb show lookup returns None, falls back to Trakt title."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+
+  show_data = {'title': 'My Show', 'ids': {'tmdb': 9999}}
+  ep_data = {'season': 2, 'number': 5, 'title': 'Pilot', 'ids': {}}
+
+  with patch('integrations.tmdb.get_show_title', return_value=None):
+    show_name, season, number, ep_title = trakt._canonicalize_episode(show_data, ep_data)  # noqa: SLF001
+
+  assert show_name == 'MY SHOW'
+  assert season == 2
+  assert number == 5
 
 
-# --- _strip_leading_article ---
+def test_canonicalize_episode_missing_ids_skips_tmdb(monkeypatch: pytest.MonkeyPatch) -> None:
+  """When show/episode have no ids dict, TMDb lookups are skipped gracefully."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+
+  show_data = {'title': 'Great Show'}
+  ep_data = {'season': 2, 'number': 5, 'title': 'The One With The Test'}
+
+  with (
+    patch('integrations.tmdb.get_show_title') as mock_show,
+    patch('integrations.tmdb.find_episode_by_tvdb_id') as mock_ep,
+  ):
+    show_name, season, number, ep_title = trakt._canonicalize_episode(show_data, ep_data)  # noqa: SLF001
+
+  mock_show.assert_not_called()
+  mock_ep.assert_not_called()
+  assert show_name == 'GREAT SHOW'
+  assert season == 2
+  assert number == 5
 
 
-def test_strip_leading_article_the() -> None:
-  assert trakt._strip_leading_article('THE FINAL SHOWDOWN') == 'FINAL SHOWDOWN'  # noqa: SLF001
+# --- _canonicalize_movie ---
 
 
-def test_strip_leading_article_a() -> None:
-  assert trakt._strip_leading_article('A QUIET MAN') == 'QUIET MAN'  # noqa: SLF001
+def test_canonicalize_movie_no_tmdb_uses_trakt_title(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {})
+
+  result = trakt._canonicalize_movie({'title': 'Inception', 'ids': {'tmdb': 27205}})  # noqa: SLF001
+
+  assert result == 'Inception'
 
 
-def test_strip_leading_article_an() -> None:
-  assert trakt._strip_leading_article('AN UNEXPECTED JOURNEY') == 'UNEXPECTED JOURNEY'  # noqa: SLF001
+def test_canonicalize_movie_with_tmdb_uses_canonical_title(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
 
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
 
-def test_strip_leading_article_no_article() -> None:
-  assert trakt._strip_leading_article('PILOT') == 'PILOT'  # noqa: SLF001
+  with patch('integrations.tmdb.get_movie_title', return_value='Inception') as mock_movie:
+    result = trakt._canonicalize_movie({'title': 'inception', 'ids': {'tmdb': 27205}})  # noqa: SLF001
 
-
-def test_strip_leading_article_word_starting_with_the() -> None:
-  # "THEORY" should not be stripped — must match full word boundary
-  assert trakt._strip_leading_article('THEORY OF EVERYTHING') == 'THEORY OF EVERYTHING'  # noqa: SLF001
-
-
-def test_strip_leading_article_word_starting_with_a() -> None:
-  # "AFTERMATH" should not be stripped
-  assert trakt._strip_leading_article('AFTERMATH') == 'AFTERMATH'  # noqa: SLF001
-
-
-def test_strip_leading_article_empty() -> None:
-  assert trakt._strip_leading_article('') == ''  # noqa: SLF001
+  mock_movie.assert_called_once_with(27205)
+  assert result == 'Inception'
 
 
 # --- get_variables_calendar ---

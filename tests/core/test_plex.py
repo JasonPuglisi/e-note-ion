@@ -6,6 +6,7 @@ import pytest
 
 import config as _cfg
 import integrations.plex as _plex
+import integrations.tmdb as _tmdb
 import integrations.vestaboard as _vb
 import scheduler as _mod
 
@@ -47,6 +48,14 @@ def _movie_payload(event: str = 'media.play', title: str = 'A Quiet Place') -> d
 def _empty_config(monkeypatch: pytest.MonkeyPatch) -> None:
   """Ensure config has no plex schedule overrides for most tests."""
   monkeypatch.setattr(_cfg, '_config', {})
+
+
+@pytest.fixture(autouse=True)
+def _clear_tmdb_caches() -> None:
+  """Clear TMDb LRU caches before each test to prevent cross-test contamination."""
+  _tmdb.get_show_title.cache_clear()
+  _tmdb.get_movie_title.cache_clear()
+  _tmdb.find_episode_by_tvdb_id.cache_clear()
 
 
 @pytest.fixture(autouse=True)
@@ -574,3 +583,119 @@ def test_credential_name_none_accepted() -> None:
 def test_credential_name_passed() -> None:
   result = _plex.handle_webhook(_episode_payload('media.play'), credential_name='plex')
   assert isinstance(result, _mod.WebhookMessage)
+
+
+# ---------------------------------------------------------------------------
+# TMDb canonical title lookup
+# ---------------------------------------------------------------------------
+
+
+def _episode_payload_with_guid(tmdb_id: int, show: str = 'Masterchef (US)') -> dict[str, Any]:
+  """Return an episode payload that includes a Plex Metadata.Guid array."""
+  return {
+    'event': 'media.play',
+    'Metadata': {
+      'type': 'episode',
+      'grandparentTitle': show,
+      'parentIndex': 1,
+      'index': 3,
+      'title': 'The Dish',
+      'Guid': [
+        {'id': f'tmdb://{tmdb_id}'},
+        {'id': 'tvdb://12345'},
+      ],
+    },
+  }
+
+
+def _movie_payload_with_guid(tmdb_id: int, title: str = 'Inception') -> dict[str, Any]:
+  """Return a movie payload that includes a Plex Metadata.Guid array."""
+  return {
+    'event': 'media.play',
+    'Metadata': {
+      'type': 'movie',
+      'title': title,
+      'Guid': [{'id': f'tmdb://{tmdb_id}'}],
+    },
+  }
+
+
+def test_handle_webhook_episode_uses_tmdb_canonical_show_name(monkeypatch: pytest.MonkeyPatch) -> None:
+  """When TMDb is configured and Guid is present, show_name uses the canonical TMDb title."""
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  calls: list[int] = []
+
+  def _mock_get_show_title(tmdb_id: int) -> str:
+    calls.append(tmdb_id)
+    return 'MasterChef'
+
+  monkeypatch.setattr(_tmdb, 'get_show_title', _mock_get_show_title)
+  result = _plex.handle_webhook(_episode_payload_with_guid(tmdb_id=70814, show='Masterchef (US)'))
+
+  assert result is not None
+  assert calls == [70814]
+  assert result.data['variables']['show_name'] == [['MASTERCHEF']]
+
+
+def test_handle_webhook_episode_falls_back_when_no_guid(monkeypatch: pytest.MonkeyPatch) -> None:
+  """When the payload has no Guid array, falls back to grandparentTitle."""
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  calls: list[int] = []
+
+  def _mock_get_show_title(tmdb_id: int) -> str | None:
+    calls.append(tmdb_id)
+    return None
+
+  monkeypatch.setattr(_tmdb, 'get_show_title', _mock_get_show_title)
+  result = _plex.handle_webhook(_episode_payload('media.play', show='Masterchef'))
+
+  assert result is not None
+  assert calls == []
+  assert result.data['variables']['show_name'] == [['MASTERCHEF']]
+
+
+def test_handle_webhook_episode_falls_back_when_tmdb_unconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
+  """When TMDb is not configured, falls back to grandparentTitle even with Guid."""
+  monkeypatch.setattr(_cfg, '_config', {})
+  calls: list[int] = []
+
+  def _mock_get_show_title(tmdb_id: int) -> str | None:
+    calls.append(tmdb_id)
+    return None
+
+  monkeypatch.setattr(_tmdb, 'get_show_title', _mock_get_show_title)
+  result = _plex.handle_webhook(_episode_payload_with_guid(tmdb_id=70814, show='Masterchef'))
+
+  assert result is not None
+  assert calls == []
+  assert result.data['variables']['show_name'] == [['MASTERCHEF']]
+
+
+def test_handle_webhook_movie_uses_tmdb_canonical_title(monkeypatch: pytest.MonkeyPatch) -> None:
+  """When TMDb is configured, movie title uses the canonical TMDb title."""
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  calls: list[int] = []
+
+  def _mock_get_movie_title(tmdb_id: int) -> str:
+    calls.append(tmdb_id)
+    return 'Inception'
+
+  monkeypatch.setattr(_tmdb, 'get_movie_title', _mock_get_movie_title)
+  # Raw title has disambiguation that TMDb canonical doesn't
+  result = _plex.handle_webhook(_movie_payload_with_guid(tmdb_id=27205, title='Inception'))
+
+  assert result is not None
+  assert calls == [27205]
+  assert result.data['variables']['show_name'] == [['INCEPTION']]
+
+
+def test_handle_webhook_movie_falls_back_when_tmdb_lookup_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
+  """When the TMDb lookup returns None, falls back to Plex's native title."""
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_tmdb, 'get_movie_title', lambda tmdb_id: None)
+
+  # Use a short raw title to avoid truncation masking the fallback
+  result = _plex.handle_webhook(_movie_payload_with_guid(tmdb_id=27205, title='Clue'))
+
+  assert result is not None
+  assert result.data['variables']['show_name'] == [['CLUE']]

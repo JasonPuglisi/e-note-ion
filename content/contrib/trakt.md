@@ -93,6 +93,29 @@ it read-write so tokens can be persisted:
 # Do NOT use :ro — token refresh writes to this file
 ```
 
+## TMDb integration (canonical titles and episode numbers)
+
+Trakt uses TVDb episode ordering, which represents many anime series as a
+single flat season (e.g. Attack on Titan Season 4 appears as Season 1 Episode
+X). TMDb uses the canonical multi-season structure. When a TMDb read access
+token is configured, both the Trakt and Plex integrations resolve titles and
+episode numbers through TMDb automatically.
+
+To enable, add a `[tmdb]` section to `config.toml`:
+
+```toml
+[tmdb]
+api_read_access_token = "your-tmdb-api-read-access-token"
+```
+
+Get a free read access token at https://www.themoviedb.org/settings/api.
+No TMDb account tier is required — the read access token is available on
+all accounts. TMDb lookups are cached in-memory for the lifetime of the
+process; results are stable and restarts simply repopulate the cache.
+
+When TMDb is not configured, both integrations continue to use their native
+titles and episode numbers unchanged.
+
 ## Keeping data current
 
 ### API announcements
