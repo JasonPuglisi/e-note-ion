@@ -167,8 +167,9 @@ See **Personalizing for a friend** below. To build manually:
 The template has both `Webhook URL` and `Passphrase` as import questions. To share a
 pre-configured copy where your friend only fills in their passphrase:
 
-1. Import the template Shortcut
-2. On import, fill in your `Webhook URL` — this embeds it in the Shortcut
+1. Import the template Shortcut and fill in your `Webhook URL` on import
+2. Open the Shortcut → tap **ⓘ** → **Import Questions** → delete the `Webhook URL` question
+   (this ensures your URL is embedded and not exposed or overwritten when your friend imports it)
 3. Rename to "Message [Your Name]'s Vestaboard" so it's clear whose board it reaches
 4. Share via iCloud link → your friend imports it and fills in only their `Passphrase`
 
