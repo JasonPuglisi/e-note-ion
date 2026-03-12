@@ -405,7 +405,7 @@ def _collect_candidates_caldav(
     merged = Calendar()
     for event_obj in events:
       try:
-        for component in event_obj.icalendar_object.subcomponents:
+        for component in event_obj.icalendar_instance.subcomponents:
           if component.name == 'VEVENT':
             merged.add_component(component)
       except Exception:  # noqa: BLE001  # nosec B112 — skip malformed CalDAV event objects; continue to next
