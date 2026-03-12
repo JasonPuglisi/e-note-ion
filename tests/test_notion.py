@@ -186,7 +186,7 @@ def test_credential_name_none_accepted() -> None:
 
 
 def test_credential_name_passed() -> None:
-  result = notion.handle_webhook(_make_payload(), credential_name='notion-auto')
+  result = notion.handle_webhook(_make_payload(), credential_name='notion')
   assert isinstance(result, WebhookMessage)
 
 
