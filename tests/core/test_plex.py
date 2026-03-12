@@ -572,5 +572,5 @@ def test_credential_name_none_accepted() -> None:
 
 
 def test_credential_name_passed() -> None:
-  result = _plex.handle_webhook(_episode_payload('media.play'), credential_name='plex-auto')
+  result = _plex.handle_webhook(_episode_payload('media.play'), credential_name='plex')
   assert isinstance(result, _mod.WebhookMessage)

@@ -660,11 +660,10 @@ def _make_webhook_handler() -> type:
 
 
 # Integrations that get a named credential auto-generated on first startup
-# if none exists yet. The credential name is '<integration>-auto'.
-# For message, the credential name is 'message-admin'.
+# if none exists yet. For message, the credential name is 'message-admin'.
 _WEBHOOK_AUTOGEN: dict[str, str] = {
-  'plex': 'plex-auto',
-  'notion': 'notion-auto',
+  'plex': 'plex',
+  'notion': 'notion',
   'message': 'message-admin',
 }
 
