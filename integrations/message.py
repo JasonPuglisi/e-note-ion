@@ -23,6 +23,11 @@ from scheduler import WebhookMessage
 
 logger = logging.getLogger(__name__)
 
+# Matches color tags like [R], [G], etc. in user-supplied text.
+# Brackets are not in the Vestaboard character set, so [R] cannot render as
+# literal text. Replace with the bare letter so intent is preserved.
+_COLOR_TAG_RE = re.compile(r'\[([ROYGBVWK])\]')
+
 _MESSAGE_JSON_PATH = Path(__file__).parent.parent / 'content' / 'contrib' / 'message.json'
 
 # Maps color config key → Vestaboard display character (each = 1 display column).
@@ -132,7 +137,10 @@ def handle_webhook(
       return None
 
     message_text = str(payload.get('message', '')).strip()
-    message_lines = [line.strip().upper() for line in message_text.split('\n') if line.strip()]
+    message_lines = [
+      _COLOR_TAG_RE.sub(r'\1', line.strip().upper()).strip() for line in message_text.split('\n') if line.strip()
+    ]
+    message_lines = [line for line in message_lines if line]
     if not message_lines:
       logger.debug('message: discarding: empty or missing message')
       return None

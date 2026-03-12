@@ -185,7 +185,7 @@ The passphrase is their identity — keep each friend's iCloud link private.
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `message` | string | Yes | — | Body text. Newlines produce multiple display rows. |
+| `message` | string | Yes | — | Body text. Newlines produce multiple display rows. Color tag syntax (`[R]`, `[G]`, etc.) is not interpreted — brackets are stripped and the letter is kept. |
 | `action` | string | No | `"message"` | Must be `"message"` or omitted for posting. |
 
 The sender is identified by their `X-Webhook-Secret` passphrase. No other fields

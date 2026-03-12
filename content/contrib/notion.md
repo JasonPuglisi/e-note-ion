@@ -95,7 +95,7 @@ X-Webhook-Secret: <your-secret-here>
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `message` | string | Yes | — | Body text. Newlines (`\n`) produce multiple display lines. |
+| `message` | string | Yes | — | Body text. Newlines (`\n`) produce multiple display lines. Color tag syntax (`[R]`, `[G]`, etc.) is not interpreted — brackets are stripped and the letter is kept. |
 | `urgent` | boolean | No | `false` | If `true`, interrupt the current hold immediately. |
 | `tag` | string | No | `"notion"` | Deduplication key. A new notification replaces any queued message with the same tag. Set to `""` to disable superseding. |
 
