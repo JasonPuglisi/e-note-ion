@@ -41,15 +41,14 @@ def test_ics_mode_real_feed(require_env: None, monkeypatch: pytest.MonkeyPatch) 
 
   try:
     result = calendar.get_variables()
+    assert 'events' in result
+    assert len(result['events']) == 1
+    lines = result['events'][0]
+    assert lines, 'events list is empty'
+    for line in lines:
+      assert isinstance(line, str) and line.strip(), f'empty line in events: {lines!r}'
   except IntegrationDataUnavailableError:
-    pytest.skip('no events today in the configured calendar — not a failure')
-
-  assert 'events' in result
-  assert len(result['events']) == 1
-  lines = result['events'][0]
-  assert lines, 'events list is empty'
-  for line in lines:
-    assert isinstance(line, str) and line.strip(), f'empty line in events: {lines!r}'
+    pass  # no events today — valid outcome
 
 
 @pytest.mark.integration
@@ -71,14 +70,13 @@ def test_caldav_mode_real_icloud(require_env: None, monkeypatch: pytest.MonkeyPa
 
   try:
     result = calendar.get_variables()
+    assert 'events' in result
+    lines = result['events'][0]
+    assert lines, 'events list is empty'
+    for line in lines:
+      assert isinstance(line, str) and line.strip(), f'empty line in events: {lines!r}'
   except IntegrationDataUnavailableError:
-    pytest.skip('no events today in the CalDAV calendars — not a failure')
-
-  assert 'events' in result
-  lines = result['events'][0]
-  assert lines, 'events list is empty'
-  for line in lines:
-    assert isinstance(line, str) and line.strip(), f'empty line in events: {lines!r}'
+    pass  # no events today — valid outcome
 
 
 @pytest.mark.integration
