@@ -29,4 +29,20 @@ Requirements for all PRs:
 See [AGENTS.md](AGENTS.md) for code conventions (indentation, type hints,
 security practices, integration patterns).
 
+## Content contributions
+
+Personal display content lives in `content/user/` (git-ignored) and is never
+committed. If you want to share a content template with the community, add it
+to `content/contrib/` alongside a sidecar `.md` doc (use
+`content/contrib/TEMPLATE.md` as a starting point).
+
+See [`content/README.md`](content/README.md) for the JSON format reference and
+[`content/DESIGN.md`](content/DESIGN.md) for visual and layout conventions.
+
+## Security
+
+Do not report security issues through public GitHub issues. Use the
+[GitHub Security Advisory][advisory] instead.
+
 [issues]: https://github.com/JasonPuglisi/e-note-ion/issues
+[advisory]: https://github.com/JasonPuglisi/e-note-ion/security/advisories/new
