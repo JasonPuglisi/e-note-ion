@@ -218,7 +218,10 @@ def write_config_section(section: str, values: dict[str, str | int | list[str]])
 
   Handles dotted section names (e.g. 'webhook.credentials.alice').
   Supports str, int, and list[str] values (rendered as TOML inline arrays).
-  Creates the section if absent (appended to end of file).
+  Creates the section if absent; inserts it after the last existing section
+  that shares the same parent prefix (e.g. 'webhook.credentials.bob' goes
+  after 'webhook.credentials.alice'), or appends at end if none exists.
+  Always produces exactly one blank line between sections and a trailing newline.
   Updates the in-memory config cache.
   """
   if not _CONFIG_PATH.exists():
@@ -266,12 +269,47 @@ def write_config_section(section: str, values: dict[str, str | int | list[str]])
         section_lines.insert(insert_at, new_line)
     lines[section_start:section_end] = section_lines
   else:
-    if lines and not lines[-1].endswith('\n'):
-      lines[-1] += '\n'
-    lines.append('\n')
-    lines.append(f'{header}\n')
+    # Find insertion point: after the last section that shares our parent prefix
+    # (e.g. 'webhook.credentials.bob' groups with 'webhook.credentials.alice').
+    parent_prefix = '.'.join(section.split('.')[:-1])
+    sibling_end: int | None = None
+    i = 0
+    while i < len(lines):
+      stripped = lines[i].strip()
+      if stripped.startswith('[') and not stripped.startswith('#'):
+        inner = stripped[1:].rstrip(']')
+        if inner == parent_prefix or inner.startswith(f'{parent_prefix}.'):
+          j = i + 1
+          while j < len(lines):
+            if lines[j].strip().startswith('[') and not lines[j].strip().startswith('#'):
+              break
+            j += 1
+          sibling_end = j
+      i += 1
+
+    new_lines = [f'{header}\n']
     for key, value in values.items():
-      lines.append(f'{key} = {_render(value)}\n')
+      new_lines.append(f'{key} = {_render(value)}\n')
+
+    if sibling_end is not None and sibling_end < len(lines):
+      # Insert between two sections: append a trailing blank line so the
+      # section that follows keeps its preceding separator.
+      new_lines.append('\n')
+      lines[sibling_end:sibling_end] = new_lines
+    else:
+      # Append at end: strip any trailing blank lines, add exactly one separator.
+      while lines and lines[-1].strip() == '':
+        lines.pop()
+      if lines and not lines[-1].endswith('\n'):
+        lines[-1] += '\n'
+      lines.append('\n')
+      lines.extend(new_lines)
+
+  # Ensure file ends with a single newline.
+  while lines and lines[-1] == '\n' and len(lines) >= 2 and lines[-2] == '\n':
+    lines.pop()
+  if lines and not lines[-1].endswith('\n'):
+    lines[-1] += '\n'
 
   _CONFIG_PATH.write_text(''.join(lines))
 

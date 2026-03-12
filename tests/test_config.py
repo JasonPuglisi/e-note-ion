@@ -333,3 +333,89 @@ def test_write_section_values_updates_memory_cache(
   monkeypatch.setattr(_mod, '_config', cache)
   _mod.write_section_values('myapp', {'token': 'fresh'})
   assert cache.get('myapp', {}).get('token') == 'fresh'
+
+
+# --- write_config_section ---
+
+
+def _setup_wcs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, content: str) -> Path:
+  cfg = tmp_path / 'config.toml'
+  cfg.write_text(content)
+  monkeypatch.setattr(_mod, '_CONFIG_PATH', cfg)
+  monkeypatch.setattr(_mod, '_config', {})
+  return cfg
+
+
+def test_write_config_section_creates_new_section(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  cfg = _setup_wcs(tmp_path, monkeypatch, '[webhook]\nsecret = "abc"\n')
+  _mod.write_config_section('webhook.credentials.alice', {'secret_hash': 'hash1', 'webhooks': ['message']})
+  text = cfg.read_text()
+  assert '[webhook.credentials.alice]' in text
+  assert 'secret_hash = "hash1"' in text
+  assert 'webhooks = ["message"]' in text
+
+
+def test_write_config_section_updates_existing_section(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  cfg = _setup_wcs(tmp_path, monkeypatch, '[webhook.credentials.alice]\nsecret_hash = "old"\nwebhooks = ["message"]\n')
+  _mod.write_config_section('webhook.credentials.alice', {'secret_hash': 'new'})
+  text = cfg.read_text()
+  assert text.count('[webhook.credentials.alice]') == 1
+  assert 'secret_hash = "new"' in text
+
+
+def test_write_config_section_groups_siblings_together(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  # Second credential must be inserted after the first, before unrelated sections.
+  content = (
+    '[webhook]\nsecret = "x"\n\n'
+    '[webhook.credentials.alice]\nsecret_hash = "a"\nwebhooks = ["message"]\n\n'
+    '[message.friends.alice]\ncolor = "R"\n'
+  )
+  cfg = _setup_wcs(tmp_path, monkeypatch, content)
+  _mod.write_config_section('webhook.credentials.bob', {'secret_hash': 'b', 'webhooks': ['message']})
+  text = cfg.read_text()
+  alice_pos = text.index('[webhook.credentials.alice]')
+  bob_pos = text.index('[webhook.credentials.bob]')
+  friends_pos = text.index('[message.friends.alice]')
+  assert alice_pos < bob_pos < friends_pos
+
+
+def test_write_config_section_no_double_blank_lines(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  content = (
+    '[webhook]\nsecret = "x"\n\n'
+    '[webhook.credentials.alice]\nsecret_hash = "a"\nwebhooks = ["message"]\n\n'
+    '[message.friends.alice]\ncolor = "R"\n'
+  )
+  cfg = _setup_wcs(tmp_path, monkeypatch, content)
+  _mod.write_config_section('webhook.credentials.bob', {'secret_hash': 'b', 'webhooks': ['message']})
+  assert '\n\n\n' not in cfg.read_text()
+
+
+def test_write_config_section_ends_with_newline(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  cfg = _setup_wcs(tmp_path, monkeypatch, '[webhook]\nsecret = "x"\n')
+  _mod.write_config_section('message.friends.alice', {'color': 'R'})
+  assert cfg.read_text().endswith('\n')
+  assert not cfg.read_text().endswith('\n\n')
+
+
+def test_write_config_section_updates_memory_cache(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  _setup_wcs(tmp_path, monkeypatch, '[webhook]\nsecret = "x"\n')
+  _mod.write_config_section('webhook.credentials.alice', {'secret_hash': 'h', 'webhooks': ['message']})
+  assert _mod._config['webhook']['credentials']['alice']['secret_hash'] == 'h'  # noqa: SLF001
