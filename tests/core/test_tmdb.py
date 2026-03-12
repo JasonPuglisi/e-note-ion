@@ -119,13 +119,13 @@ def test_find_episode_by_tvdb_id_returns_season_episode_title(monkeypatch: pytes
   mock_r = MagicMock()
   mock_r.status_code = 200
   mock_r.json.return_value = {
-    'tv_episode_results': [{'season_number': 4, 'episode_number': 16, 'name': 'Above and Below'}]
+    'tv_episode_results': [{'season_number': 4, 'episode_number': 16, 'name': 'Above and Below', 'show_id': 1429}]
   }
 
   with patch('integrations.tmdb.fetch_with_retry', return_value=mock_r):
     result = tmdb.find_episode_by_tvdb_id(8765432)
 
-  assert result == (4, 16, 'Above and Below')
+  assert result == (4, 16, 'Above and Below', 1429)
 
 
 def test_find_episode_by_tvdb_id_returns_none_on_empty_results(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -159,9 +159,11 @@ def test_find_episode_by_tvdb_id_empty_title_returns_empty_string(monkeypatch: p
   monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
   mock_r = MagicMock()
   mock_r.status_code = 200
-  mock_r.json.return_value = {'tv_episode_results': [{'season_number': 2, 'episode_number': 3, 'name': None}]}
+  mock_r.json.return_value = {
+    'tv_episode_results': [{'season_number': 2, 'episode_number': 3, 'name': None, 'show_id': 999}]
+  }
 
   with patch('integrations.tmdb.fetch_with_retry', return_value=mock_r):
     result = tmdb.find_episode_by_tvdb_id(1111111)
 
-  assert result == (2, 3, '')
+  assert result == (2, 3, '', 999)

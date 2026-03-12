@@ -590,8 +590,12 @@ def test_credential_name_passed() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _episode_payload_with_guid(tmdb_id: int, show: str = 'Masterchef (US)') -> dict[str, Any]:
-  """Return an episode payload that includes a Plex Metadata.Guid array."""
+def _episode_payload_with_guid(tvdb_id: int, show: str = 'MasterChef (US)') -> dict[str, Any]:
+  """Return an episode payload with a Plex Metadata.Guid array.
+
+  Reflects the real Plex Series agent structure: tmdb:// is the episode-level
+  TMDb ID (not the series ID); tvdb:// is the TVDb episode ID used for lookup.
+  """
   return {
     'event': 'media.play',
     'Metadata': {
@@ -601,8 +605,8 @@ def _episode_payload_with_guid(tmdb_id: int, show: str = 'Masterchef (US)') -> d
       'index': 3,
       'title': 'The Dish',
       'Guid': [
-        {'id': f'tmdb://{tmdb_id}'},
-        {'id': 'tvdb://12345'},
+        {'id': 'tmdb://1800938'},  # episode-level TMDb ID — not the series ID
+        {'id': f'tvdb://{tvdb_id}'},
       ],
     },
   }
@@ -621,53 +625,58 @@ def _movie_payload_with_guid(tmdb_id: int, title: str = 'Inception') -> dict[str
 
 
 def test_handle_webhook_episode_uses_tmdb_canonical_show_name(monkeypatch: pytest.MonkeyPatch) -> None:
-  """When TMDb is configured and Guid is present, show_name uses the canonical TMDb title."""
+  """TVDb episode ID → find_episode_by_tvdb_id → show_id → get_show_title."""
   monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
-  calls: list[int] = []
+  # find returns (season, episode, title, show_id=40290)
+  monkeypatch.setattr(_tmdb, 'find_episode_by_tvdb_id', lambda tvdb_id: (1, 3, 'The Dish', 40290))
+  show_calls: list[int] = []
 
   def _mock_get_show_title(tmdb_id: int) -> str:
-    calls.append(tmdb_id)
+    show_calls.append(tmdb_id)
     return 'MasterChef'
 
   monkeypatch.setattr(_tmdb, 'get_show_title', _mock_get_show_title)
-  result = _plex.handle_webhook(_episode_payload_with_guid(tmdb_id=70814, show='Masterchef (US)'))
+  result = _plex.handle_webhook(_episode_payload_with_guid(tvdb_id=8765432, show='MasterChef (US)'))
 
   assert result is not None
-  assert calls == [70814]
+  assert show_calls == [40290]
   assert result.data['variables']['show_name'] == [['MASTERCHEF']]
 
 
 def test_handle_webhook_episode_falls_back_when_no_guid(monkeypatch: pytest.MonkeyPatch) -> None:
-  """When the payload has no Guid array, falls back to grandparentTitle."""
+  """When the payload has no Guid array, no TMDb lookup is attempted."""
   monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
-  calls: list[int] = []
+  find_calls: list[int] = []
+  monkeypatch.setattr(_tmdb, 'find_episode_by_tvdb_id', lambda tvdb_id: find_calls.append(tvdb_id) or None)
 
-  def _mock_get_show_title(tmdb_id: int) -> str | None:
-    calls.append(tmdb_id)
-    return None
-
-  monkeypatch.setattr(_tmdb, 'get_show_title', _mock_get_show_title)
   result = _plex.handle_webhook(_episode_payload('media.play', show='Masterchef'))
 
   assert result is not None
-  assert calls == []
+  assert find_calls == []
   assert result.data['variables']['show_name'] == [['MASTERCHEF']]
 
 
-def test_handle_webhook_episode_falls_back_when_tmdb_unconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
-  """When TMDb is not configured, falls back to grandparentTitle even with Guid."""
-  monkeypatch.setattr(_cfg, '_config', {})
-  calls: list[int] = []
+def test_handle_webhook_episode_falls_back_when_find_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
+  """When find_episode_by_tvdb_id returns None, falls back to grandparentTitle."""
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_tmdb, 'find_episode_by_tvdb_id', lambda tvdb_id: None)
 
-  def _mock_get_show_title(tmdb_id: int) -> str | None:
-    calls.append(tmdb_id)
-    return None
-
-  monkeypatch.setattr(_tmdb, 'get_show_title', _mock_get_show_title)
-  result = _plex.handle_webhook(_episode_payload_with_guid(tmdb_id=70814, show='Masterchef'))
+  result = _plex.handle_webhook(_episode_payload_with_guid(tvdb_id=12345, show='Clue'))
 
   assert result is not None
-  assert calls == []
+  assert result.data['variables']['show_name'] == [['CLUE']]
+
+
+def test_handle_webhook_episode_falls_back_when_tmdb_unconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
+  """When TMDb is not configured, no lookup is attempted even with Guid."""
+  monkeypatch.setattr(_cfg, '_config', {})
+  find_calls: list[int] = []
+  monkeypatch.setattr(_tmdb, 'find_episode_by_tvdb_id', lambda tvdb_id: find_calls.append(tvdb_id) or None)
+
+  result = _plex.handle_webhook(_episode_payload_with_guid(tvdb_id=8765432, show='Masterchef'))
+
+  assert result is not None
+  assert find_calls == []
   assert result.data['variables']['show_name'] == [['MASTERCHEF']]
 
 

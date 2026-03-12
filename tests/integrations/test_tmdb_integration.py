@@ -55,12 +55,13 @@ def test_get_movie_title_live(require_env: None, monkeypatch: pytest.MonkeyPatch
 @pytest.mark.integration
 @pytest.mark.require_env('TMDB_API_READ_ACCESS_TOKEN')
 def test_find_episode_by_tvdb_id_live(require_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
-  """find_episode_by_tvdb_id() returns a valid (season, episode, title) tuple."""
+  """find_episode_by_tvdb_id() returns a valid (season, episode, title, show_id) tuple."""
   _patch_config(monkeypatch)
   # TVDb episode ID 5073066 = Attack on Titan S4E16 in TMDb ordering
   result = tmdb.find_episode_by_tvdb_id(5073066)
   if result is not None:
-    season, episode, title = result
+    season, episode, title, show_id = result
     assert isinstance(season, int) and season > 0
     assert isinstance(episode, int) and episode > 0
     assert isinstance(title, str)
+    assert isinstance(show_id, int) and show_id > 0

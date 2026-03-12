@@ -74,39 +74,60 @@ def _stop_debounce() -> int:
     return 3
 
 
-def _parse_tmdb_id_from_guids(guids: list[dict[str, Any]]) -> int | None:
-  """Extract a TMDb ID from a Plex Metadata.Guid array, or None if absent."""
+def _parse_guid_id(guids: list[dict[str, Any]], scheme: str) -> int | None:
+  """Extract a numeric ID for the given scheme from a Plex Metadata.Guid array."""
   for guid in guids:
     guid_id = guid.get('id', '')
-    if guid_id.startswith('tmdb://'):
+    if guid_id.startswith(scheme):
       try:
-        return int(guid_id[len('tmdb://') :])
+        return int(guid_id[len(scheme) :])
       except ValueError:
         pass
   return None
 
 
 def _canonicalize_plex_title(raw_title: str, guids: list[dict[str, Any]], media_type: str) -> str:
-  """Return the canonical title via TMDb if configured and Guid contains a tmdb:// entry.
+  """Return the canonical title via TMDb if configured and a matching Guid is present.
 
-  Falls back to raw_title if TMDb is unconfigured, the Guid array has no TMDb
-  entry (e.g. older Plex Media Server), or the lookup fails.
+  For episodes, Plex sends episode-level external IDs in the Guid array, so
+  the tmdb:// entry is the TMDb episode ID (not the series ID). The tvdb://
+  entry is the TVDb episode ID, which TMDb's /find endpoint can resolve to the
+  TMDb series ID via the tv_episode_results[].show_id field.
 
-  media_type must be 'show' or 'movie'.
+  For movies, the tmdb:// entry is the TMDb movie ID and is used directly.
+
+  Falls back to raw_title if TMDb is unconfigured, the Guid array has no
+  usable entry, or any lookup fails.
+
+  media_type must be 'episode' or 'movie'.
   """
   import integrations.tmdb as _tmdb
 
   if not _tmdb.is_configured():
     return raw_title
-  tmdb_id = _parse_tmdb_id_from_guids(guids)
-  if tmdb_id is None:
-    logger.debug('plex: no tmdb:// guid for %r, using raw title', raw_title)
-    return raw_title
-  canonical = _tmdb.get_show_title(tmdb_id) if media_type == 'show' else _tmdb.get_movie_title(tmdb_id)
+
+  if media_type == 'episode':
+    tvdb_id = _parse_guid_id(guids, 'tvdb://')
+    if tvdb_id is None:
+      logger.debug('plex: no tvdb:// guid for episode %r, using raw title', raw_title)
+      return raw_title
+    ep_result = _tmdb.find_episode_by_tvdb_id(tvdb_id)
+    if ep_result is None:
+      logger.debug('plex: tvdb ep lookup failed for id=%d, using raw title %r', tvdb_id, raw_title)
+      return raw_title
+    _, _, _, show_id = ep_result
+    canonical = _tmdb.get_show_title(show_id)
+  else:
+    tmdb_id = _parse_guid_id(guids, 'tmdb://')
+    if tmdb_id is None:
+      logger.debug('plex: no tmdb:// guid for %r, using raw title', raw_title)
+      return raw_title
+    canonical = _tmdb.get_movie_title(tmdb_id)
+
   if canonical:
     logger.debug('plex: tmdb canonical %r -> %r', raw_title, canonical)
   else:
-    logger.debug('plex: tmdb lookup failed for id=%d, using raw title %r', tmdb_id, raw_title)
+    logger.debug('plex: tmdb lookup failed, using raw title %r', raw_title)
   return canonical if canonical else raw_title
 
 
@@ -224,7 +245,7 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
 
     if media_type == 'episode' and metadata:
       guids: list[dict[str, Any]] = metadata.get('Guid') or []
-      raw_show = _canonicalize_plex_title(metadata['grandparentTitle'], guids, 'show')
+      raw_show = _canonicalize_plex_title(metadata['grandparentTitle'], guids, 'episode')
       show_name = _vb.truncate_line(raw_show.upper(), _vb.model.cols, 'word')
       episode_ref = _media.format_episode_ref(metadata['parentIndex'], metadata['index'])
       episode_detail = _media.strip_leading_article((metadata.get('title') or '').upper())

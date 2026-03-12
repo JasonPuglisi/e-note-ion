@@ -622,7 +622,7 @@ def test_canonicalize_episode_with_tmdb_uses_canonical_data(monkeypatch: pytest.
 
   with (
     patch('integrations.tmdb.get_show_title', return_value='Attack on Titan') as mock_show,
-    patch('integrations.tmdb.find_episode_by_tvdb_id', return_value=(4, 16, 'Above and Below')) as mock_ep,
+    patch('integrations.tmdb.find_episode_by_tvdb_id', return_value=(4, 16, 'Above and Below', 1429)) as mock_ep,
   ):
     show_name, season, number, ep_title = trakt._canonicalize_episode(show_data, ep_data)  # noqa: SLF001
 

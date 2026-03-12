@@ -327,7 +327,7 @@ def _canonicalize_episode(
     if tvdb_ep_id:
       resolved = _tmdb.find_episode_by_tvdb_id(int(tvdb_ep_id))
       if resolved:
-        season, number, ep_title = resolved
+        season, number, ep_title, _ = resolved
 
   show_name = _vb.truncate_line(title.upper(), _vb.model.cols, 'word')
   return show_name, season, number, ep_title
