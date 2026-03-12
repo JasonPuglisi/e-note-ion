@@ -28,14 +28,13 @@ import threading
 from pathlib import Path
 from typing import Any
 
+import integrations.media as _media
 import integrations.vestaboard as _vb
 from scheduler import WebhookMessage
 
 logger = logging.getLogger(__name__)
 
 _PLEX_JSON_PATH = Path(__file__).parent.parent / 'content' / 'contrib' / 'plex.json'
-
-_LEADING_ARTICLES = ('THE ', 'AN ', 'A ')
 
 # Events that trigger playback display.
 _PLAY_EVENTS = frozenset({'media.play', 'media.resume'})
@@ -75,12 +74,35 @@ def _stop_debounce() -> int:
     return 3
 
 
-def _strip_leading_article(title: str) -> str:
-  """Remove a leading article (A, An, The) from an uppercased title."""
-  for article in _LEADING_ARTICLES:
-    if title.startswith(article):
-      return title[len(article) :]
-  return title
+def _parse_tmdb_id_from_guids(guids: list[dict[str, Any]]) -> int | None:
+  """Extract a TMDb ID from a Plex Metadata.Guid array, or None if absent."""
+  for guid in guids:
+    guid_id = guid.get('id', '')
+    if guid_id.startswith('tmdb://'):
+      try:
+        return int(guid_id[len('tmdb://') :])
+      except ValueError:
+        pass
+  return None
+
+
+def _canonicalize_plex_title(raw_title: str, guids: list[dict[str, Any]], media_type: str) -> str:
+  """Return the canonical title via TMDb if configured and Guid contains a tmdb:// entry.
+
+  Falls back to raw_title if TMDb is unconfigured, the Guid array has no TMDb
+  entry (e.g. older Plex Media Server), or the lookup fails.
+
+  media_type must be 'show' or 'movie'.
+  """
+  import integrations.tmdb as _tmdb
+
+  if not _tmdb.is_configured():
+    return raw_title
+  tmdb_id = _parse_tmdb_id_from_guids(guids)
+  if tmdb_id is None:
+    return raw_title
+  canonical = _tmdb.get_show_title(tmdb_id) if media_type == 'show' else _tmdb.get_movie_title(tmdb_id)
+  return canonical if canonical else raw_title
 
 
 def _load_template_config(template_name: str) -> dict[str, Any]:
@@ -196,12 +218,16 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
     media_type = metadata.get('type') if metadata else None
 
     if media_type == 'episode' and metadata:
-      show_name = _vb.truncate_line(metadata['grandparentTitle'].upper(), _vb.model.cols, 'word')
-      episode_ref = f'S{metadata["parentIndex"]}E{metadata["index"]}'
-      episode_detail = _strip_leading_article((metadata.get('title') or '').upper())
+      guids: list[dict[str, Any]] = metadata.get('Guid') or []
+      raw_show = _canonicalize_plex_title(metadata['grandparentTitle'], guids, 'show')
+      show_name = _vb.truncate_line(raw_show.upper(), _vb.model.cols, 'word')
+      episode_ref = _media.format_episode_ref(metadata['parentIndex'], metadata['index'])
+      episode_detail = _media.strip_leading_article((metadata.get('title') or '').upper())
       episode_line = f'{episode_ref} {episode_detail}'.strip()
     elif media_type == 'movie' and metadata:
-      show_name = _vb.truncate_line(metadata['title'].upper(), _vb.model.cols, 'word')
+      guids = metadata.get('Guid') or []
+      raw_movie = _canonicalize_plex_title(metadata['title'], guids, 'movie')
+      show_name = _vb.truncate_line(raw_movie.upper(), _vb.model.cols, 'word')
       episode_line = ''
     else:
       logger.debug('plex: no displayable metadata (type=%r)', media_type)

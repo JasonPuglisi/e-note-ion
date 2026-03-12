@@ -15,6 +15,7 @@ _INTEGRATION_VARS: list[tuple[str, str]] = [
   ('TRAKT_CLIENT_SECRET', 'Trakt integration'),
   ('TRAKT_ACCESS_TOKEN', 'Trakt integration'),
   ('DISCOGS_TOKEN', 'Discogs integration'),
+  ('TMDB_API_READ_ACCESS_TOKEN', 'TMDb integration'),
 ]
 
 _skipped = 0
