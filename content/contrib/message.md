@@ -80,7 +80,7 @@ The admin uses the main webhook secret to register a friend. The Shortcut genera
 a random 3-word passphrase client-side, registers it with the board, then shares the
 passphrase with the friend.
 
-A pre-built Shortcut is available at https://www.icloud.com/shortcuts/acc7a06632714bd6a53e584640e8f15a.
+A template Shortcut is available at `content/contrib/shortcuts/Register Vestaboard Friend.shortcut`.
 Import it and fill in the two import questions. To build manually:
 
 > **Note on variable naming**: in Shortcuts, variables are named at the point of use —
@@ -126,24 +126,53 @@ Share via iCloud link → send to yourself only. This Shortcut holds the main se
 
 ### Friend Shortcut
 
-Each friend gets a copy of this Shortcut with their passphrase pre-filled.
+Each friend gets a personalized copy of this Shortcut with your webhook URL pre-filled.
+They only need to enter their passphrase on import.
+
+A template Shortcut is available at `content/contrib/shortcuts/Message Vestaboard.shortcut`.
+See **Personalizing for a friend** below. To build manually:
 
 **Build the friend Shortcut:**
 
 1. Open Shortcuts → tap **+** → name it "Message Vestaboard"
-2. Add **Ask for Input** (Text) → prompt "Message" → save as `message`
-3. Add **Get Contents of URL**:
-   - URL: `https://<your-board-host>/webhook/message`
+2. Add **Ask for Input** → Type: Text, Prompt: "What do you want to say?",
+   Allow Multiple Lines: off
+3. Add **Text** → paste the passphrase here (replaced by import question);
+   rename output to `raw` when wiring the next step
+4. Add **Split Text** → Input: `raw`, Separator: Custom, value `": "`
+5. Add **Get Item from List** → Input: Split Text result, Item: **Last Item**;
+   rename output to `passphrase` when wiring the next step
+   *(This lets your friend paste either just their passphrase or the full share message
+   — e.g. "Message my Vestaboard! Your passphrase: word-word-word" — and it works either way.)*
+6. Add **Get Contents of URL**:
+   - URL: `https://<webhook-url>/webhook/message` (replaced by import question)
    - Method: POST
-   - Headers: `Content-Type: application/json`, `X-Webhook-Secret: <passphrase>`
-   - Request Body (JSON): `{ "message": "<message>" }`
-4. Add import questions for the Vestaboard URL and passphrase (clears them before sharing)
+   - Header: `X-Webhook-Secret` → `passphrase` magic variable from step 5
+   - Body type: JSON — add one key (Text type):
+     - `message` = Ask for Input result from step 2 (rename to `message`)
+   - No `Content-Type` header needed — Shortcuts sets it automatically for JSON bodies
+7. Add **List** → 5 items:
+   `It's on the way! 🪄`, `Sent to the board! ✨`, `Your message is flipping! 🎰`,
+   `Message launched! 🚀`, `The flaps are flying! 🪁`
+8. Add **Get Item from List** → Input: List from step 7, Item: **Random Item**;
+   rename output to `confirmation` when wiring the next step
+9. Add **Show Alert** → Message: `confirmation` magic variable from step 8;
+   untick Show Cancel Button; leave title blank
+10. Tap the **ⓘ** button → **Import Questions** → add two questions:
+    - Question: `Webhook URL`, Parameter: URL field of Get Contents of URL, Default: blank
+    - Question: `Passphrase`, Parameter: the Text action from step 3, Default: blank
 
-Share via iCloud link. When your friend imports it, they fill in the Vestaboard URL and
-their passphrase. The passphrase is their identity — keep it private.
+### Personalizing for a friend
 
-Before sharing, consider renaming the Shortcut to `Message Jason's Vestaboard` (or
-whatever personalises it for your friend) so it's clear whose board it reaches.
+The template has both `Webhook URL` and `Passphrase` as import questions. To share a
+pre-configured copy where your friend only fills in their passphrase:
+
+1. Import the template Shortcut
+2. On import, fill in your `Webhook URL` — this embeds it in the Shortcut
+3. Rename to "Message [Your Name]'s Vestaboard" so it's clear whose board it reaches
+4. Share via iCloud link → your friend imports it and fills in only their `Passphrase`
+
+The passphrase is their identity — keep each friend's iCloud link private.
 
 ## Payload schema
 
