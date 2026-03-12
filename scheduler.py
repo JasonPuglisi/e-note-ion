@@ -714,7 +714,7 @@ def parse_cron(cron: str) -> dict[str, str]:
   return {'minute': minute, 'hour': hour, 'day': day, 'month': month, 'day_of_week': day_of_week}
 
 
-_VALID_TRUNCATION: frozenset[str] = frozenset({'hard', 'word', 'ellipsis'})
+_VALID_TRUNCATION: frozenset[str] = frozenset({'hard', 'word', 'ellipsis', 'wrap_ellipsis'})
 
 
 def _coerce_bool(val: object, label: str) -> bool | None:
