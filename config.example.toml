@@ -90,6 +90,7 @@ city = "San Francisco"
 # CardDAV mode — iCloud Contacts birthdays (birthdays.json).
 # Uses the same username and password as CalDAV mode above.
 # Omit carddav_url to disable the birthdays integration entirely.
+# The self-birthday template (birthdays.json/self) requires iCloud CardDAV.
 # carddav_url = "https://contacts.icloud.com/"
 # birthdays_lookahead_days = 7  # optional; default: 7
 
