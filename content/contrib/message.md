@@ -80,7 +80,7 @@ The admin uses the main webhook secret to register a friend. The Shortcut genera
 a random 3-word passphrase client-side, registers it with the board, then shares the
 passphrase with the friend.
 
-A pre-built Shortcut file is available at `content/contrib/shortcuts/register-vestaboard-friend.shortcut`.
+A pre-built Shortcut is available at https://www.icloud.com/shortcuts/acc7a06632714bd6a53e584640e8f15a.
 Import it and fill in the two import questions. To build manually:
 
 > **Note on variable naming**: in Shortcuts, variables are named at the point of use —
@@ -90,11 +90,11 @@ Import it and fill in the two import questions. To build manually:
 **Build the admin Shortcut:**
 
 1. Open Shortcuts → tap **+** → name it "Register Vestaboard Friend"
-2. Add **Ask for Input** → Type: Text, Prompt: "Friend's name (e.g. Alice or Bob Smith)",
+2. Add **Ask for Input** → Type: Text, Prompt: "What's your friend's name?",
    Allow Multiple Lines: off
 3. Add **List** → 9 items: `Red`, `Orange`, `Yellow`, `Green`, `Blue`, `Violet`, `White`,
    `Black`, `Heart`
-4. Add **Choose from List** → input: the List from step 3 (leave prompt empty)
+4. Add **Choose from List** → input: the List from step 3, Prompt: "What color do you want to use?"
 5. Generate the passphrase:
    - Add **Text** → paste the wordlist (one word per line — see below)
    - Add **Split Text** → input: the Text above, Separator: New Lines
@@ -103,23 +103,24 @@ Import it and fill in the two import questions. To build manually:
    - Repeat twice more → rename outputs `word2`, `word3`
    - Add **Text** → insert `word1` magic variable, type `-`, insert `word2`, type `-`,
      insert `word3` (rename output to `passphrase` when wiring the next step)
-6. Add **Get Contents of URL**:
+6. Add **Text** → paste the webhook secret value here (replaced by import question);
+   rename output to `secret` when wiring the next step
+7. Add **Get Contents of URL**:
    - URL: `https://<webhook-url>/webhook/message` (replaced by import question)
    - Method: POST
-   - Header: `X-Webhook-Secret` → webhook secret (replaced by import question)
+   - Header: `X-Webhook-Secret` → `secret` magic variable from step 6
    - Body type: JSON — add keys (all Text type):
      - `action` = `register`
      - `name` = Ask for Input result from step 2 (rename to `name`)
      - `color` = Choose from List result from step 4 (rename to `color`)
      - `passphrase` = Text result from step 5 (rename to `passphrase`)
    - No `Content-Type` header needed — Shortcuts sets it automatically for JSON bodies
-7. Add **Text** → `Message my Vestaboard! Your passphrase: ` + `passphrase` magic variable
+8. Add **Text** → `Message my Vestaboard! Your passphrase: ` + `passphrase` magic variable
    (rename output to `sharing`)
-8. Add **Share** → input: `sharing`
-9. Tap the **ⓘ** button → **Import Questions** → add two questions:
-   - Question: `Webhook URL`, Parameter: URL field of Get Contents of URL, Default: blank
-   - Question: `Webhook secret`, Parameter: Headers of Get Contents of URL,
-     Key: `X-Webhook-Secret`, Value: blank
+9. Add **Share** → input: `sharing`
+10. Tap the **ⓘ** button → **Import Questions** → add two questions:
+    - Question: `Webhook URL`, Parameter: URL field of Get Contents of URL, Default: blank
+    - Question: `Webhook secret`, Parameter: the Text action from step 6, Default: blank
 
 Share via iCloud link → send to yourself only. This Shortcut holds the main secret.
 
