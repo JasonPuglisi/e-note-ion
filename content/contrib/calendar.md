@@ -2,7 +2,7 @@
 
 Today's calendar events, updated every half-hour. Shows timed events (sorted
 soonest first) then all-day events. Supports multiple calendars with optional
-per-calendar color squares.
+per-calendar color squares. Logistics — fires every 30 minutes.
 
 Both modes can be active simultaneously — events from ICS feeds and CalDAV
 are merged and sorted together.
@@ -10,6 +10,26 @@ are merged and sorted together.
 - **ICS mode**: public or secret-address `.ics` feeds (Google Calendar, iCloud
   public link, any provider). No authentication required.
 - **CalDAV mode**: private iCloud calendars via app-specific password.
+
+## Schedule
+
+**Cron:** `30 * * * *` — fires every hour at `:30`.
+**Hold:** 300 s | **Timeout:** 1800 s | **Priority:** 5 (Logistics)
+
+`calendar` anchors every `:30` slot. The only other template that regularly
+shares `:30` is `discogs.morning_spin` (daily at 8:30, pri 5, 600 s) —
+combined budget 900 s, well within the 1800 s ceiling. The 1800 s timeout
+ensures `calendar` survives queuing behind any priority-9 personal-tier content
+that wins the 8:00 slot before rolling into 8:30.
+
+To override schedule fields without editing this file:
+
+```toml
+[calendar.schedules.today]
+hold = 600
+priority = 6
+disabled = true  # skip entirely
+```
 
 ## Configuration
 

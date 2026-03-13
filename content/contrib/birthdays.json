@@ -6,7 +6,7 @@
         "hold": 600,
         "timeout": 3600
       },
-      "priority": 5,
+      "priority": 6,
       "truncation": "ellipsis",
       "integration": "calendar",
       "integration_fn": "get_variables_birthdays",

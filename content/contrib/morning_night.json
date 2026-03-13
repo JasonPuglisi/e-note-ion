@@ -6,7 +6,7 @@
         "hold": 300,
         "timeout": 3600
       },
-      "priority": 3,
+      "priority": 4,
       "integration": "morning",
       "templates": [
         {
@@ -41,7 +41,7 @@
         "hold": 300,
         "timeout": 3600
       },
-      "priority": 3,
+      "priority": 4,
       "integration": "moon",
       "templates": [
         {

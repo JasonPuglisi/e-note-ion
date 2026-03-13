@@ -2,11 +2,23 @@
 
 Notion integration — displays automation-triggered notifications on the board
 via webhook. Each notification shows a `[W] NOTION` header row followed
-by the message body.
+by the message body. Social — webhook-only, queues normally.
 
 Unlike cron-scheduled templates, this template is triggered entirely by
 incoming webhook events from Notion automations. No content is shown when
 idle.
+
+## Schedule
+
+**Webhook-only** (no cron). Fires when a Notion automation sends an HTTP
+request to the webhook listener.
+**Hold:** 120 s | **Timeout:** 120 s | **Priority:** 7 (Social)
+
+Queues normally (`interrupt=False`) — does not cut an active hold short. At
+priority 7 it shows after any priority-8+ content (Plex, BART, friend messages)
+but ahead of lower-priority scheduled content. The short 120 s timeout is
+intentional — Notion notifications are contextual to the moment they're
+triggered; a stale notification is rarely useful.
 
 ## Requirements
 

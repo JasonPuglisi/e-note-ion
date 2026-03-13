@@ -8,7 +8,7 @@ from scheduler import WebhookMessage
 
 _TEMPLATE_CONFIG = {
   'hold': 120,
-  'timeout': 120,
+  'timeout': 600,
   'priority': 8,
   'truncation': 'wrap_ellipsis',
 }
@@ -171,7 +171,7 @@ def test_default_priority_and_hold() -> None:
   assert isinstance(result, WebhookMessage)
   assert result.priority == 8
   assert result.hold == 120
-  assert result.timeout == 120
+  assert result.timeout == 600
 
 
 def test_config_override_applied() -> None:

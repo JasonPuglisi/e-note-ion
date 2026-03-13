@@ -3,8 +3,33 @@
 BART real-time departure board. Shows upcoming departures from a configured
 originating station across 1–2 lines, with line colors as Vestaboard color
 squares. Line colors are derived dynamically from the BART routes API on
-first call and cached for the process lifetime. Runs every 5 minutes on
-weekday mornings (07:00–09:00).
+first call and cached for the process lifetime. Logistics — fires every 5
+minutes on weekday mornings (07:00–09:00).
+
+## Schedule
+
+**Cron:** `*/5 7-9 * * mon-fri` — fires every 5 minutes, 07:00–09:00, Mon–Fri.
+**Hold:** 290 s | **Timeout:** 60 s | **Priority:** 8 (Logistics)
+**Refresh interval:** 60 s (re-fetches live departure data during the hold)
+
+BART effectively owns the display during the commute window. At priority 8
+it wins the queue over weather (5) and all lower-priority templates. The 60 s
+timeout means any BART message that can't show within 1 minute is discarded
+rather than shown stale — transit data ages quickly.
+
+Lower-priority templates (weather, good morning) survive via their longer
+timeouts and appear in the natural gaps between 5-minute BART cycles.
+
+To override schedule fields without editing this file:
+
+```toml
+[bart.schedules.departures]
+cron = "*/5 7-9 * * mon-fri"
+hold = 180
+timeout = 60
+priority = 8
+disabled = true  # skip entirely
+```
 
 ## Configuration
 
