@@ -1,13 +1,13 @@
-"""Integration tests for integrations/dive_conditions.py.
+"""Integration tests for integrations/diving.py.
 
 All data sources are keyless — safe to run in CI on every main push.
 
 Run with: uv run pytest -m integration
 
 Required env vars:
-  DIVE_CONDITIONS_NDBC_STATION  — NDBC station ID (e.g. "46042" for Monterey)
-  DIVE_CONDITIONS_LAT           — decimal latitude for Open-Meteo fallback test
-  DIVE_CONDITIONS_LON           — decimal longitude for Open-Meteo fallback test
+  DIVING_NDBC_STATION  — NDBC station ID (e.g. "46042" for Monterey)
+  DIVING_LAT           — decimal latitude for Open-Meteo fallback test
+  DIVING_LON           — decimal longitude for Open-Meteo fallback test
 """
 
 import os
@@ -15,19 +15,19 @@ import os
 import pytest
 
 import config as _cfg
-import integrations.dive_conditions as dc
+import integrations.diving as dc
 
 
 @pytest.mark.integration
-@pytest.mark.require_env('DIVE_CONDITIONS_NDBC_STATION')
+@pytest.mark.require_env('DIVING_NDBC_STATION')
 def test_ndbc_get_variables(require_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
   """get_variables() returns valid variables from the live NDBC API."""
   monkeypatch.setattr(
     _cfg,
     '_config',
     {
-      'dive_conditions': {
-        'ndbc_station_id': os.environ['DIVE_CONDITIONS_NDBC_STATION'],
+      'diving': {
+        'ndbc_station_id': os.environ['DIVING_NDBC_STATION'],
         'units': 'imperial',
       }
     },
@@ -59,16 +59,16 @@ def test_ndbc_get_variables(require_env: None, monkeypatch: pytest.MonkeyPatch) 
 
 
 @pytest.mark.integration
-@pytest.mark.require_env('DIVE_CONDITIONS_LAT', 'DIVE_CONDITIONS_LON')
+@pytest.mark.require_env('DIVING_LAT', 'DIVING_LON')
 def test_openmeteo_fallback_get_variables(require_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
   """get_variables() returns valid variables from the live Open-Meteo APIs."""
   monkeypatch.setattr(
     _cfg,
     '_config',
     {
-      'dive_conditions': {
-        'latitude': os.environ['DIVE_CONDITIONS_LAT'],
-        'longitude': os.environ['DIVE_CONDITIONS_LON'],
+      'diving': {
+        'latitude': os.environ['DIVING_LAT'],
+        'longitude': os.environ['DIVING_LON'],
         'units': 'imperial',
       }
     },
