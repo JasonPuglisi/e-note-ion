@@ -159,6 +159,7 @@ def handle_webhook(
       hold=cfg['hold'],
       timeout=cfg['timeout'],
       supersede_tag=f'message.{credential_name}',
+      interrupt=False,
     )
   except Exception as e:  # noqa: BLE001
     logger.error('Message webhook error: %s', e)

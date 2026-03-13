@@ -2,9 +2,55 @@
 
 Trakt.tv integration — shows the next upcoming episode from your calendar,
 the next unwatched episode for your most recently watched show, and what you
-are currently watching. Calendar and on-deck alternate every 4 hours (3 fires
-each per day); now-playing polls every 3 minutes and only shows when something
-is actively playing.
+are currently watching. Calendar and on-deck each fire twice daily; now-playing
+polls every 3 minutes and only shows when something is actively playing.
+Entertainment — three templates spanning background context to real-time.
+
+## Schedule
+
+### `calendar` — next airing episode
+
+**Cron:** `0 8,16 * * *` — fires at 08:00 and 16:00 daily.
+**Hold:** 1200 s | **Timeout:** 1800 s | **Priority:** 4 (Entertainment)
+
+Private template. Fires in the `:00` slot alongside `weather` (pri 5, 600 s) —
+combined budget 1800 s, exactly at the ceiling. Weather shows first; Trakt
+calendar follows for 20 min. The 1800 s timeout lets it survive the 600 s
+weather hold with 1200 s to spare.
+
+### `next_up` — next unwatched episode
+
+**Cron:** `0 12,20 * * *` — fires at 12:00 and 20:00 daily.
+**Hold:** 1200 s | **Timeout:** 1800 s | **Priority:** 4 (Entertainment)
+
+Private template. Same slot pattern as `calendar` — fires at `:00` hours that
+don't overlap with `calendar` (noon = planning context; 20:00 = settling in
+for the evening). Combined budget with weather is 1800 s at both hours.
+
+### `watching` — now playing
+
+**Cron:** `*/3 7-23 * * *` — polls every 3 minutes from 07:00 to 23:00.
+**Hold:** 180 s | **Timeout:** 120 s | **Priority:** 7 (Entertainment)
+**Refresh interval:** 30 s
+
+Private template. No-op when nothing is playing. The 120 s timeout (shorter
+than the 180 s hold) means a queued `watching` message is discarded if it
+waits more than 2 minutes — stale now-playing data is worse than nothing.
+Polling stops at 23:00 to avoid unnecessary overnight API calls.
+
+To override schedule fields without editing this file:
+
+```toml
+[trakt.schedules.calendar]
+disabled = true        # skip entirely
+
+[trakt.schedules.next_up]
+cron = "0 11,19 * * *" # shift windows earlier
+
+[trakt.schedules.watching]
+cron = "*/5 7-23 * * *" # poll less frequently
+hold = 300
+```
 
 ## Configuration
 

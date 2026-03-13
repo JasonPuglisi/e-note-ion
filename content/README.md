@@ -125,6 +125,42 @@ call a different function, add `"integration_fn": "<function_name>"` to the
 template — useful when one integration exposes multiple data sources (e.g.
 Trakt's `get_variables_calendar` and `get_variables_watching`).
 
+### Content categories
+
+Every template belongs to one of six categories. The category determines the
+appropriate priority range and informs scheduling decisions:
+
+| Category | Priority | Philosophy |
+|---|---|---|
+| **Personal** | 9 | Uniquely yours — pet feeding times, self-birthday. Brief (≤ 600 s hold), time-specific, highest priority. These are personal-tier inserts that always show first and are excluded from shared slot budget calculations. |
+| **Social** | 6–8 | Human interactions — friend messages (8), other people's birthdays (6). Urgency varies: a direct message warrants a higher priority than informational birthday data. |
+| **Logistics** | 5–7 | Actionable daily context — weather (5), calendar events (5), transit departures (8). Higher within the range when timing matters (missing a train > missing the weather update). |
+| **Hobbies** | 4–5 | Lifestyle and leisure context — diving conditions, daily vinyl suggestion. Enriching but not urgent; appropriate during waking hours only. |
+| **Entertainment** | 4–8 | Wide range reflects the mode: Plex now-playing (8, active playback) vs. Trakt next-up (4, background planning context). Real-time state = high; background context = low. |
+| **Ambient** | 3–4 | Mood and atmosphere — good morning/night visuals. Gracefully skipped under contention; no loss if they don't show on a busy day. |
+
+**Existing template mapping:**
+
+| Template | Category | Priority |
+|---|---|---|
+| `birthdays.self` | Personal | 9 |
+| `message.notification` | Social | 8 |
+| `birthdays.today` | Social | 6 |
+| `bart.departures` | Logistics | 8 |
+| `weather.conditions` | Logistics | 5 |
+| `calendar.today` | Logistics | 5 |
+| `notion.notification` | Social | 7 |
+| `trakt.watching` | Entertainment | 7 |
+| `diving.conditions` | Hobbies | 5 |
+| `discogs.morning_spin` | Hobbies | 5 |
+| `diving.last_dive` | Hobbies | 3 |
+| `trakt.calendar`, `trakt.next_up` | Entertainment | 4 |
+| `morning_night.good_morning`, `morning_night.good_night` | Ambient | 4 |
+| `plex.now_playing`, `plex.paused`, `plex.stopped` | Entertainment | 8 |
+
+When adding a new template, identify its category first — that gives you the
+priority range to start from before tuning for contention.
+
 ### Priority guidelines
 
 Priority determines which message is shown first when multiple jobs fire at
@@ -140,7 +176,7 @@ runs — only which queued message the display shows first.
 | Maximum | 10 | Reserved for a single "always wins" template. Avoid using broadly — once multiple templates share the same level, tie-breaking falls back to scheduling order. |
 
 Rules of thumb:
-- **Start at 5 and adjust.** Only raise priority when you observe or anticipate contention.
+- **Start at your category's baseline and adjust.** Only raise priority when you observe or anticipate contention.
 - **Pair high priority with a short `timeout`.** A high-priority message that is stale is worse than none. Set `timeout` to roughly the window of relevance.
 - **Pair low priority with a short `timeout` too.** Background content with a long `timeout` will show up hours late. Either set `timeout` to match the display window, or accept that it may be discarded.
 - **Avoid priority inflation.** If everything is 8–10, nothing is. Reserve the top of the scale for the one or two templates where timing genuinely matters.
@@ -173,72 +209,151 @@ Templates that fire on a shared schedule compete for the display queue.
 Follow these guidelines when setting `cron`, `hold`, and `timeout` for a new
 template to keep everything playing nicely together.
 
-### Existing schedule map
+### Time-of-day zones
 
-| Slot | Integration | Pri | Hold | Timeout | Notes |
-|---|---|---|---|---|---|
-| `:00` every hour | `weather` | 5 | 600s | 1800s | |
-| `:15` 07/12/16 | `diving` | 5 | 600s | 1800s | Refresh 1800s; avoids :00 weather slot |
-| `:00` every 4h | `trakt.calendar` | 4 | 1200s | 1800s | Private; queues behind weather |
-| `:30` every hour | `calendar` | 5 | 300s | 1800s | |
-| `8:30` daily | `discogs` | 5 | 600s | 3600s | Queues behind calendar at :30 |
-| `9:00` daily | `birthdays` | 5 | 600s | 3600s | Queues behind weather at :00; done by ~9:20 |
-| `10:00` daily | `diving.last_dive` | 3 | 300s | 3600s | Skipped when no dive date recorded |
-| `*/5` 07–09 Mon–Fri | `bart` | 8 | 290s | 60s | Refresh 60s; dominates mornings |
-| `*/3` always | `trakt.watching` | 7 | 180s | 120s | Refresh 30s; no-op when idle |
-| webhook only | `plex` | 8 | indef | 30s | Private; interrupts on state change |
+The display serves different purposes at different times of day. Match your
+template's schedule to the zone where it's most useful:
+
+| Zone | Hours | Character | Owner |
+|---|---|---|---|
+| Morning start | 07:00–08:00 | Gentle context-setting | Weather (logistics), good morning visual (ambient) |
+| Commute window | 07:00–09:00 weekdays | BART owns this | BART dominates; other content fills gaps between refreshes |
+| Morning anchor | 08:00 | Personal ritual | Personal-tier content (pri 9) wins the queue; weather and Trakt calendar follow |
+| Morning context | 08:30 | Routine check-in | Calendar events, daily vinyl suggestion |
+| Late morning | 09:00–noon | Quiet period | Birthdays, diving last-dive; weather continues hourly |
+| Midday | noon–16:00 | Background ambient | Trakt next-up (noon), diving conditions (12:15) |
+| Afternoon | 16:00–20:00 | Transition | Weather, Trakt calendar refresh (16:00), diving conditions (16:15) |
+| Evening anchor | 20:00 | Personal ritual | Personal-tier content (pri 9) wins the queue; weather and Trakt next-up follow |
+| Wind-down | 21:00–21:45 | Closing mood | Good night visual; weather |
+| Quiet hours | 21:45+ | Board silent (hardware) | Crons continue firing; nothing reaches the display |
+
+Nothing is useful before 07:00 — quiet hours end at 06:15 but content
+shouldn't be scheduled before 07:00. Crons that fire during quiet hours
+(e.g. overnight weather) are harmless — the board ignores them at the
+hardware level — but avoid scheduling new integrations in these windows
+unless there's a specific reason (e.g. an overnight job that needs to be
+ready by 07:00).
+
+### Schedule map
+
+| Slot | Template | Category | Pri | Hold | Timeout | Notes |
+|---|---|---|---|---|---|---|
+| `7:00` daily | `morning_night.good_morning` | Ambient | 4 | 300 s | 3600 s | Queues behind weather; Sep 21 variant (pri 4) overrides |
+| `:00` every hour | `weather.conditions` | Logistics | 5 | 600 s | 1800 s | Fires first in every `:00` slot |
+| `:15` at 07/12/16 | `diving.conditions` | Hobbies | 5 | 600 s | 1800 s | Refresh 1800 s; dedicated `:15` slot avoids `:00` weather |
+| `8:00` daily | `birthdays.self` | Personal | 9 | 3600 s | 7200 s | No-op on non-birthday days; dominates the display for 1 h on birthday — intentional |
+| `:00` at 08/16 | `trakt.calendar` | Entertainment | 4 | 1200 s | 1800 s | Private; queues behind weather |
+| `:30` every hour | `calendar.today` | Logistics | 5 | 300 s | 1800 s | |
+| `8:30` daily | `discogs.morning_spin` | Hobbies | 5 | 600 s | 3600 s | Queues behind calendar at `:30` |
+| `9:00` daily | `birthdays.today` | Social | 6 | 600 s | 3600 s | Queues behind weather; no-op when no birthdays |
+| `10:00` daily | `diving.last_dive` | Hobbies | 3 | 300 s | 3600 s | Skipped when no dive date recorded |
+| `:00` at 12/20 | `trakt.next_up` | Entertainment | 4 | 1200 s | 1800 s | Private; noon = plan for evening, 20:00 = settle in |
+| `21:00` daily | `morning_night.good_night` | Ambient | 4 | 300 s | 3600 s | Moon phase visual; queues behind weather |
+| `*/5` 07–09 Mon–Fri | `bart.departures` | Logistics | 8 | 290 s | 60 s | Refresh 60 s; dominates weekday mornings |
+| `*/3` 07–23 daily | `trakt.watching` | Entertainment | 7 | 180 s | 120 s | Refresh 30 s; no-op when not watching |
+| webhook only | `plex` (3 templates) | Entertainment | 8 | indef / 60 s | 30 s | Private; interrupts on state change |
+| webhook only | `message.notification` | Social | 8 | 120 s | 600 s | Queues normally; shows at next hold break |
+| webhook only | `notion.notification` | Social | 7 | 120 s | 120 s | |
+
+**Personal-tier note:** Priority-9 templates (e.g. `birthdays.self`, or
+personal pet feeding reminders in `content/user/`) are excluded from the slot
+hold budget — they are brief first-position inserts that show quickly and step
+aside for the rest of the slot. The `:00` budget (weather + trakt) is 1800 s
+after accounting for this exclusion.
 
 ### Hold budget
 
 When two templates share a slot, their **combined holds** determine how long
-that slot occupies the display. Keep the total under 30 minutes to avoid
-bleeding into the next slot:
+that slot occupies the display. Keep the total under **1800 s (30 min)** to
+avoid bleeding into the next slot. This budget applies to non-personal
+templates (priority < 9); personal-tier inserts show first and are not counted.
 
-- `:00` worst case (every 4h): weather 600s + trakt.calendar 1200s = 1800s
-  (30 min). Finishes exactly at `:30` — no bleed into the calendar slot.
-- `:30` worst case (8:30am): calendar 300s + discogs 600s = 900s (15 min).
-  Finishes by :45 — no bleed into the next hour.
-- **Weekday mornings 07–09**: BART (priority 8, 290s hold, refresh) fires
-  every 5 min and effectively owns the display. Lower-priority templates
-  survive via their timeouts and show in gaps between BART refreshes.
+Current worst-case budgets:
 
-When adding a new template, sum its hold with every template that shares
-its cron slot and check whether the total bleeds into adjacent slots.
+- `:00` at 08:00 and 16:00: weather 600 s + trakt.calendar 1200 s = **1800 s** ✓
+- `:00` at 12:00 and 20:00: weather 600 s + trakt.next_up 1200 s = **1800 s** ✓
+- `:00` all other hours: weather 600 s = **600 s** ✓
+- `9:00` daily: weather 600 s + birthdays.today 600 s = **1200 s** ✓
+- `8:30` daily: calendar 300 s + discogs 600 s = **900 s** ✓
+- `10:00` daily: weather 600 s + diving.last_dive 300 s = **900 s** ✓
+- `21:00` daily: weather 600 s + good_night 300 s = **900 s** ✓
+
+The slot budget linter in `tests/test_schedule_lint.py` enforces this
+automatically on every `pytest` run.
+
+### Slot conventions
+
+| Minute mark | Convention |
+|---|---|
+| `:00` | Weather owns this. One additional template at most (combined hold ≤ 1800 s). |
+| `:15` | Dedicated slot for a single mid-priority template (diving's home — good pattern to follow). |
+| `:30` | Calendar owns this. One additional **daily-only** template is fine; avoid adding a second always-on template. |
+| `:45` / `:55` | Clean dedicated slots for brief personal content that needs a clear moment just before the hour. |
+| `*/N` sub-hourly | Real-time data only. Always pair with `refresh_interval` and `timeout ≤ 120 s`. |
 
 ### Picking a slot for new templates
 
-**Hourly templates** should fire at `:00` or `:30` — pick whichever has the
-smaller hold budget. Avoid adding a third integration to a slot that already
-has two.
+**Hourly or daily templates** should fire at `:00` or `:30` — pick whichever
+has the smaller hold budget. Avoid adding a third always-on template to a slot
+that already has two.
 
-**Sub-hourly templates** (e.g. every 5 min) are fine but should use a short
-`timeout` so stale messages drop rather than accumulate.
+**Sub-hourly templates** (e.g. every 5 min) are for real-time data only.
+Always set `timeout ≤ 120 s` so stale messages are discarded rather than
+accumulating in the queue.
 
-**New slots** (`:15`, `:45`) are available if neither existing slot has room,
-but check that an upstream hold doesn't bleed into your chosen minute.
+**New slots** (`:15`, `:45`) are available if neither existing slot has room.
+Check that an upstream hold doesn't bleed into your chosen minute, and
+reference the hold budget table above.
 
 ### Pairing `timeout` with `hold`
 
 `timeout` is how long a message can wait in the queue before being discarded.
 Set it long enough to survive the hold of whatever it queues behind:
 
-- A priority-5 template firing at `:00` queues behind `weather` (600s hold).
-  Set `timeout >= 600` — otherwise the message expires before `weather`
-  finishes.
-- A priority-4 template firing alongside a priority-5 template needs
-  `timeout` long enough to outlast both the higher-priority hold *and* any
-  queue drain time. `timeout = 1800` is a safe floor for low-priority hourly
-  content.
+- A priority-5 template firing at `:00` queues behind `weather` (600 s hold).
+  Set `timeout >= 600` — otherwise the message expires before `weather` finishes.
+- A priority-4 template firing alongside a priority-5 template needs `timeout`
+  long enough to outlast both the higher-priority hold *and* queue drain time.
+  `timeout = 1800` is a safe floor for low-priority hourly content.
 
-Short `timeout` values (≤ 600s) are appropriate only for high-priority,
+Short `timeout` values (≤ 600 s) are appropriate only for high-priority,
 time-sensitive content (e.g. BART departures) where a stale message is worse
 than no message.
+
+### Webhook conventions
+
+Webhook templates fire outside the cron schedule and can arrive at any time.
+They compete with scheduled content via priority and the interrupt mechanism.
+
+**Interrupt model:**
+- Use `interrupt=True` for state changes that need immediate visibility — Plex
+  play, pause, and stop events should preempt whatever is currently on the
+  display.
+- Leave `interrupt=False` (the default) for notifications that can queue
+  normally — friend messages are more politely shown at the next hold break
+  than by flapping the display mid-scene.
+
+**Indefinite holds:**
+- Use `indefinite=True` for continuous-state messages (active Plex playback)
+  that should stay on screen until a stop or resume event arrives. Always
+  set a `hold` safety ceiling (e.g. 14400 s / 4 h) in case the stop event
+  is never received.
+- An indefinite Plex hold suppresses all queued cron content until playback
+  pauses or stops — this is intentional; Plex content IS the relevant content
+  during media playback.
+
+**Known interaction — Plex and friend messages:** Friend messages (`message`)
+queue normally with `interrupt=False` and a 600 s timeout. During active Plex
+playback, they will show at the next natural pause. If no pause occurs within
+10 min the message expires — this is a deliberate trade-off that avoids
+disrupting media playback.
 
 ### Priority reminder
 
 Priority controls queue order, not fire time. Two templates with the same
 cron expression fire at the same instant — priority decides which shows first.
-Don't inflate priority to "win" — see the priority guidelines above.
+Don't inflate priority to "win" — see the content categories and priority
+guidelines above.
 
 ## Contrib integrations
 

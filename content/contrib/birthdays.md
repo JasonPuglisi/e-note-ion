@@ -2,12 +2,48 @@
 
 Two birthday templates, both requiring iCloud CardDAV:
 
-- **`today`** — upcoming birthdays from contacts, shown once daily at 9am
+- **`today`** — upcoming birthdays from contacts, shown once daily at 9am.
+  Social — priority 6.
 - **`self`** — prominent happy birthday display on the board owner's own
   birthday, shown at 8am (priority 9). The owner is suppressed from the
-  `today` list — their birthday is shown exclusively via `self`.
+  `today` list — their birthday is shown exclusively via `self`. Personal —
+  priority 9.
 
 Omit `carddav_url` from `[calendar]` to disable both templates entirely.
+
+## Schedule
+
+### `today` — other birthdays
+
+**Cron:** `0 9 * * *` — fires daily at 09:00.
+**Hold:** 600 s | **Timeout:** 3600 s | **Priority:** 6 (Social)
+
+Fires in the `9:00` slot alongside `weather` (pri 5, 600 s) — combined
+budget 1200 s. At priority 6 `today` queues behind weather but shows before
+any lower-priority templates. No-op when no contacts have a birthday today.
+
+### `self` — your birthday
+
+**Cron:** `0 8 * * *` — fires daily at 08:00.
+**Hold:** 3600 s | **Timeout:** 7200 s | **Priority:** 9 (Personal)
+
+No-op on non-birthday days (integration returns early). On your birthday,
+`self` wins the 8:00 queue at priority 9 and holds the display for 1 h. This
+intentionally causes lower-priority same-slot templates (Trakt calendar,
+timeout 1800 s) to expire — on your birthday the display is yours. Priority-9
+personal-tier templates are excluded from the shared slot budget check.
+
+To override schedule fields without editing this file:
+
+```toml
+[birthdays.schedules.today]
+hold = 300
+priority = 5
+disabled = true   # skip entirely
+
+[birthdays.schedules.self]
+hold = 1800       # shorter birthday hold
+```
 
 ## Configuration
 

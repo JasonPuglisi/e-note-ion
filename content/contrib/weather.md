@@ -1,8 +1,26 @@
 # weather.json
 
 Current weather conditions for a configured city. Shows city name, weather
-condition with a color indicator, and temperature with daily high/low. Runs
-hourly.
+condition with a color indicator, and temperature with daily high/low.
+Logistics — fires every hour on the hour.
+
+## Schedule
+
+**Cron:** `0 * * * *` — fires every hour at `:00`.
+**Hold:** 600 s | **Timeout:** 1800 s | **Priority:** 5 (Logistics)
+
+`weather` anchors every `:00` slot. All other templates that fire at `:00`
+queue behind it. Combined hold budget for the `:00` slot must not exceed
+1800 s; see the [schedule map](../README.md#schedule-map) for current totals.
+
+To override schedule fields without editing this file:
+
+```toml
+[weather.schedules.conditions]
+hold = 300
+priority = 6
+disabled = true  # skip entirely
+```
 
 ## Configuration
 

@@ -3,10 +3,45 @@
 Plex Media Server integration — shows what you are currently watching on the
 board using Plex webhooks. Shows "NOW PLAYING" when playback starts, resumes,
 pauses, or stops — the color square signals the state (green for playing,
-yellow for paused, red for stopped).
+yellow for paused, red for stopped). Entertainment — webhook-only, three
+templates covering play/pause/stop states.
 
 Unlike cron-scheduled templates, these templates are triggered entirely by
 incoming Plex webhook events. No content is shown when Plex is idle.
+
+## Schedule
+
+All three templates are **webhook-only** (no cron). They fire on Plex playback
+events and are marked `private` — they are suppressed when public mode is
+enabled.
+
+| Template | Trigger | Hold | Timeout | Priority |
+|---|---|---|---|---|
+| `now_playing` | Play / Resume | 14400 s (4 h safety ceiling) | 30 s | 8 |
+| `paused` | Pause | 14400 s (4 h safety ceiling) | 30 s | 8 |
+| `stopped` | Stop / End | 60 s | 30 s | 8 |
+
+`now_playing` and `paused` use `indefinite=True` — they hold until the next
+state-change event arrives (play → pause → stop), using 14400 s as a safety
+ceiling in case the stop event is never received. `stopped` uses a short fixed
+hold; it fires with `interrupt=True` to immediately clear the indefinite hold.
+
+**Interaction with other content:** An active Plex hold (indefinite) suppresses
+all queued cron-scheduled content until playback pauses or stops. This is
+intentional — the display shows what's most contextually relevant. Friend
+messages (`message`) queue normally and appear at the next natural pause rather
+than interrupting mid-scene.
+
+To override hold or priority without editing this file:
+
+```toml
+[plex.schedules.now_playing]
+hold = 7200    # 2-hour ceiling instead of 4 hours
+priority = 9
+
+[plex.schedules.paused]
+hold = 3600
+```
 
 ## Requirements
 
