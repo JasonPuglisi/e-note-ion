@@ -372,3 +372,94 @@ def test_get_episode_group_position_returns_none_on_error(monkeypatch: pytest.Mo
     result = tmdb.get_episode_group_position(209867, 9005)
 
   assert result is None
+
+
+# --- find_episode_in_group ---
+
+
+def _group_fixture() -> tuple[MagicMock, MagicMock]:
+  """Return (groups_r, group_r) mocks for a type-6 episode group with 2 seasons."""
+  groups_r = MagicMock()
+  groups_r.status_code = 200
+  groups_r.json.return_value = {'results': [{'id': 'grp-frieren', 'type': 6}]}
+
+  group_r = MagicMock()
+  group_r.status_code = 200
+  group_r.json.return_value = {
+    'groups': [
+      {
+        'order': 1,
+        'name': 'Season 1',
+        'episodes': [{'id': 5001 + i, 'name': f'S1E{i + 1} Title', 'order': i} for i in range(9)],
+      },
+      {
+        'order': 2,
+        'name': 'Season 2',
+        'episodes': [{'id': 6001 + i, 'name': f'S2E{i + 1} Title', 'order': i} for i in range(19)],
+      },
+    ]
+  }
+  return groups_r, group_r
+
+
+def test_find_episode_in_group_returns_title_and_id(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  groups_r, group_r = _group_fixture()
+
+  with patch('integrations.tmdb.fetch_with_retry', side_effect=[groups_r, group_r]):
+    result = tmdb.find_episode_in_group(209867, 2, 7)
+
+  # Season 2, episode 7 → order=1 in groups (season 2), order=6 in episodes (0-indexed)
+  assert result == ('S2E7 Title', 6007)  # 6001 + 6
+
+
+def test_find_episode_in_group_season_1(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  groups_r, group_r = _group_fixture()
+
+  with patch('integrations.tmdb.fetch_with_retry', side_effect=[groups_r, group_r]):
+    result = tmdb.find_episode_in_group(209867, 1, 3)
+
+  assert result == ('S1E3 Title', 5003)  # 5001 + 2
+
+
+def test_find_episode_in_group_returns_none_when_season_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  groups_r, group_r = _group_fixture()
+
+  with patch('integrations.tmdb.fetch_with_retry', side_effect=[groups_r, group_r]):
+    result = tmdb.find_episode_in_group(209867, 5, 1)  # season 5 doesn't exist
+
+  assert result is None
+
+
+def test_find_episode_in_group_returns_none_when_episode_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  groups_r, group_r = _group_fixture()
+
+  with patch('integrations.tmdb.fetch_with_retry', side_effect=[groups_r, group_r]):
+    result = tmdb.find_episode_in_group(209867, 2, 99)  # episode 99 doesn't exist in S2
+
+  assert result is None
+
+
+def test_find_episode_in_group_returns_none_when_no_type6_group(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  groups_r = MagicMock()
+  groups_r.status_code = 200
+  groups_r.json.return_value = {'results': [{'id': 'grp-xyz', 'type': 5}]}
+
+  with patch('integrations.tmdb.fetch_with_retry', return_value=groups_r):
+    result = tmdb.find_episode_in_group(209867, 2, 7)
+
+  assert result is None

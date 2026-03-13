@@ -273,6 +273,47 @@ def get_episode_by_number(show_id: int, season: int, episode: int) -> tuple[str,
   return None
 
 
+def find_episode_in_group(show_id: int, season: int, episode: int) -> tuple[str, int] | None:
+  """Return (title, tmdb_episode_id) for an episode by its type-6 group position.
+
+  Looks up the show's type-6 (TV broadcast seasons) episode group and finds
+  the episode at the given season/episode position. Group seasons map to
+  `order` (1-based); episodes within a season map to `order` (0-indexed).
+
+  Used when TMDb base season numbering doesn't match Plex/TVDb numbering —
+  e.g. Frieren has all 28 episodes in Season 1 on TMDb base, but the type-6
+  group correctly splits them into Season 1 and Season 2.
+
+  Returns None if no type-6 group exists, the position is not found, or
+  any request fails.
+  """
+  group_id = _get_type6_group_id(show_id)
+  if not group_id:
+    return None
+  groups = _get_episode_group(group_id)
+  if not groups:
+    return None
+  for group in groups:
+    if group.get('order', 0) != season:
+      continue
+    for ep in group.get('episodes', []):
+      if ep.get('order', -1) == episode - 1:  # order is 0-indexed within group
+        title: str = ep.get('name') or ''
+        tmdb_ep_id: int | None = ep.get('id')
+        if tmdb_ep_id is not None:
+          logger.debug(
+            'TMDb: episode group S%dE%d → ep %d %r (show=%d, group=%r)',
+            season,
+            episode,
+            tmdb_ep_id,
+            title,
+            show_id,
+            group_id,
+          )
+          return (title, tmdb_ep_id)
+  return None
+
+
 def get_episode_group_position(show_id: int, tmdb_episode_id: int) -> tuple[int, int] | None:
   """Return (season, episode) from the type-6 episode group for a TMDb episode.
 
