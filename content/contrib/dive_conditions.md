@@ -12,8 +12,8 @@ Add the following to your `config.toml`:
 [dive_conditions]
 # NDBC buoy station ID (recommended for US coastal sites — real measured data).
 # Find your nearest station at https://www.ndbc.noaa.gov/
-# Example: 46042 = Monterey offshore buoy (27 NM WNW of Monterey, CA)
-ndbc_station_id = "46042"
+# Example: 46014 = Point Arena, CA
+ndbc_station_id = "46014"
 
 # Open-Meteo fallback: use these instead of ndbc_station_id for non-US sites
 # or locations without a nearby buoy.
@@ -60,8 +60,8 @@ NOAA adds and decommissions buoys over time. Verify your station is still
 active and reporting:
 
 - Station list: https://www.ndbc.noaa.gov/to_station.shtml
-- Station page (replace ID): https://www.ndbc.noaa.gov/station_page.php?station=46042
-- Realtime data file: https://www.ndbc.noaa.gov/data/realtime2/46042.txt
+- Station page (replace ID): https://www.ndbc.noaa.gov/station_page.php?station=46014
+- Realtime data file: https://www.ndbc.noaa.gov/data/realtime2/46014.txt
 
 If a station stops reporting, check the NDBC station page for status. Nearby
 stations or the Open-Meteo fallback can substitute while a buoy is offline.
