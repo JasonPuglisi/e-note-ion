@@ -156,7 +156,14 @@ def _canonicalize_plex_title(
       logger.debug('plex: imdb ep lookup failed for %r, using raw title %r', imdb_id, raw_title)
     else:
       logger.debug('plex: no imdb:// guid for episode %r, trying title search', raw_title)
-    # Last resort: search TMDb by show title + S/E numbers
+    # Last resort: search TMDb by show title + S/E numbers.
+    # Two sub-strategies after finding the show:
+    #   1. Base season lookup (/tv/{id}/season/{s}/episode/{e}) — works when
+    #      Plex and TMDb use the same season numbering.
+    #   2. Episode-group lookup — works when Plex uses broadcast-season
+    #      numbers (TVDb convention) but TMDb base data uses a flat single
+    #      season (e.g. Frieren, JJK). The type-6 group already cached by
+    #      get_episode_group_position re-used here at no extra cost.
     if season is not None and episode is not None:
       show_id = _tmdb.search_show_by_title(raw_title)
       if show_id is not None:
@@ -168,7 +175,21 @@ def _canonicalize_plex_title(
             season, episode = group_pos
           canonical = _tmdb.get_show_title(show_id)
           logger.debug(
-            'plex: tmdb title-search %r -> show=%d S%dE%d %r',
+            'plex: tmdb title-search (base) %r → show=%d S%dE%d %r',
+            raw_title,
+            show_id,
+            season,
+            episode,
+            ep_title,
+          )
+          return canonical if canonical else raw_title, ep_title or None
+        # Base lookup failed (show uses flat/different season numbering) — try episode group.
+        ep_result_grp = _tmdb.find_episode_in_group(show_id, season, episode)
+        if ep_result_grp is not None:
+          ep_title, _ = ep_result_grp
+          canonical = _tmdb.get_show_title(show_id)
+          logger.debug(
+            'plex: tmdb title-search (group) %r → show=%d S%dE%d %r',
             raw_title,
             show_id,
             season,
