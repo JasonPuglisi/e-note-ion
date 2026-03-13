@@ -58,6 +58,39 @@ The webhook only stores the date; the display fires on the daily 10am cron.
 To record a dive immediately without waiting, set `last_dived_on` manually in
 `config.toml`.
 
+## iOS Shortcut
+
+A one-tap Shortcut that sends today's date to the webhook. No prompts — tap it
+when you surface.
+
+**Build the Shortcut:**
+
+1. Open Shortcuts → tap **+** → name it "Log Dive"
+2. Add **Date** → set to **Current Date**
+3. Add **Format Date** → Date: Current Date result from step 2, Format: **Custom**,
+   Custom Format: `yyyy-MM-dd`, Time Zone: **Current** (rename output to `dived_on`
+   when wiring the next step)
+4. Add **Dictionary** → add one key: `dived_on` (Type: Text) → value: `dived_on`
+   magic variable from step 3
+5. Add **Get Contents of URL**:
+   - URL: `https://<your-webhook-url>/webhook/diving` (replaced by import question)
+   - Method: **POST**
+   - Headers: add `X-Webhook-Secret` → value: the Text action below (replaced by import question)
+   - Body: **JSON** → insert the Dictionary from step 4
+   - No `Content-Type` header needed — Shortcuts sets it automatically for JSON bodies
+6. Add a **Text** action for the secret (this is what becomes the import question value):
+   paste a placeholder; this will be replaced on import
+7. Tap the **ⓘ** button → **Import Questions** → add two questions:
+   - Question: `Webhook URL`, Parameter: URL field of Get Contents of URL, Default: blank
+   - Question: `Webhook secret`, Parameter: the Text action from step 6, Default: blank
+
+> **Note on step ordering:** In Shortcuts, the Text action for the secret (step 6)
+> must appear *before* the Get Contents of URL step (step 5) so it can be wired as
+> the header value. Add it between steps 4 and 5 when building.
+
+Share via iCloud link → import to your device and fill in the two import questions
+with your webhook URL and the plaintext secret from the scheduler log.
+
 ## Condition scoring
 
 The header color square reflects subjective dive condition quality based on
