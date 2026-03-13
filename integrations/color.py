@@ -3,31 +3,32 @@
 # Shared utility: derive the dominant color from image bytes and map it to the
 # nearest Vestaboard color square tag.
 #
-# Used by: integrations/discogs.py (album art), and future integrations such as
-# Apple Music now-playing (#22).
+# Used by: integrations/discogs.py (album art), and future music integrations.
 #
 # Color extraction approach:
 #   1. Decode the image with Pillow, convert to RGB, and resize to at most
 #      _SAMPLE_SIZE×_SAMPLE_SIZE pixels (preserving aspect ratio) for fast
 #      clustering.
-#   2. Filter out near-white (all channels > 230) and near-black (all channels
-#      < 25) pixels — these are background/border artifacts that skew the result.
-#   3. Run k-means++ clustering (k=3) on the filtered pixels. This finds the
-#      dominant color region even when the image has multiple distinct hues
-#      (e.g. blue background + skin tones). The centroid of the largest cluster
-#      represents the dominant color.
-#   4. Check HSV saturation of the dominant centroid. If below
-#      _SATURATION_THRESHOLD the color is achromatic (grey/B&W); map directly
-#      to [W] or [K] by luminance (ITU-R BT.601).
-#   5. For chromatic colors, compute the HSV hue angle and find the nearest
-#      entry in _CHROMATIC_PALETTE by circular hue distance. Hue matching is
-#      invariant to lightness, so pale blue and deep navy both map to [B].
+#   2. Filter out near-white (all channels > 230), near-black (all channels
+#      < 25), and dark shadow pixels (BT.601 luminance < 40) — these are
+#      background/border artifacts that skew the result.
+#   3. Convert filtered pixels to Oklab (a perceptually uniform color space)
+#      and run k-means++ clustering (k=3). Euclidean distance in Oklab is
+#      perceptually uniform, which gives better cluster shapes than sRGB.
+#   4. Score clusters by population × chroma (C = √(a² + b²)). Chromatic
+#      clusters (C ≥ _CHROMA_THRESHOLD) are preferred; if none exist, the
+#      largest achromatic cluster wins.
+#   5. Convert the winning centroid to OKLCH. If chroma is below
+#      _CHROMA_THRESHOLD, map to [W] or [K] by Oklab lightness. Otherwise
+#      find the nearest entry in _CHROMATIC_PALETTE by circular OKLCH hue
+#      distance.
 #
-# If the image cannot be decoded, the request fails, or all pixels are filtered,
-# the caller-supplied fallback tag is returned instead.
+# If the image cannot be decoded, the request fails, or all pixels are
+# filtered, the caller-supplied fallback tag is returned instead.
 
 import io
 import logging
+import math
 import random
 
 import requests
@@ -37,34 +38,38 @@ from integrations.http import fetch_with_retry, user_agent
 
 logger = logging.getLogger(__name__)
 
-# (hue_degrees, tag) for the 6 chromatic Vestaboard color squares.
-# Matching is by circular hue distance, so all lightness variants of a hue
-# (pale blue, sky blue, deep navy) map to the same tag.
-# [W] and [K] are achromatic and handled separately by luminance.
+# OKLCH hue angles (degrees) for the 6 chromatic Vestaboard color squares.
+# Defined in Oklab/OKLCH space (perceptually uniform hue).
+# Matching is by circular hue distance; [W] and [K] are handled separately.
 _CHROMATIC_PALETTE: list[tuple[float, str]] = [
-  (0.0, '[R]'),  # red
-  (30.0, '[O]'),  # orange
-  (60.0, '[Y]'),  # yellow
-  (120.0, '[G]'),  # green
-  (240.0, '[B]'),  # blue
-  (275.0, '[V]'),  # violet
+  (27.0, '[R]'),  # red
+  (55.0, '[O]'),  # orange
+  (110.0, '[Y]'),  # yellow
+  (142.0, '[G]'),  # green
+  (264.0, '[B]'),  # blue
+  (307.0, '[V]'),  # violet
 ]
 
 # Image is resized to at most this dimension on each side before clustering.
-# 100×100 = 10k pixels — enough color information, fast to cluster.
+# 100×100 = 10 k pixels — enough color information, fast to cluster.
 _SAMPLE_SIZE = 100
 
-# Maximum image size to read (bytes). Cover art thumbnails are well under 500 KB;
-# this guards against unexpectedly large redirect targets.
+# Maximum image size to read (bytes). Cover art thumbnails are well under
+# 500 KB; this guards against unexpectedly large redirect targets.
 _MAX_IMAGE_BYTES = 2 * 1024 * 1024  # 2 MB
 
-# Pixel brightness thresholds for background filtering.
+# Pixel brightness thresholds for background filtering (sRGB 0–255 scale).
 _NEAR_WHITE = 230  # all channels above this → skip
 _NEAR_BLACK = 25  # all channels below this → skip
-_DARK_LUM_FLOOR = 40  # ITU-R BT.601 luminance below this → skip (dark shadows pass per-channel but read as black)
+_DARK_LUM_FLOOR = 40  # ITU-R BT.601 luminance below this → skip
 
-# HSV saturation below this threshold → treat as achromatic (grey/B&W).
-_SATURATION_THRESHOLD = 0.15
+# Oklab chroma (C = √(a² + b²)) below which a color is considered achromatic.
+# Pure greys have C ≈ 0; vivid saturated colors have C ≈ 0.1–0.3.
+_CHROMA_THRESHOLD = 0.05
+
+# Oklab lightness above which achromatic colors map to [W]; below maps to [K].
+# Calibrated to match the perceptual midpoint of the sRGB grey ramp (~128/255).
+_WHITE_L_THRESHOLD = 0.595
 
 # k-means parameters.
 _KMEANS_K = 3
@@ -74,26 +79,60 @@ _KMEANS_MAX_ITER = 20
 _PLACEHOLDER_SUFFIXES = ('spacer.gif', 'placeholder.gif')
 
 
-def _kmeans_dominant(pixels: list[tuple[int, int, int]]) -> tuple[int, int, int]:
-  """Return the centroid of the largest k-means cluster (k=_KMEANS_K).
+def _srgb_to_linear(c: int) -> float:
+  """Convert a single sRGB channel value (0–255) to linear light (0–1)."""
+  f = c / 255.0
+  if f <= 0.04045:
+    return f / 12.92
+  return ((f + 0.055) / 1.055) ** 2.4
 
-  Uses k-means++ initialization to spread starting centroids across the color
-  space, then iterates until convergence or _KMEANS_MAX_ITER. Falls back to
-  a simple average when there are too few distinct pixels to cluster.
+
+def _rgb_to_oklab(r: int, g: int, b: int) -> tuple[float, float, float]:
+  """Convert sRGB (0–255) to Oklab (L, a, b).
+
+  Uses the exact matrix coefficients from Björn Ottosson's Oklab spec.
+  Euclidean distance in this space is perceptually uniform.
+  """
+  r_lin = _srgb_to_linear(r)
+  g_lin = _srgb_to_linear(g)
+  b_lin = _srgb_to_linear(b)
+
+  lms_l = 0.4122214708 * r_lin + 0.5363325363 * g_lin + 0.0514459929 * b_lin
+  lms_m = 0.2119034982 * r_lin + 0.6806995451 * g_lin + 0.1073969566 * b_lin
+  lms_s = 0.0883024619 * r_lin + 0.2817188376 * g_lin + 0.6299787005 * b_lin
+
+  l_ = math.cbrt(lms_l)
+  m_ = math.cbrt(lms_m)
+  s_ = math.cbrt(lms_s)
+
+  L = 0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_
+  a = 1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_
+  b_out = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_
+
+  return L, a, b_out
+
+
+def _kmeans_dominant(pixels: list[tuple[float, float, float]]) -> tuple[float, float, float]:
+  """Return the centroid of the best-scoring k-means cluster in Oklab space.
+
+  Uses k-means++ initialization then iterates until convergence or
+  _KMEANS_MAX_ITER. Scores clusters by population × chroma; chromatic
+  clusters (C ≥ _CHROMA_THRESHOLD) are preferred over achromatic ones.
+  Falls back to a simple average when there are too few distinct pixels.
   """
   k = _KMEANS_K
 
   if len(pixels) <= k:
     n = len(pixels)
     return (
-      sum(p[0] for p in pixels) // n,
-      sum(p[1] for p in pixels) // n,
-      sum(p[2] for p in pixels) // n,
+      sum(p[0] for p in pixels) / n,
+      sum(p[1] for p in pixels) / n,
+      sum(p[2] for p in pixels) / n,
     )
 
   # k-means++ initialization: spread starting centroids across the color space.
   first = random.choice(pixels)  # nosec S311
-  centroids: list[tuple[float, float, float]] = [(float(first[0]), float(first[1]), float(first[2]))]
+  centroids: list[tuple[float, float, float]] = [first]
 
   for _ in range(k - 1):
     dists = [min((p[0] - c[0]) ** 2 + (p[1] - c[1]) ** 2 + (p[2] - c[2]) ** 2 for c in centroids) for p in pixels]
@@ -105,18 +144,17 @@ def _kmeans_dominant(pixels: list[tuple[int, int, int]]) -> tuple[int, int, int]
     for p, d in zip(pixels, dists):
       cumulative += d
       if cumulative >= threshold:
-        centroids.append((float(p[0]), float(p[1]), float(p[2])))
+        centroids.append(p)
         break
 
-  # Pad with duplicates if initialization produced fewer than k centroids
-  # (can happen when all pixels are identical).
+  # Pad with duplicates if initialization produced fewer than k centroids.
   while len(centroids) < k:
     centroids.append(centroids[-1])
 
   # Iterate: assign → update → check convergence.
-  assignments: list[list[tuple[int, int, int]]] = [[] for _ in range(k)]
+  assignments: list[list[tuple[float, float, float]]] = [[] for _ in range(k)]
   for _ in range(_KMEANS_MAX_ITER):
-    new_assignments: list[list[tuple[int, int, int]]] = [[] for _ in range(k)]
+    new_assignments: list[list[tuple[float, float, float]]] = [[] for _ in range(k)]
     for p in pixels:
       nearest = min(
         range(k),
@@ -142,9 +180,23 @@ def _kmeans_dominant(pixels: list[tuple[int, int, int]]) -> tuple[int, int, int]
     if not changed:
       break
 
+  # Score clusters: prefer chromatic (C ≥ threshold) by population × chroma.
+  # If no chromatic cluster exists, fall back to the largest cluster.
+  def _chroma(c: tuple[float, float, float]) -> float:
+    return math.sqrt(c[1] ** 2 + c[2] ** 2)
+
+  chromatic = [
+    (len(assignments[i]), _chroma(centroids[i]), centroids[i])
+    for i in range(k)
+    if assignments[i] and _chroma(centroids[i]) >= _CHROMA_THRESHOLD
+  ]
+
+  if chromatic:
+    return max(chromatic, key=lambda t: t[0] * t[1])[2]
+
+  # No chromatic cluster — return the largest achromatic centroid.
   largest = max(range(k), key=lambda i: len(assignments[i]))
-  c = centroids[largest]
-  return (int(round(c[0])), int(round(c[1])), int(round(c[2])))
+  return centroids[largest]
 
 
 def dominant_color_tag(image_bytes: bytes, *, fallback: str = '[Y]') -> str:
@@ -167,8 +219,8 @@ def dominant_color_tag(image_bytes: bytes, *, fallback: str = '[Y]') -> str:
   img.thumbnail((_SAMPLE_SIZE, _SAMPLE_SIZE), Image.Resampling.LANCZOS)
 
   raw = img.tobytes()
-  # RGB: 3 bytes per pixel; tobytes() always returns int values.
-  pixels = [(raw[i], raw[i + 1], raw[i + 2]) for i in range(0, len(raw), 3)]
+  # RGB: 3 bytes per pixel.
+  srgb_pixels = [(raw[i], raw[i + 1], raw[i + 2]) for i in range(0, len(raw), 3)]
 
   # Filter near-white, near-black, and dark shadow pixels.
   # The luminance floor catches dark pixels (e.g. face shadows on a black cover)
@@ -176,7 +228,7 @@ def dominant_color_tag(image_bytes: bytes, *, fallback: str = '[Y]') -> str:
   # from black and skew hue detection with their slight warm undertones.
   filtered = [
     (r, g, b)
-    for r, g, b in pixels
+    for r, g, b in srgb_pixels
     if not (r > _NEAR_WHITE and g > _NEAR_WHITE and b > _NEAR_WHITE)
     and not (r < _NEAR_BLACK and g < _NEAR_BLACK and b < _NEAR_BLACK)
     and (r * 299 + g * 587 + b * 114) // 1000 >= _DARK_LUM_FLOOR
@@ -186,33 +238,27 @@ def dominant_color_tag(image_bytes: bytes, *, fallback: str = '[Y]') -> str:
     logger.debug('color: all pixels filtered (near-white/black); using fallback %s', fallback)
     return fallback
 
-  # Find dominant color via k-means clustering.
-  avg_r, avg_g, avg_b = _kmeans_dominant(filtered)
+  # Convert filtered pixels to Oklab for perceptually-uniform clustering.
+  oklab_pixels = [_rgb_to_oklab(r, g, b) for r, g, b in filtered]
 
-  # Compute HSV saturation to detect achromatic (grey/B&W) images.
-  max_c = max(avg_r, avg_g, avg_b)
-  min_c = min(avg_r, avg_g, avg_b)
-  saturation = (max_c - min_c) / max_c if max_c > 0 else 0.0
+  # Find dominant color via k-means in Oklab, scored by population × chroma.
+  L, a, b_val = _kmeans_dominant(oklab_pixels)
 
-  if saturation < _SATURATION_THRESHOLD:
-    # Achromatic: choose [W] or [K] by perceived luminance (ITU-R BT.601).
-    luminance = (avg_r * 299 + avg_g * 587 + avg_b * 114) // 1000
-    tag = '[W]' if luminance >= 128 else '[K]'
-    logger.debug('color: avg RGB (%d,%d,%d) sat=%.2f lum=%d → %s', avg_r, avg_g, avg_b, saturation, luminance, tag)
+  # Compute OKLCH chroma to decide chromatic vs achromatic.
+  chroma = math.sqrt(a**2 + b_val**2)
+
+  if chroma < _CHROMA_THRESHOLD:
+    # Achromatic: choose [W] or [K] by Oklab lightness.
+    tag = '[W]' if L >= _WHITE_L_THRESHOLD else '[K]'
+    logger.debug('color: Oklab L=%.3f C=%.3f → achromatic %s', L, chroma, tag)
   else:
-    # Chromatic: compute HSV hue and match by circular distance.
-    delta = max_c - min_c
-    if max_c == avg_r:
-      hue = 60.0 * (((avg_g - avg_b) / delta) % 6)
-    elif max_c == avg_g:
-      hue = 60.0 * ((avg_b - avg_r) / delta + 2)
-    else:
-      hue = 60.0 * ((avg_r - avg_g) / delta + 4)
+    # Chromatic: compute OKLCH hue angle and find nearest palette entry.
+    hue = math.degrees(math.atan2(b_val, a)) % 360
     tag = min(
       _CHROMATIC_PALETTE,
       key=lambda entry: min(abs(entry[0] - hue), 360 - abs(entry[0] - hue)),
     )[1]
-    logger.debug('color: avg RGB (%d,%d,%d) sat=%.2f hue=%.1f → %s', avg_r, avg_g, avg_b, saturation, hue, tag)
+    logger.debug('color: Oklab L=%.3f C=%.3f hue=%.1f° → %s', L, chroma, hue, tag)
 
   return tag
 
