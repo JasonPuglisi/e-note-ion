@@ -162,6 +162,12 @@ def test_truncate_word_no_space_falls_back_to_hard() -> None:
   assert vb.truncate_line('HELLOWORLD', 5, 'word') == 'HELLO'
 
 
+def test_truncate_word_last_word_fits_exactly() -> None:
+  # Last word ends exactly at the column limit — must include it, not trim back
+  # (regression: was returning 'AB' instead of 'AB CD')
+  assert vb.truncate_line('AB CD EF', 5, 'word') == 'AB CD'
+
+
 def test_truncate_preserves_color_tag() -> None:
   # Truncating to 1 display char should return the full [G] token, not split it
   assert vb.truncate_line('[G]AB', 1) == '[G]'
