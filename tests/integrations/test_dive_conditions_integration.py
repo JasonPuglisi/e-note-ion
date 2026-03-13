@@ -51,7 +51,9 @@ def test_ndbc_get_variables(require_env: None, monkeypatch: pytest.MonkeyPatch) 
 
   wind = result['wind'][0][0]
   assert wind.startswith('WIND'), f'unexpected wind format: {wind!r}'
-  assert 'KT' in wind, f'wind not in knots: {wind!r}'
+  # Some buoys lack anemometers — wind fields may be '--'; only assert KT when data present.
+  if '--' not in wind:
+    assert 'KT' in wind, f'wind not in knots: {wind!r}'
 
   dc._cache = None
 
