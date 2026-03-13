@@ -339,8 +339,10 @@ come from GitHub secrets env vars directly.
   - Variables: `TRAKT_CLIENT_ID` (non-sensitive); `DIVE_CONDITIONS_NDBC_STATION`, `DIVE_CONDITIONS_LAT`, `DIVE_CONDITIONS_LON` (public NOAA station and coordinates)
 - If any integration test is skipped, the pytest session exits with code 5
   (NO_TESTS_COLLECTED), making the advisory job visibly fail rather than silently pass
-- When adding a new integration, also add `tests/integrations/test_<name>_integration.py`
-  and add its env vars to the `_INTEGRATION_VARS` list in `tests/integrations/conftest.py`
+- When adding a new integration, also add `tests/integrations/test_<name>_integration.py`,
+  add its env vars to the `_INTEGRATION_VARS` list in `tests/integrations/conftest.py`,
+  and wire them into the `env:` block of the integration job in `.github/workflows/ci.yml`
+  (use `${{ secrets.VAR }}` for sensitive values, `${{ vars.VAR }}` for non-sensitive ones)
 
 ### Periodic health review
 
