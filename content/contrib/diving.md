@@ -1,15 +1,19 @@
-# dive_conditions.json
+# diving.json
 
-Scuba diving conditions — wave height, swell period, wind, and water
-temperature. Shows at 7:15am, 12:15pm, and 4:15pm for pre-dive planning.
-A color square in the header indicates subjective dive condition quality.
+Two templates:
+
+- **conditions** — wave height, swell period, wind, and water temperature.
+  Shows at 7:15am, 12:15pm, and 4:15pm for pre-dive planning. Color square
+  reflects subjective dive condition quality.
+- **last_dive** — days since your last dive. Shows daily at 10am when a dive
+  date has been recorded via webhook or set manually.
 
 ## Configuration
 
 Add the following to your `config.toml`:
 
 ```toml
-[dive_conditions]
+[diving]
 # NDBC buoy station ID (recommended for US coastal sites — real measured data).
 # Find your nearest station at https://www.ndbc.noaa.gov/
 # Example: 46014 = Point Arena, CA
@@ -25,6 +29,10 @@ ndbc_station_id = "46014"
 # Unit system: "imperial" (ft, °F, default) or "metric" (m, °C).
 # Wind is always displayed in knots regardless of this setting.
 # units = "imperial"
+
+# Date of the most recent dive — written by the webhook, or set manually.
+# Format: YYYY-MM-DD. The last_dive template shows once this is present.
+# last_dived_on = "2026-01-01"
 ```
 
 | Key | Required | Description |
@@ -33,6 +41,22 @@ ndbc_station_id = "46014"
 | `latitude` | Yes (if no NDBC) | Decimal latitude for Open-Meteo fallback |
 | `longitude` | Yes (if no NDBC) | Decimal longitude for Open-Meteo fallback |
 | `units` | No | `"imperial"` (default) or `"metric"` |
+| `last_dived_on` | No | Most recent dive date (`YYYY-MM-DD`); written by webhook |
+
+## Webhook setup
+
+The `last_dive` template is populated via `POST /webhook/diving`.
+A named credential (`diving`) is auto-generated on first scheduler
+startup — check the log for the plaintext secret to use in your iOS Shortcut.
+
+**Payload:**
+```json
+{"dived_on": "2026-03-12"}
+```
+
+The webhook only stores the date; the display fires on the daily 10am cron.
+To record a dive immediately without waiting, set `last_dived_on` manually in
+`config.toml`.
 
 ## Condition scoring
 

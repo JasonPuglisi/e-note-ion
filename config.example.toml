@@ -151,7 +151,7 @@ client_secret = "your-trakt-client-secret"
 # Optional: number of days ahead to show in the calendar (default 7, max 33)
 # calendar_days = 7
 
-[dive_conditions]
+[diving]
 # Scuba diving conditions — wave height, swell period, wind, and water temperature.
 # Shows at 7:15am, 12:15pm, and 4:15pm. Color square in the header reflects
 # subjective dive condition quality (green/yellow/red).
@@ -170,7 +170,11 @@ client_secret = "your-trakt-client-secret"
 # Wind is always displayed in knots regardless of this setting.
 # units = "imperial"
 
-# [dive_conditions.schedules.conditions]
+# Date of the most recent dive — written by the diving webhook, or
+# set manually. Format: YYYY-MM-DD. Shows daily at 10am when present.
+# last_dived_on = "2026-01-01"
+
+# [diving.schedules.conditions]
 # cron = "15 7,12,16 * * *"
 # hold = 600
 # timeout = 1800

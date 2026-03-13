@@ -1,10 +1,10 @@
-"""Unit tests for integrations/dive_conditions.py."""
+"""Unit tests for integrations/diving.py."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-import integrations.dive_conditions as dc
+import integrations.diving as dc
 from exceptions import IntegrationDataUnavailableError
 
 # ---------------------------------------------------------------------------
@@ -206,7 +206,7 @@ def test_fetch_ndbc_success(monkeypatch: pytest.MonkeyPatch) -> None:
   mock_resp.text = _NDBC_SAMPLE
   mock_resp.raise_for_status = MagicMock()
 
-  with patch('integrations.dive_conditions.fetch_with_retry', return_value=mock_resp):
+  with patch('integrations.diving.fetch_with_retry', return_value=mock_resp):
     result = dc._fetch_ndbc('46042')
 
   assert result['wave_height_m'] == pytest.approx(1.5)
@@ -216,7 +216,7 @@ def test_fetch_ndbc_http_error_raises(monkeypatch: pytest.MonkeyPatch) -> None:
   import requests as _requests
 
   with patch(
-    'integrations.dive_conditions.fetch_with_retry',
+    'integrations.diving.fetch_with_retry',
     side_effect=_requests.RequestException('timeout'),
   ):
     with pytest.raises(IntegrationDataUnavailableError, match='NDBC request failed'):
@@ -255,7 +255,7 @@ def _forecast_response(wind_kmh: float = 18.0, wind_dir: float = 270.0) -> Magic
 
 def test_fetch_openmeteo_success() -> None:
   with patch(
-    'integrations.dive_conditions.fetch_with_retry',
+    'integrations.diving.fetch_with_retry',
     side_effect=[_marine_response(), _forecast_response()],
   ):
     result = dc._fetch_openmeteo(36.6, -121.9)
@@ -272,7 +272,7 @@ def test_fetch_openmeteo_marine_failure_raises() -> None:
   import requests as _requests
 
   with patch(
-    'integrations.dive_conditions.fetch_with_retry',
+    'integrations.diving.fetch_with_retry',
     side_effect=_requests.RequestException('timeout'),
   ):
     with pytest.raises(IntegrationDataUnavailableError, match='marine request failed'):
@@ -283,7 +283,7 @@ def test_fetch_openmeteo_forecast_failure_raises() -> None:
   import requests as _requests
 
   with patch(
-    'integrations.dive_conditions.fetch_with_retry',
+    'integrations.diving.fetch_with_retry',
     side_effect=[_marine_response(), _requests.RequestException('timeout')],
   ):
     with pytest.raises(IntegrationDataUnavailableError, match='forecast request failed'):
@@ -296,7 +296,7 @@ def test_fetch_openmeteo_forecast_failure_raises() -> None:
 
 
 def _patched_config(station_id: str = '46042', units: str = 'imperial') -> dict:
-  return {'dive_conditions': {'ndbc_station_id': station_id, 'units': units}}
+  return {'diving': {'ndbc_station_id': station_id, 'units': units}}
 
 
 def test_cache_hit_avoids_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -308,7 +308,7 @@ def test_cache_hit_avoids_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
   cached_value: dict = {'header': [['[G] WATER 55F']], 'swell': [['SWELL 1.5FT 14S']], 'wind': [['WIND 10KT W']]}
   dc._cache = dc.CacheEntry(cached_value)  # type: ignore[attr-defined]
 
-  with patch('integrations.dive_conditions.fetch_with_retry') as mock_fetch:
+  with patch('integrations.diving.fetch_with_retry') as mock_fetch:
     result = dc.get_variables()
     mock_fetch.assert_not_called()
 
@@ -326,7 +326,7 @@ def test_cache_miss_fetches(monkeypatch: pytest.MonkeyPatch) -> None:
   mock_resp.text = _NDBC_SAMPLE
   mock_resp.raise_for_status = MagicMock()
 
-  with patch('integrations.dive_conditions.fetch_with_retry', return_value=mock_resp):
+  with patch('integrations.diving.fetch_with_retry', return_value=mock_resp):
     result = dc.get_variables()
 
   assert 'header' in result
@@ -351,7 +351,7 @@ def test_expired_cache_fetches_fresh(monkeypatch: pytest.MonkeyPatch) -> None:
   mock_resp.text = _NDBC_SAMPLE
   mock_resp.raise_for_status = MagicMock()
 
-  with patch('integrations.dive_conditions.fetch_with_retry', return_value=mock_resp) as mock_fetch:
+  with patch('integrations.diving.fetch_with_retry', return_value=mock_resp) as mock_fetch:
     dc.get_variables()
     mock_fetch.assert_called_once()
 
@@ -372,7 +372,7 @@ def test_stale_cache_served_on_fetch_failure(monkeypatch: pytest.MonkeyPatch) ->
   dc._cache.cached_at = time.monotonic() - dc._CACHE_TTL - 1
 
   with patch(
-    'integrations.dive_conditions.fetch_with_retry',
+    'integrations.diving.fetch_with_retry',
     side_effect=_requests.RequestException('timeout'),
   ):
     result = dc.get_variables()
@@ -390,7 +390,7 @@ def test_no_cache_on_fetch_failure_raises(monkeypatch: pytest.MonkeyPatch) -> No
   dc._cache = None
 
   with patch(
-    'integrations.dive_conditions.fetch_with_retry',
+    'integrations.diving.fetch_with_retry',
     side_effect=_requests.RequestException('timeout'),
   ):
     with pytest.raises(IntegrationDataUnavailableError):
@@ -408,12 +408,12 @@ def test_get_variables_uses_openmeteo_when_no_station(monkeypatch: pytest.Monkey
   monkeypatch.setattr(
     _cfg,
     '_config',
-    {'dive_conditions': {'latitude': '36.6', 'longitude': '-121.9', 'units': 'imperial'}},
+    {'diving': {'latitude': '36.6', 'longitude': '-121.9', 'units': 'imperial'}},
   )
   dc._cache = None
 
   with patch(
-    'integrations.dive_conditions.fetch_with_retry',
+    'integrations.diving.fetch_with_retry',
     side_effect=[_marine_response(), _forecast_response()],
   ):
     result = dc.get_variables()
@@ -432,7 +432,7 @@ def test_get_variables_imperial_units(monkeypatch: pytest.MonkeyPatch) -> None:
   mock_resp.text = _NDBC_SAMPLE
   mock_resp.raise_for_status = MagicMock()
 
-  with patch('integrations.dive_conditions.fetch_with_retry', return_value=mock_resp):
+  with patch('integrations.diving.fetch_with_retry', return_value=mock_resp):
     result = dc.get_variables()
 
   header = result['header'][0][0]
@@ -453,7 +453,7 @@ def test_get_variables_metric_units(monkeypatch: pytest.MonkeyPatch) -> None:
   mock_resp.text = _NDBC_SAMPLE
   mock_resp.raise_for_status = MagicMock()
 
-  with patch('integrations.dive_conditions.fetch_with_retry', return_value=mock_resp):
+  with patch('integrations.diving.fetch_with_retry', return_value=mock_resp):
     result = dc.get_variables()
 
   header = result['header'][0][0]
@@ -472,7 +472,7 @@ def test_get_variables_missing_data_shows_placeholder(monkeypatch: pytest.Monkey
   mock_resp.text = _NDBC_MISSING_FIELDS
   mock_resp.raise_for_status = MagicMock()
 
-  with patch('integrations.dive_conditions.fetch_with_retry', return_value=mock_resp):
+  with patch('integrations.diving.fetch_with_retry', return_value=mock_resp):
     result = dc.get_variables()
 
   # Missing fields should render as '--'
@@ -492,7 +492,7 @@ def test_get_variables_wind_always_in_knots(monkeypatch: pytest.MonkeyPatch) -> 
     mock_resp.text = _NDBC_SAMPLE
     mock_resp.raise_for_status = MagicMock()
 
-    with patch('integrations.dive_conditions.fetch_with_retry', return_value=mock_resp):
+    with patch('integrations.diving.fetch_with_retry', return_value=mock_resp):
       result = dc.get_variables()
 
     assert 'KT' in result['wind'][0][0], f'wind should be in KT for units={units}'
@@ -502,8 +502,133 @@ def test_get_variables_wind_always_in_knots(monkeypatch: pytest.MonkeyPatch) -> 
 def test_get_variables_missing_lat_lon_raises(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _cfg
 
-  monkeypatch.setattr(_cfg, '_config', {'dive_conditions': {}})
+  monkeypatch.setattr(_cfg, '_config', {'diving': {}})
   dc._cache = None
 
   with pytest.raises(IntegrationDataUnavailableError, match='ndbc_station_id or latitude/longitude'):
     dc.get_variables()
+
+
+# ---------------------------------------------------------------------------
+# get_variables_last_dive
+# ---------------------------------------------------------------------------
+
+
+def _last_dive_config(last_dived_on: str | None) -> dict:
+  section: dict = {}
+  if last_dived_on is not None:
+    section['last_dived_on'] = last_dived_on
+  return {'diving': section}
+
+
+def test_get_variables_last_dive_no_key(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _last_dive_config(None))
+  with pytest.raises(IntegrationDataUnavailableError, match='last_dived_on not set'):
+    dc.get_variables_last_dive()
+
+
+def test_get_variables_last_dive_bad_format(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _last_dive_config('not-a-date'))
+  with pytest.raises(IntegrationDataUnavailableError, match='not a valid YYYY-MM-DD date'):
+    dc.get_variables_last_dive()
+
+
+def test_get_variables_last_dive_today(monkeypatch: pytest.MonkeyPatch) -> None:
+  from datetime import date
+  from unittest.mock import patch
+
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _last_dive_config('2026-03-12'))
+  with patch('integrations.diving.datetime') as mock_dt:
+    mock_dt.now.return_value.date.return_value = date(2026, 3, 12)
+    result = dc.get_variables_last_dive()
+  assert result['days_ago'] == [['TODAY']]
+
+
+def test_get_variables_last_dive_1_day(monkeypatch: pytest.MonkeyPatch) -> None:
+  from datetime import date
+  from unittest.mock import patch
+
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _last_dive_config('2026-03-11'))
+  with patch('integrations.diving.datetime') as mock_dt:
+    mock_dt.now.return_value.date.return_value = date(2026, 3, 12)
+    result = dc.get_variables_last_dive()
+  assert result['days_ago'] == [['1 DAY AGO']]
+
+
+def test_get_variables_last_dive_n_days(monkeypatch: pytest.MonkeyPatch) -> None:
+  from datetime import date
+  from unittest.mock import patch
+
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _last_dive_config('2026-02-26'))
+  with patch('integrations.diving.datetime') as mock_dt:
+    mock_dt.now.return_value.date.return_value = date(2026, 3, 12)
+    result = dc.get_variables_last_dive()
+  assert result['days_ago'] == [['14 DAYS AGO']]
+
+
+def test_get_variables_last_dive_future_clamped(monkeypatch: pytest.MonkeyPatch) -> None:
+  from datetime import date
+  from unittest.mock import patch
+
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _last_dive_config('2026-03-13'))
+  with patch('integrations.diving.datetime') as mock_dt:
+    mock_dt.now.return_value.date.return_value = date(2026, 3, 12)
+    result = dc.get_variables_last_dive()
+  assert result['days_ago'] == [['TODAY']]
+
+
+# ---------------------------------------------------------------------------
+# handle_webhook
+# ---------------------------------------------------------------------------
+
+
+def test_handle_webhook_valid() -> None:
+  from unittest.mock import patch
+
+  with patch('config.write_config_section') as mock_write:
+    result = dc.handle_webhook({'dived_on': '2026-03-12'})
+
+  assert result is None
+  mock_write.assert_called_once_with('diving', {'last_dived_on': '2026-03-12'})
+
+
+def test_handle_webhook_missing_key() -> None:
+  from unittest.mock import patch
+
+  with patch('config.write_config_section') as mock_write:
+    result = dc.handle_webhook({})
+
+  assert result is None
+  mock_write.assert_not_called()
+
+
+def test_handle_webhook_bad_date() -> None:
+  from unittest.mock import patch
+
+  with patch('config.write_config_section') as mock_write:
+    result = dc.handle_webhook({'dived_on': 'not-a-date'})
+
+  assert result is None
+  mock_write.assert_not_called()
+
+
+def test_handle_webhook_non_string_value() -> None:
+  from unittest.mock import patch
+
+  with patch('config.write_config_section') as mock_write:
+    result = dc.handle_webhook({'dived_on': 20260312})
+
+  assert result is None
+  mock_write.assert_not_called()
