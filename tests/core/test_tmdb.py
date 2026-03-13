@@ -173,6 +173,55 @@ def test_find_episode_by_tvdb_id_empty_title_returns_empty_string(monkeypatch: p
   assert result == (2, 3, '', 999, 77002)
 
 
+# --- find_episode_by_imdb_id ---
+
+
+def test_find_episode_by_imdb_id_returns_tuple(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  mock_r = MagicMock()
+  mock_r.status_code = 200
+  mock_r.json.return_value = {
+    'tv_episode_results': [
+      {'id': 6827061, 'season_number': 1, 'episode_number': 51, 'name': 'Perfect Preparation', 'show_id': 95479}
+    ]
+  }
+
+  with patch('integrations.tmdb.fetch_with_retry', return_value=mock_r) as mock_fetch:
+    result = tmdb.find_episode_by_imdb_id('tt39370459')
+
+  assert result == (1, 51, 'Perfect Preparation', 95479, 6827061)
+  call_args = mock_fetch.call_args
+  assert call_args.args[1].endswith('/find/tt39370459')
+  assert call_args.kwargs['params'] == {'external_source': 'imdb_id'}
+
+
+def test_find_episode_by_imdb_id_returns_none_on_empty_results(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  mock_r = MagicMock()
+  mock_r.status_code = 200
+  mock_r.json.return_value = {'tv_episode_results': []}
+
+  with patch('integrations.tmdb.fetch_with_retry', return_value=mock_r):
+    result = tmdb.find_episode_by_imdb_id('tt0000000')
+
+  assert result is None
+
+
+def test_find_episode_by_imdb_id_returns_none_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+
+  with patch('integrations.tmdb.fetch_with_retry', side_effect=Exception('timeout')):
+    result = tmdb.find_episode_by_imdb_id('tt99999999')
+
+  assert result is None
+
+
 # --- get_episode_group_position ---
 
 

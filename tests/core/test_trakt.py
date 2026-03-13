@@ -755,6 +755,80 @@ def test_canonicalize_episode_falls_back_to_tmdb_base_when_group_unavailable(mon
   assert number == 3
 
 
+def test_canonicalize_episode_tmdb_empty_ep_title_keeps_trakt_title(monkeypatch: pytest.MonkeyPatch) -> None:
+  """When TMDb returns an empty episode title, the Trakt title is kept."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+
+  show_data = {'title': 'Frieren', 'ids': {'tmdb': 209867}}
+  ep_data = {'season': 2, 'number': 9, 'title': 'Episode 9', 'ids': {'tvdb': 11447772}}
+
+  with (
+    patch('integrations.tmdb.get_show_title', return_value="Frieren: Beyond Journey's End"),
+    patch('integrations.tmdb.find_episode_by_tvdb_id', return_value=(1, 37, '', 209867, 6855842)),
+    patch('integrations.tmdb.get_episode_group_position', return_value=(2, 9)),
+  ):
+    show_name, season, number, ep_title = trakt._canonicalize_episode(show_data, ep_data)  # noqa: SLF001
+
+  assert season == 2
+  assert number == 9
+  assert ep_title == 'Episode 9'  # Trakt title preserved — TMDb title was empty
+
+
+def test_canonicalize_episode_uses_imdb_fallback_when_no_tvdb_id(monkeypatch: pytest.MonkeyPatch) -> None:
+  """When tvdb_ep_id is absent, imdb is tried as a fallback for S/E and title."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+
+  show_data = {'title': 'Jujutsu Kaisen', 'ids': {'tmdb': 95479}}
+  ep_data = {'season': 3, 'number': 4, 'title': 'Episode 4', 'ids': {'imdb': 'tt39370459'}}
+
+  with (
+    patch('integrations.tmdb.get_show_title', return_value='JUJUTSU KAISEN'),
+    patch('integrations.tmdb.find_episode_by_tvdb_id') as mock_tvdb,
+    patch(
+      'integrations.tmdb.find_episode_by_imdb_id',
+      return_value=(1, 51, 'Perfect Preparation', 95479, 6827061),
+    ) as mock_imdb,
+    patch('integrations.tmdb.get_episode_group_position', return_value=(3, 4)),
+  ):
+    show_name, season, number, ep_title = trakt._canonicalize_episode(show_data, ep_data)  # noqa: SLF001
+
+  mock_tvdb.assert_not_called()
+  mock_imdb.assert_called_once_with('tt39370459')
+  assert season == 3
+  assert number == 4
+  assert ep_title == 'Perfect Preparation'
+
+
+def test_canonicalize_episode_imdb_fallback_show_id_mismatch_keeps_trakt_se(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  """When imdb fallback resolves a different show, Trakt S/E and title are kept."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+
+  show_data = {'title': 'My Anime', 'ids': {'tmdb': 1111}}
+  ep_data = {'season': 2, 'number': 3, 'title': 'Real Title', 'ids': {'imdb': 'tt99999999'}}
+
+  with (
+    patch('integrations.tmdb.get_show_title', return_value='My Anime'),
+    patch('integrations.tmdb.find_episode_by_tvdb_id') as mock_tvdb,
+    patch('integrations.tmdb.find_episode_by_imdb_id', return_value=(1, 5, 'Wrong Show Ep', 9999, 88001)),
+    patch('integrations.tmdb.get_episode_group_position') as mock_group,
+  ):
+    show_name, season, number, ep_title = trakt._canonicalize_episode(show_data, ep_data)  # noqa: SLF001
+
+  mock_tvdb.assert_not_called()
+  mock_group.assert_not_called()
+  assert season == 2
+  assert number == 3
+  assert ep_title == 'Real Title'
+
+
 # --- _canonicalize_movie ---
 
 

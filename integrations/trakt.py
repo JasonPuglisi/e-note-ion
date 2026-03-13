@@ -335,10 +335,32 @@ def _canonicalize_episode(
             int(tmdb_show_id),
           )
         else:
-          season, number, ep_title = res_season, res_number, res_ep_title
+          season, number = res_season, res_number
+          if res_ep_title:
+            ep_title = res_ep_title
           group_pos = _tmdb.get_episode_group_position(int(tmdb_show_id), res_tmdb_ep_id)
           if group_pos:
             season, number = group_pos
+    elif tmdb_show_id:
+      # No TVDb episode ID — try IMDb as fallback
+      imdb_ep_id = ep_data.get('ids', {}).get('imdb')
+      if imdb_ep_id:
+        resolved = _tmdb.find_episode_by_imdb_id(str(imdb_ep_id))
+        if resolved:
+          res_season, res_number, res_ep_title, res_show_id, res_tmdb_ep_id = resolved
+          if res_show_id != int(tmdb_show_id):
+            logger.debug(
+              'TMDb: imdb ep show_id mismatch (got %d, expected %d) — falling back to Trakt S/E',
+              res_show_id,
+              int(tmdb_show_id),
+            )
+          else:
+            season, number = res_season, res_number
+            if res_ep_title:
+              ep_title = res_ep_title
+            group_pos = _tmdb.get_episode_group_position(int(tmdb_show_id), res_tmdb_ep_id)
+            if group_pos:
+              season, number = group_pos
 
   show_name = _vb.truncate_line(title.upper(), _vb.model.cols, 'ellipsis')
   return show_name, season, number, ep_title
