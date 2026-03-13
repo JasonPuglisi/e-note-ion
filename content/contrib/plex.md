@@ -101,6 +101,14 @@ suppresses the "stopped" card if a play or resume arrives within that many
 seconds — avoiding a brief flash of the stopped state between episodes. Set to
 `0` to disable debouncing and always show the stopped card immediately.
 
+**Testing during quiet hours:** Plex state transitions (play → pause → stop)
+will not work correctly during the board's quiet hours. Pause and stop events
+include a board-displacement check — they are silently discarded if no Plex
+content is currently showing. During quiet hours, writes fail and the scheduler
+sees the board as idle, so pause/stop events are discarded as if playback
+weren't active. If you observe play/pause/stop not interrupting each other,
+check whether you were testing during quiet hours before investigating further.
+
 ## Webhook setup
 
 ### 1. Enable and expose the webhook listener

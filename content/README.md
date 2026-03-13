@@ -348,6 +348,21 @@ playback, they will show at the next natural pause. If no pause occurs within
 10 min the message expires — this is a deliberate trade-off that avoids
 disrupting media playback.
 
+**Quiet hours and the interrupt model:** The interrupt mechanism assumes content
+was successfully sent to the board. During quiet hours the board rejects writes
+with a locked error — the scheduler clears its hold state and re-enqueues the
+message, so from the scheduler's perspective the board is idle. Two
+consequences:
+
+- **Webhooks that queue (no board-displacement check):** messages pile up in
+  the queue and drain in priority order once quiet hours end. State may be
+  briefly stale until the queue catches up.
+- **Webhooks with a board-displacement check** (currently only `plex`): state-
+  change events (pause, stop) are silently discarded while the board appears
+  idle. After quiet hours end the display may show a stale state until the next
+  event arrives. Avoid testing Plex state transitions during quiet hours — the
+  behaviour is misleading and is not a bug in the integration.
+
 ### Priority reminder
 
 Priority controls queue order, not fire time. Two templates with the same
