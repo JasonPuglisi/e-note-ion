@@ -1,12 +1,47 @@
 # diving.json
 
-Two templates:
+Two templates. Hobbies — fires three times daily (conditions) and once daily
+(last dive).
 
 - **conditions** — wave height, swell period, wind, and water temperature.
   Shows at 7:15am, 12:15pm, and 4:15pm for pre-dive planning. Color square
   reflects subjective dive condition quality.
 - **last_dive** — days since your last dive. Shows daily at 10am when a dive
   date has been recorded via webhook or set manually.
+
+## Schedule
+
+### `conditions`
+
+**Cron:** `15 7,12,16 * * *` — fires at 07:15, 12:15, and 16:15 daily.
+**Hold:** 600 s | **Timeout:** 1800 s | **Priority:** 5 (Hobbies)
+**Refresh interval:** 1800 s (re-fetches ocean data every 30 min during hold)
+
+Fires in the dedicated `:15` slot, which has no other scheduled occupants.
+This avoids the `:00` weather slot entirely. Combined budget at `:15` is
+600 s — the full slot budget is available.
+
+### `last_dive`
+
+**Cron:** `0 10 * * *` — fires daily at 10:00.
+**Hold:** 300 s | **Timeout:** 3600 s | **Priority:** 3 (Hobbies)
+
+Fires in the `10:00` slot alongside `weather` (pri 5, 600 s) — combined
+budget 900 s. At priority 3 it queues behind weather, showing after weather's
+10-minute hold. Skipped when no dive date has been recorded.
+
+To override schedule fields without editing this file:
+
+```toml
+[diving.schedules.conditions]
+cron = "15 8,13,17 * * *"  # shift to later windows
+hold = 300
+disabled = true             # skip entirely
+
+[diving.schedules.last_dive]
+priority = 4
+disabled = true
+```
 
 ## Configuration
 

@@ -2,10 +2,25 @@
 
 Friend message integration — displays ad-hoc messages from registered friends via
 webhook. Each message shows a colored header row with the sender's name followed by
-the message body.
+the message body. Social — webhook-only, queues normally without interrupting.
 
 Unlike cron-scheduled templates, this template fires only when a webhook event is
 received. No content is shown when idle.
+
+## Schedule
+
+**Webhook-only** (no cron). Fires when a registered friend sends a message.
+**Hold:** 120 s | **Timeout:** 600 s | **Priority:** 8 (Social)
+
+Messages queue normally (`interrupt=False`) — they do not cut an active hold
+short. This means a message arriving during an active Plex session will wait
+for the next natural hold break (e.g. playback pause) rather than flapping the
+display mid-scene. The 600 s timeout gives messages up to 10 minutes to wait,
+which covers typical pause intervals between scenes or episodes.
+
+During normal scheduled content (weather 600 s hold, calendar 300 s hold),
+priority 8 puts the message at the front of the queue; it shows as soon as
+the current hold completes — usually within a few minutes.
 
 ## How it works
 
@@ -43,7 +58,7 @@ priority = 8
 | Override key | Default | Description |
 |---|---|---|
 | `hold` | `120` | Seconds to show the message |
-| `timeout` | `120` | Seconds the message can wait in the queue before being discarded |
+| `timeout` | `600` | Seconds the message can wait in the queue before being discarded |
 | `priority` | `8` | Display priority (0–10) |
 
 Friend display metadata is stored per-friend by the registration flow:

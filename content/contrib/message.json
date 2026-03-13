@@ -4,7 +4,7 @@
       "webhook": true,
       "schedule": {
         "hold": 120,
-        "timeout": 120
+        "timeout": 600
       },
       "priority": 8,
       "truncation": "wrap_ellipsis",
