@@ -63,30 +63,37 @@ To record a dive immediately without waiting, set `last_dived_on` manually in
 A one-tap Shortcut that sends today's date to the webhook. No prompts — tap it
 when you surface.
 
+A pre-built template is available at
+`content/contrib/shortcuts/Log Vestaboard Dive.shortcut`. Import it and fill in
+the two import questions. To build manually:
+
 **Build the Shortcut:**
 
-1. Open Shortcuts → tap **+** → name it "Log Dive"
+1. Open Shortcuts → tap **+** → name it "Log Vestaboard Dive"
 2. Add **Date** → set to **Current Date**
 3. Add **Format Date** → Date: Current Date result from step 2, Format: **Custom**,
-   Custom Format: `yyyy-MM-dd`, Time Zone: **Current** (rename output to `dived_on`
+   Custom Format: `yyyy-MM-dd`, Locale: default (rename output to `dived_on`
    when wiring the next step)
-4. Add **Dictionary** → add one key: `dived_on` (Type: Text) → value: `dived_on`
-   magic variable from step 3
+4. Add a **Text** action for the secret (this becomes an import question):
+   paste a placeholder; renamed to `secret` when wiring the next step
 5. Add **Get Contents of URL**:
    - URL: `https://<your-webhook-url>/webhook/diving` (replaced by import question)
    - Method: **POST**
-   - Headers: add `X-Webhook-Secret` → value: the Text action below (replaced by import question)
-   - Body: **JSON** → insert the Dictionary from step 4
+   - Headers: add `X-Webhook-Secret` → `secret` magic variable from step 4
+   - Body: **JSON** → add key `dived_on` (Type: Text) → `dived_on` magic variable
+     from step 3
    - No `Content-Type` header needed — Shortcuts sets it automatically for JSON bodies
-6. Add a **Text** action for the secret (this is what becomes the import question value):
-   paste a placeholder; this will be replaced on import
-7. Tap the **ⓘ** button → **Import Questions** → add two questions:
+6. Add **List** → 5 items:
+   `Logged! Time to decompress. 🤿`, `Surface interval started. 🫧`,
+   `Dive recorded! The flaps are flipping. 🌊`, `Logged to the board! 🐠`,
+   `Splashdown recorded. 💧`
+7. Add **Get Item from List** → Input: List from step 6, Item: **Random Item**;
+   rename output to `confirmation` when wiring the next step
+8. Add **Show Alert** → Message: `confirmation` magic variable from step 7;
+   untick Show Cancel Button; leave title blank
+9. Tap the **ⓘ** button → **Import Questions** → add two questions:
    - Question: `Webhook URL`, Parameter: URL field of Get Contents of URL, Default: blank
-   - Question: `Webhook secret`, Parameter: the Text action from step 6, Default: blank
-
-> **Note on step ordering:** In Shortcuts, the Text action for the secret (step 6)
-> must appear *before* the Get Contents of URL step (step 5) so it can be wired as
-> the header value. Add it between steps 4 and 5 when building.
+   - Question: `Webhook secret`, Parameter: the Text action from step 4, Default: blank
 
 Share via iCloud link → import to your device and fill in the two import questions
 with your webhook URL and the plaintext secret from the scheduler log.
