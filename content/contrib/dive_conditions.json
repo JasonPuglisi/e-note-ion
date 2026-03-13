@@ -1,0 +1,23 @@
+{
+  "templates": {
+    "conditions": {
+      "schedule": {
+        "cron": "15 7,12,16 * * *",
+        "hold": 600,
+        "timeout": 1800,
+        "refresh_interval": 1800
+      },
+      "priority": 5,
+      "integration": "dive_conditions",
+      "templates": [
+        {
+          "format": [
+            "{header}",
+            "{swell}",
+            "{wind}"
+          ]
+        }
+      ]
+    }
+  }
+}
