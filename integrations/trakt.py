@@ -436,7 +436,7 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
   ep = entry['episode']
   show_name, season, number, ep_title = _canonicalize_episode(entry['show'], ep)
   episode_ref = _media.format_episode_ref(season, number)
-  episode_title = _media.strip_leading_article(ep_title.upper())
+  episode_title = _media.strip_leading_article_if_needed(ep_title.upper(), _vb.model.cols, f'{episode_ref} ')
 
   # Convert UTC first_aired → display timezone (config [scheduler].timezone,
   # or system local if unset).
@@ -534,7 +534,7 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
     ep = data['episode']
     show_name, season, number, ep_title = _canonicalize_episode(data['show'], ep)
     episode_ref = _media.format_episode_ref(season, number)
-    episode_title = _media.strip_leading_article(ep_title.upper())
+    episode_title = _media.strip_leading_article_if_needed(ep_title.upper(), _vb.model.cols, f'{episode_ref} ')
   elif media_type == 'movie':
     show_name = _vb.truncate_line(_canonicalize_movie(data['movie']).upper(), _vb.model.cols, 'ellipsis')
     episode_ref = 'MOVIE'
@@ -619,7 +619,7 @@ def get_variables_next_up() -> dict[str, list[list[str]]]:
     if ep is not None:
       show_name, season, number, ep_title = _canonicalize_episode(entry['show'], ep)
       episode_ref = _media.format_episode_ref(season, number)
-      episode_title = _media.strip_leading_article(ep_title.upper())
+      episode_title = _media.strip_leading_article_if_needed(ep_title.upper(), _vb.model.cols, f'{episode_ref} ')
       result = {
         'show_name': [[show_name]],
         'episode_ref': [[episode_ref]],

@@ -344,7 +344,7 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
       episode_ref = _media.format_episode_ref(metadata['parentIndex'], metadata['index'])
       plex_ep_title = (metadata.get('title') or '').strip()
       episode_title = tmdb_ep_title or plex_ep_title
-      episode_detail = _media.strip_leading_article(episode_title.upper())
+      episode_detail = _media.strip_leading_article_if_needed(episode_title.upper(), _vb.model.cols, f'{episode_ref} ')
       episode_line = f'{episode_ref} {episode_detail}'.strip()
     elif media_type == 'movie' and metadata:
       guids = metadata.get('Guid') or []

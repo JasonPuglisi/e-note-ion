@@ -48,3 +48,34 @@ def test_strip_leading_article_word_starting_with_a() -> None:
 
 def test_strip_leading_article_empty() -> None:
   assert media.strip_leading_article('') == ''
+
+
+# --- strip_leading_article_if_needed ---
+
+
+def test_strip_if_needed_fits_with_article_no_strip() -> None:
+  # 'S1E3 THE DISH' = 13 chars, fits in 15 → no strip
+  assert media.strip_leading_article_if_needed('THE DISH', 15, 'S1E3 ') == 'THE DISH'
+
+
+def test_strip_if_needed_does_not_fit_strips_article() -> None:
+  # 'S1E12 THE LONGEST EPISODE TITLE' = 31 chars, exceeds 15 → strip
+  assert media.strip_leading_article_if_needed('THE LONGEST EPISODE TITLE', 15, 'S1E12 ') == 'LONGEST EPISODE TITLE'
+
+
+def test_strip_if_needed_still_too_long_after_strip() -> None:
+  # Stripping still leaves an overlong title; truncation handles the rest
+  assert media.strip_leading_article_if_needed('THE VERY VERY LONG', 10, 'S1E1 ') == 'VERY VERY LONG'
+
+
+def test_strip_if_needed_no_article_returns_unchanged() -> None:
+  assert media.strip_leading_article_if_needed('PILOT', 15, 'S1E1 ') == 'PILOT'
+
+
+def test_strip_if_needed_no_prefix_behaves_like_strip_when_overflowing() -> None:
+  # Without prefix, length check is on title alone
+  assert media.strip_leading_article_if_needed('THE DISH', 5) == 'DISH'
+
+
+def test_strip_if_needed_no_prefix_fits_no_strip() -> None:
+  assert media.strip_leading_article_if_needed('THE DISH', 15) == 'THE DISH'

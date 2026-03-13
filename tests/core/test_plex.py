@@ -276,7 +276,7 @@ def test_handle_webhook_stop_timer_includes_episode_metadata(_plex_playing: None
     _fire_stop_timer()
   data = mock_enqueue.call_args.kwargs['data']
   assert data['variables']['show_name'] == [['THE BEAR']]
-  assert data['variables']['episode_line'] == [['S2E1 BEEF']]
+  assert data['variables']['episode_line'] == [['S2E1 THE BEEF']]
 
 
 def test_handle_webhook_stop_timer_includes_movie_metadata(_plex_playing: None) -> None:
@@ -481,14 +481,22 @@ def test_handle_webhook_episode_line_includes_season_episode_ref() -> None:
   """episode_line must include the S/E reference so it appears on the board."""
   result = _plex.handle_webhook(_episode_payload('media.play', title='The Beef'))
   assert result is not None
-  # parentIndex=2, index=1 → S2E1; article stripped from title → BEEF
-  assert result.data['variables']['episode_line'] == [['S2E1 BEEF']]
+  # parentIndex=2, index=1 → S2E1; 'S2E1 THE BEEF' = 13 chars fits in 15 → article kept
+  assert result.data['variables']['episode_line'] == [['S2E1 THE BEEF']]
 
 
-def test_handle_webhook_episode_strips_a_article_in_episode_line() -> None:
+def test_handle_webhook_episode_strips_article_when_too_long() -> None:
+  # 'S2E1 AN EXTRAORDINARY JOURNEY' = 29 chars > 15 cols → article stripped
+  result = _plex.handle_webhook(_episode_payload('media.play', title='An Extraordinary Journey'))
+  assert result is not None
+  assert result.data['variables']['episode_line'] == [['S2E1 EXTRAORDINARY JOURNEY']]
+
+
+def test_handle_webhook_episode_keeps_article_when_it_fits() -> None:
+  # 'S2E1 A NEW HOPE' = 15 chars, fits exactly in 15 cols → article kept
   result = _plex.handle_webhook(_episode_payload('media.play', title='A New Hope'))
   assert result is not None
-  assert result.data['variables']['episode_line'] == [['S2E1 NEW HOPE']]
+  assert result.data['variables']['episode_line'] == [['S2E1 A NEW HOPE']]
 
 
 def test_handle_webhook_show_name_preserves_article() -> None:
@@ -758,7 +766,7 @@ def test_handle_webhook_episode_falls_back_to_plex_title_when_no_tmdb_ep_title(
   result = _plex.handle_webhook(_episode_payload_with_guid(tvdb_id=8765432, show='MasterChef (US)'))
 
   assert result is not None
-  assert result.data['variables']['episode_line'] == [['S1E3 DISH']]  # 'THE' stripped by strip_leading_article
+  assert result.data['variables']['episode_line'] == [['S1E3 THE DISH']]  # fits in 15 cols — article kept
 
 
 def test_handle_webhook_episode_uses_imdb_fallback_when_no_tvdb_guid(monkeypatch: pytest.MonkeyPatch) -> None:
