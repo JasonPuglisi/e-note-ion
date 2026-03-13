@@ -622,7 +622,8 @@ def test_canonicalize_episode_with_tmdb_uses_canonical_data(monkeypatch: pytest.
 
   with (
     patch('integrations.tmdb.get_show_title', return_value='Attack on Titan') as mock_show,
-    patch('integrations.tmdb.find_episode_by_tvdb_id', return_value=(4, 16, 'Above and Below', 1429)) as mock_ep,
+    patch('integrations.tmdb.find_episode_by_tvdb_id', return_value=(4, 16, 'Above and Below', 1429, 99001)) as mock_ep,
+    patch('integrations.tmdb.get_episode_group_position', return_value=None),
   ):
     show_name, season, number, ep_title = trakt._canonicalize_episode(show_data, ep_data)  # noqa: SLF001
 
@@ -671,6 +672,87 @@ def test_canonicalize_episode_missing_ids_skips_tmdb(monkeypatch: pytest.MonkeyP
   assert show_name == 'GREAT SHOW'
   assert season == 2
   assert number == 5
+
+
+def test_canonicalize_episode_show_id_mismatch_uses_trakt_se(monkeypatch: pytest.MonkeyPatch) -> None:
+  """When resolved show_id doesn't match, falls back to Trakt S/E."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+
+  show_data = {'title': 'My Anime', 'ids': {'tmdb': 1111}}
+  ep_data = {'season': 1, 'number': 5, 'title': 'Episode Five', 'ids': {'tvdb': 5555555}}
+
+  with (
+    patch('integrations.tmdb.get_show_title', return_value='My Anime'),
+    patch('integrations.tmdb.find_episode_by_tvdb_id', return_value=(3, 7, 'Wrong Show Ep', 9999, 88001)),
+    patch('integrations.tmdb.get_episode_group_position') as mock_group,
+  ):
+    show_name, season, number, ep_title = trakt._canonicalize_episode(show_data, ep_data)  # noqa: SLF001
+
+  mock_group.assert_not_called()
+  assert season == 1
+  assert number == 5
+  assert ep_title == 'Episode Five'
+
+
+def test_canonicalize_episode_missing_tmdb_show_id_skips_episode_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
+  """When show has no tmdb ID, episode resolution via TVDb is skipped."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+
+  show_data = {'title': 'No TMDb Show', 'ids': {'trakt': 42}}
+  ep_data = {'season': 2, 'number': 3, 'title': 'An Episode', 'ids': {'tvdb': 7777777}}
+
+  with patch('integrations.tmdb.find_episode_by_tvdb_id') as mock_ep:
+    show_name, season, number, ep_title = trakt._canonicalize_episode(show_data, ep_data)  # noqa: SLF001
+
+  mock_ep.assert_not_called()
+  assert season == 2
+  assert number == 3
+
+
+def test_canonicalize_episode_uses_episode_group_position(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Episode group position overrides base TMDb S/E when available."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+
+  show_data = {'title': 'Frieren', 'ids': {'tmdb': 209867}}
+  ep_data = {'season': 1, 'number': 36, 'title': 'A Magnificent End', 'ids': {'tvdb': 11447771}}
+
+  with (
+    patch('integrations.tmdb.get_show_title', return_value="Frieren: Beyond Journey's End"),
+    patch('integrations.tmdb.find_episode_by_tvdb_id', return_value=(1, 36, 'A Magnificent End', 209867, 6855841)),
+    patch('integrations.tmdb.get_episode_group_position', return_value=(2, 8)) as mock_group,
+  ):
+    show_name, season, number, ep_title = trakt._canonicalize_episode(show_data, ep_data)  # noqa: SLF001
+
+  mock_group.assert_called_once_with(209867, 6855841)
+  assert season == 2
+  assert number == 8
+  assert ep_title == 'A Magnificent End'
+
+
+def test_canonicalize_episode_falls_back_to_tmdb_base_when_group_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+  """When episode group returns None, uses base TMDb S/E."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+
+  show_data = {'title': 'Some Show', 'ids': {'tmdb': 5555}}
+  ep_data = {'season': 1, 'number': 10, 'title': 'Ep Ten', 'ids': {'tvdb': 1234567}}
+
+  with (
+    patch('integrations.tmdb.get_show_title', return_value='Some Show'),
+    patch('integrations.tmdb.find_episode_by_tvdb_id', return_value=(2, 3, 'Ep Ten', 5555, 77777)),
+    patch('integrations.tmdb.get_episode_group_position', return_value=None),
+  ):
+    show_name, season, number, ep_title = trakt._canonicalize_episode(show_data, ep_data)  # noqa: SLF001
+
+  assert season == 2
+  assert number == 3
 
 
 # --- _canonicalize_movie ---
@@ -1024,7 +1106,7 @@ def test_get_variables_watching_http_error_does_not_leak_client_id(
 def test_get_variables_calendar_long_show_name_truncated(
   config_with_tokens: Path,
 ) -> None:
-  """A show name longer than model.cols must be word-truncated, not left to wrap."""
+  """A show name longer than model.cols must be ellipsis-truncated, not left to wrap."""
   long_title = 'Star Trek The Next Generation'
   long_response = [
     {
@@ -1043,14 +1125,14 @@ def test_get_variables_calendar_long_show_name_truncated(
   show_name = result['show_name'][0][0]
   upper = long_title.upper()
   assert vb.display_len(show_name) <= vb.model.cols
-  assert upper.startswith(show_name)
-  assert show_name == upper or upper[len(show_name)] == ' '
+  assert show_name.endswith('...')
+  assert upper.startswith(show_name[:-3])
 
 
 def test_get_variables_watching_long_show_name_truncated(
   config_with_tokens: Path,
 ) -> None:
-  """A show name longer than model.cols must be word-truncated, not left to wrap."""
+  """A show name longer than model.cols must be ellipsis-truncated, not left to wrap."""
   long_title = 'Star Trek The Next Generation'
   mock_response = MagicMock()
   mock_response.status_code = 200
@@ -1066,8 +1148,8 @@ def test_get_variables_watching_long_show_name_truncated(
   show_name = result['show_name'][0][0]
   upper = long_title.upper()
   assert vb.display_len(show_name) <= vb.model.cols
-  assert upper.startswith(show_name)
-  assert show_name == upper or upper[len(show_name)] == ' '
+  assert show_name.endswith('...')
+  assert upper.startswith(show_name[:-3])
 
 
 # --- calendar cache ---
@@ -1250,8 +1332,8 @@ def test_get_variables_next_up_long_show_name_truncated(config_with_tokens: Path
   show_name = result['show_name'][0][0]
   upper = long_title.upper()
   assert vb.display_len(show_name) <= vb.model.cols
-  assert upper.startswith(show_name)
-  assert show_name == upper or upper[len(show_name)] == ' '
+  assert show_name.endswith('...')
+  assert upper.startswith(show_name[:-3])
 
 
 def test_get_variables_next_up_does_not_leak_credentials(config_with_tokens: Path) -> None:
