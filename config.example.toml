@@ -158,8 +158,8 @@ client_secret = "your-trakt-client-secret"
 
 # NDBC buoy station ID (recommended for US coastal sites — real measured data).
 # Find your nearest station at https://www.ndbc.noaa.gov/
-# Example: 46042 = Monterey offshore buoy (27 NM WNW of Monterey, CA)
-# ndbc_station_id = "46042"
+# Example: 46014 = Point Arena, CA
+# ndbc_station_id = "46014"
 
 # Open-Meteo fallback — use instead of ndbc_station_id for non-US sites or
 # locations without a nearby buoy. Accuracy near complex coastlines is limited.
