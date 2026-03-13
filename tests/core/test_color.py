@@ -143,6 +143,23 @@ def test_dominant_color_tag_kmeans_picks_dominant_over_skin_tone() -> None:
   assert tag == '[B]'
 
 
+def test_dominant_color_tag_chroma_score_vivid_minority_beats_washed_majority() -> None:
+  # Small vivid cluster should beat large washed-out cluster when scored by
+  # population × chroma. Grey (8px) has near-zero chroma; vivid red (2px) has
+  # high chroma — red's score wins even though grey dominates by count.
+  png = _png_bytes_regions(dominant=(150, 150, 150), accent=(200, 20, 30))
+  tag = color_mod.dominant_color_tag(png)
+  assert tag == '[R]'
+
+
+def test_dominant_color_tag_warm_neutral_maps_to_achromatic() -> None:
+  # Warm cream/sepia tones have very low Oklab chroma despite non-zero HSV
+  # saturation. They should map to [W] (achromatic), not [O] or [Y].
+  tag = color_mod.dominant_color_tag(_png_bytes(200, 180, 160))
+  assert tag in ('[W]', '[K]')
+  assert tag not in ('[O]', '[Y]')
+
+
 # --- fetch_cover_color ---
 
 
