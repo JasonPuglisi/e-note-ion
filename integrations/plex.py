@@ -96,14 +96,24 @@ def _parse_guid_id_str(guids: list[dict[str, Any]], scheme: str) -> str | None:
   return None
 
 
-def _canonicalize_plex_title(raw_title: str, guids: list[dict[str, Any]], media_type: str) -> tuple[str, str | None]:
+def _canonicalize_plex_title(
+  raw_title: str,
+  guids: list[dict[str, Any]],
+  media_type: str,
+  season: int | None = None,
+  episode: int | None = None,
+) -> tuple[str, str | None]:
   """Return (canonical_title, tmdb_episode_title_or_None) from TMDb.
 
-  For episodes, tries tvdb:// first then imdb:// as a fallback. Returns both
-  the canonical show name and the TMDb episode title when resolved. The episode
-  title is None for movies and when all lookups fail.
+  For episodes, tries in order:
+    1. tvdb:// guid (episode-level TVDb ID)
+    2. imdb:// guid (episode-level IMDb ID)
+    3. TMDb title search + S/E lookup (when season and episode are provided)
 
-  For movies, the tmdb:// entry is the TMDb movie ID used for the show name.
+  Returns both the canonical show name and the TMDb episode title when
+  resolved. The episode title is None for movies and when all lookups fail.
+
+  For movies, the tmdb:// entry is the TMDb movie ID.
   Episode title is always None for movies.
 
   Falls back to (raw_title, None) when TMDb is unconfigured, the Guid array
@@ -145,7 +155,28 @@ def _canonicalize_plex_title(raw_title: str, guids: list[dict[str, Any]], media_
         return canonical if canonical else raw_title, ep_title or None
       logger.debug('plex: imdb ep lookup failed for %r, using raw title %r', imdb_id, raw_title)
     else:
-      logger.debug('plex: no imdb:// guid for episode %r, using raw title', raw_title)
+      logger.debug('plex: no imdb:// guid for episode %r, trying title search', raw_title)
+    # Last resort: search TMDb by show title + S/E numbers
+    if season is not None and episode is not None:
+      show_id = _tmdb.search_show_by_title(raw_title)
+      if show_id is not None:
+        ep_result_se = _tmdb.get_episode_by_number(show_id, season, episode)
+        if ep_result_se is not None:
+          ep_title, tmdb_ep_id = ep_result_se
+          group_pos = _tmdb.get_episode_group_position(show_id, tmdb_ep_id)
+          if group_pos:
+            season, episode = group_pos
+          canonical = _tmdb.get_show_title(show_id)
+          logger.debug(
+            'plex: tmdb title-search %r -> show=%d S%dE%d %r',
+            raw_title,
+            show_id,
+            season,
+            episode,
+            ep_title,
+          )
+          return canonical if canonical else raw_title, ep_title or None
+      logger.debug('plex: title search for %r found nothing', raw_title)
     return raw_title, None
 
   else:  # movie
@@ -275,7 +306,19 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
 
     if media_type == 'episode' and metadata:
       guids: list[dict[str, Any]] = metadata.get('Guid') or []
-      raw_show, tmdb_ep_title = _canonicalize_plex_title(metadata['grandparentTitle'], guids, 'episode')
+      logger.debug(
+        'plex: episode guids=%r guid=%r grandparentGuid=%r',
+        guids,
+        metadata.get('guid'),
+        metadata.get('grandparentGuid'),
+      )
+      raw_show, tmdb_ep_title = _canonicalize_plex_title(
+        metadata['grandparentTitle'],
+        guids,
+        'episode',
+        season=metadata.get('parentIndex'),
+        episode=metadata.get('index'),
+      )
       show_name = _vb.truncate_line(raw_show.upper(), _vb.model.cols, 'ellipsis')
       episode_ref = _media.format_episode_ref(metadata['parentIndex'], metadata['index'])
       plex_ep_title = (metadata.get('title') or '').strip()

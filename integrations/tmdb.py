@@ -215,6 +215,64 @@ def _get_episode_group(group_id: str) -> list[dict] | None:
   return None
 
 
+@functools.lru_cache(maxsize=256)
+def search_show_by_title(title: str) -> int | None:
+  """Return the TMDb show ID for the best-matching show by title, or None.
+
+  Uses TMDb's /search/tv endpoint. Takes the first result, which TMDb ranks
+  by relevance. Used as a last-resort fallback when no external IDs are
+  available (e.g. empty Guid array in Plex webhook payload).
+
+  Result is cached in-memory by title for the lifetime of the process.
+  """
+  try:
+    r = fetch_with_retry(
+      'GET',
+      f'{_TMDB_API_BASE}/search/tv',
+      headers=_request_headers(),
+      params={'query': title},
+      timeout=10,
+    )
+    r.raise_for_status()
+    results = r.json().get('results', [])
+    if results:
+      show_id: int = results[0]['id']
+      logger.debug('TMDb: search %r → show %d (%r)', title, show_id, results[0].get('name'))
+      return show_id
+  except Exception as e:  # noqa: BLE001
+    logger.debug('TMDb: search_show_by_title(%r) failed — %s', title, e)
+  return None
+
+
+@functools.lru_cache(maxsize=512)
+def get_episode_by_number(show_id: int, season: int, episode: int) -> tuple[str, int] | None:
+  """Return (episode_title, tmdb_episode_id) for a show/season/episode triple.
+
+  Uses TMDb's /tv/{show_id}/season/{season}/episode/{episode} endpoint.
+  Used as a last-resort fallback when only S/E numbers are available.
+
+  Result is cached in-memory by (show_id, season, episode) for the lifetime
+  of the process. Returns None if the lookup fails.
+  """
+  try:
+    r = fetch_with_retry(
+      'GET',
+      f'{_TMDB_API_BASE}/tv/{show_id}/season/{season}/episode/{episode}',
+      headers=_request_headers(),
+      timeout=10,
+    )
+    r.raise_for_status()
+    data = r.json()
+    tmdb_ep_id: int | None = data.get('id')
+    title: str = data.get('name') or ''
+    if tmdb_ep_id is not None:
+      logger.debug('TMDb: show=%d S%dE%d → ep %d %r', show_id, season, episode, tmdb_ep_id, title)
+      return (title, tmdb_ep_id)
+  except Exception as e:  # noqa: BLE001
+    logger.debug('TMDb: get_episode_by_number(%d, %d, %d) failed — %s', show_id, season, episode, e)
+  return None
+
+
 def get_episode_group_position(show_id: int, tmdb_episode_id: int) -> tuple[int, int] | None:
   """Return (season, episode) from the type-6 episode group for a TMDb episode.
 

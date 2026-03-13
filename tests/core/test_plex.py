@@ -57,6 +57,8 @@ def _clear_tmdb_caches() -> None:
   _tmdb.get_movie_title.cache_clear()
   _tmdb.find_episode_by_tvdb_id.cache_clear()
   _tmdb.find_episode_by_imdb_id.cache_clear()
+  _tmdb.search_show_by_title.cache_clear()
+  _tmdb.get_episode_by_number.cache_clear()
 
 
 @pytest.fixture(autouse=True)
@@ -645,10 +647,11 @@ def test_handle_webhook_episode_uses_tmdb_canonical_show_name(monkeypatch: pytes
 
 
 def test_handle_webhook_episode_falls_back_when_no_guid(monkeypatch: pytest.MonkeyPatch) -> None:
-  """When the payload has no Guid array, no TMDb lookup is attempted."""
+  """When the payload has no Guid array and title search fails, falls back to grandparentTitle."""
   monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
   find_calls: list[int] = []
   monkeypatch.setattr(_tmdb, 'find_episode_by_tvdb_id', lambda tvdb_id: find_calls.append(tvdb_id) or None)
+  monkeypatch.setattr(_tmdb, 'search_show_by_title', lambda title: None)
 
   result = _plex.handle_webhook(_episode_payload('media.play', show='Masterchef'))
 
@@ -780,10 +783,11 @@ def test_handle_webhook_episode_uses_imdb_fallback_when_no_tvdb_guid(monkeypatch
 
 
 def test_handle_webhook_episode_falls_back_when_no_tvdb_and_no_imdb_guid(monkeypatch: pytest.MonkeyPatch) -> None:
-  """When no tvdb:// or imdb:// guid is present, falls back to Plex's raw title."""
+  """When no tvdb://, imdb://, and title search all fail, falls back to Plex's raw title."""
   monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
   imdb_calls: list[str] = []
   monkeypatch.setattr(_tmdb, 'find_episode_by_imdb_id', lambda imdb_id: imdb_calls.append(imdb_id) or None)
+  monkeypatch.setattr(_tmdb, 'search_show_by_title', lambda title: None)
 
   payload = {
     'event': 'media.play',
@@ -802,3 +806,29 @@ def test_handle_webhook_episode_falls_back_when_no_tvdb_and_no_imdb_guid(monkeyp
   assert imdb_calls == []
   assert result.data['variables']['show_name'] == [['JUJUTSU KAISEN']]
   assert result.data['variables']['episode_line'] == [['S3E4 EPISODE 4']]
+
+
+def test_handle_webhook_episode_uses_title_search_when_no_guid(monkeypatch: pytest.MonkeyPatch) -> None:
+  """When no external guid is present, title search + S/E lookup returns TMDb episode title."""
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_tmdb, 'search_show_by_title', lambda title: 95479)
+  monkeypatch.setattr(_tmdb, 'get_episode_by_number', lambda show_id, s, e: ('Perfect Preparation', 6827061))
+  monkeypatch.setattr(_tmdb, 'get_episode_group_position', lambda show_id, ep_id: None)
+  monkeypatch.setattr(_tmdb, 'get_show_title', lambda show_id: 'Jujutsu Kaisen')
+
+  payload = {
+    'event': 'media.play',
+    'Metadata': {
+      'type': 'episode',
+      'grandparentTitle': 'JUJUTSU KAISEN',
+      'parentIndex': 3,
+      'index': 4,
+      'title': 'Episode 4',
+      'Guid': [],
+    },
+  }
+  result = _plex.handle_webhook(payload)
+
+  assert result is not None
+  assert result.data['variables']['show_name'] == [['JUJUTSU KAISEN']]
+  assert result.data['variables']['episode_line'] == [['S3E4 PERFECT PREPARATION']]
