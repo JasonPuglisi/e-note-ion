@@ -66,3 +66,29 @@ jobs:
     with:
       tag: ${{ needs.release.outputs.tag }}
     secrets: inherit
+
+  publish-pypi:
+    name: Build and publish to PyPI
+    needs: release
+    if: needs.release.outputs.tag != ''
+    runs-on: ubuntu-latest
+    environment: pypi
+
+    permissions:
+      id-token: write   # OIDC trusted publishing
+      contents: read    # checkout
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
