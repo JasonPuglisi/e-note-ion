@@ -1,4 +1,4 @@
-# integrations/dive_conditions.py
+# integrations/diving.py
 #
 # Scuba diving conditions integration.
 #
@@ -6,6 +6,11 @@
 # temperature for a configured dive site. The header row shows a color square
 # reflecting subjective dive condition quality (green/yellow/red) scored from
 # wave height and wind speed with a swell period modifier.
+#
+# Also provides a days-since-last-dive display (get_variables_last_dive) driven
+# by a webhook that accepts {"dived_on": "YYYY-MM-DD"} and persists the date
+# to config.toml. The last_dive template fires once daily and is silently
+# skipped until a date has been recorded.
 #
 # Primary source: NOAA NDBC (National Data Buoy Center) — real measured buoy
 # data, no API key, no quota. Recommended for US coastal dive sites. Find the
@@ -15,23 +20,27 @@
 # lat/lon configurable. Open-Meteo's own docs warn that accuracy near complex
 # coastlines is limited (8 km grid). Use NDBC where a nearby buoy exists.
 #
-# Required config.toml keys ([dive_conditions]):
+# Required config.toml keys ([diving]):
 #   ndbc_station_id  — NDBC buoy station ID (e.g. "46042" for Monterey);
 #                      required unless latitude and longitude are set instead.
 #   latitude         — decimal latitude for Open-Meteo fallback
 #   longitude        — decimal longitude for Open-Meteo fallback
 #
 # Optional config.toml keys:
-#   units  — "imperial" (ft, °F, default) or "metric" (m, °C).
-#             Wind is always displayed in knots regardless of this setting.
+#   units         — "imperial" (ft, °F, default) or "metric" (m, °C).
+#                   Wind is always displayed in knots regardless of this setting.
+#   last_dived_on — YYYY-MM-DD date of the most recent dive, written by the
+#                   webhook handler. Can also be set manually.
 
 import logging
+from datetime import date, datetime, timezone
 from typing import Any
 
 import requests
 
 from exceptions import IntegrationDataUnavailableError
 from integrations.http import CacheEntry, fetch_with_retry, user_agent
+from scheduler import WebhookMessage
 
 logger = logging.getLogger(__name__)
 
@@ -254,8 +263,8 @@ def get_variables() -> dict[str, list[list[str]]]:
 
   import config as _cfg
 
-  station_id = _cfg.get_optional('dive_conditions', 'ndbc_station_id')
-  units = _cfg.get_optional('dive_conditions', 'units') or 'imperial'
+  station_id = _cfg.get_optional('diving', 'ndbc_station_id')
+  units = _cfg.get_optional('diving', 'units') or 'imperial'
 
   if _cache is not None and _cache.is_valid(_CACHE_TTL):
     logger.debug('Dive conditions: cache hit')
@@ -266,8 +275,8 @@ def get_variables() -> dict[str, list[list[str]]]:
       data = _fetch_ndbc(station_id)
     else:
       try:
-        lat = float(_cfg.get('dive_conditions', 'latitude'))
-        lon = float(_cfg.get('dive_conditions', 'longitude'))
+        lat = float(_cfg.get('diving', 'latitude'))
+        lon = float(_cfg.get('diving', 'longitude'))
       except ValueError, KeyError:
         raise IntegrationDataUnavailableError(
           'Dive conditions: set ndbc_station_id or latitude/longitude in config.toml'
@@ -302,3 +311,61 @@ def get_variables() -> dict[str, list[list[str]]]:
   }
   _cache = CacheEntry(result)
   return result
+
+
+def get_variables_last_dive() -> dict[str, list[list[str]]]:
+  """Return days since the last dive for template rendering.
+
+  Reads last_dived_on (YYYY-MM-DD) from [diving] in config.toml.
+  Raises IntegrationDataUnavailableError if the key is absent or malformed,
+  which causes the cron slot to be silently skipped until a date is recorded.
+
+  Returns key: days_ago — 'TODAY', '1 DAY AGO', or 'N DAYS AGO'.
+  """
+  import config as _cfg
+
+  raw = _cfg.get_optional('diving', 'last_dived_on')
+  if not raw:
+    raise IntegrationDataUnavailableError('Dive conditions: last_dived_on not set — send a webhook to record a dive')
+
+  try:
+    last_dive = date.fromisoformat(raw)
+  except ValueError:
+    raise IntegrationDataUnavailableError(f'Dive conditions: last_dived_on {raw!r} is not a valid YYYY-MM-DD date')
+
+  today = datetime.now(timezone.utc).date()
+  days = max(0, (today - last_dive).days)
+
+  if days == 0:
+    days_ago = 'TODAY'
+  elif days == 1:
+    days_ago = '1 DAY AGO'
+  else:
+    days_ago = f'{days} DAYS AGO'
+
+  return {'days_ago': [[days_ago]]}
+
+
+def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) -> WebhookMessage | None:
+  """Record the date of the most recent dive from a webhook payload.
+
+  Accepts {"dived_on": "YYYY-MM-DD"}. Persists the date to config.toml under
+  [diving] last_dived_on. Returns None — display is driven by the
+  daily cron template, not the webhook itself.
+  """
+  import config as _cfg
+
+  dived_on = payload.get('dived_on')
+  if not dived_on or not isinstance(dived_on, str):
+    logger.warning('Dive conditions webhook: missing or non-string dived_on field')
+    return None
+
+  try:
+    date.fromisoformat(dived_on)
+  except ValueError:
+    logger.warning('Dive conditions webhook: invalid dived_on %r — expected YYYY-MM-DD', dived_on)
+    return None
+
+  _cfg.write_config_section('diving', {'last_dived_on': dived_on})
+  logger.info('Dive conditions: recorded last dive date %s (credential=%r)', dived_on, credential_name)
+  return None

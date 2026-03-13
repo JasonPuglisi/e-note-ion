@@ -66,7 +66,7 @@ class _IndentedFormatter(logging.Formatter):
 # Allowlist of valid integration names. Must be extended when a new integration
 # is added to integrations/.
 _KNOWN_INTEGRATIONS: frozenset[str] = frozenset(
-  {'bart', 'calendar', 'discogs', 'dive_conditions', 'message', 'moon', 'morning', 'notion', 'plex', 'trakt', 'weather'}
+  {'bart', 'calendar', 'discogs', 'diving', 'message', 'moon', 'morning', 'notion', 'plex', 'trakt', 'weather'}
 )
 
 # Cache of loaded integration modules, keyed by name.
@@ -662,9 +662,10 @@ def _make_webhook_handler() -> type:
 # Integrations that get a named credential auto-generated on first startup
 # if none exists yet. For message, the credential name is 'message-admin'.
 _WEBHOOK_AUTOGEN: dict[str, str] = {
-  'plex': 'plex',
-  'notion': 'notion',
+  'diving': 'diving',
   'message': 'message-admin',
+  'notion': 'notion',
+  'plex': 'plex',
 }
 
 

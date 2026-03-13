@@ -71,6 +71,7 @@ integrations/calendar.py    # Today's calendar events (ICS feeds + iCloud CalDAV
 integrations/bart.py        # BART real-time departures integration
 integrations/discogs.py     # Daily vinyl suggestion from Discogs collection
 integrations/trakt.py       # Trakt.tv calendar and now-playing (OAuth device flow)
+integrations/diving.py      # Scuba diving conditions and days-since-last-dive (webhook)
 integrations/plex.py        # Plex Media Server now-playing via webhook
 content/
   README.md                 # Content author reference: JSON format, priority, schedule coordination
@@ -87,6 +88,8 @@ content/
     discogs.md              # Sidecar doc: configuration and API details
     trakt.json              # Trakt.tv calendar and now-playing
     trakt.md                # Sidecar doc: OAuth setup and data sources
+    diving.json             # Scuba diving conditions and days-since-last-dive
+    diving.md               # Sidecar doc: configuration and webhook setup
     plex.json               # Plex Media Server now-playing (webhook-only)
     plex.md                 # Sidecar doc: Plex Pass requirement and webhook setup
   user/                     # Personal content (always loaded, git-ignored)
@@ -328,7 +331,7 @@ come from GitHub secrets env vars directly.
   - BART: `BART_API_KEY`
   - Trakt: `TRAKT_CLIENT_ID`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`
   - Discogs: `DISCOGS_TOKEN`
-  - Dive conditions: `DIVE_CONDITIONS_NDBC_STATION`, `DIVE_CONDITIONS_LAT`, `DIVE_CONDITIONS_LON`
+  - Diving: `DIVING_NDBC_STATION`, `DIVING_LAT`, `DIVING_LON`
 - CI runs the `integration` job on `main` pushes only; it is advisory
   (`continue-on-error: true`) and not required by the branch ruleset
 - GitHub secrets/vars needed — store as **environment secrets** (or vars) on the
@@ -336,7 +339,7 @@ come from GitHub secrets env vars directly.
   branch; this scopes them tighter than repo secrets and prevents any PR branch
   from accessing them even if a workflow runs there:
   - Secrets: `VESTABOARD_VIRTUAL_API_KEY`, `CALENDAR_URL`, `CALENDAR_CALDAV_URL`, `CALENDAR_USERNAME`, `CALENDAR_PASSWORD`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `DISCOGS_TOKEN`
-  - Variables: `TRAKT_CLIENT_ID` (non-sensitive); `DIVE_CONDITIONS_NDBC_STATION`, `DIVE_CONDITIONS_LAT`, `DIVE_CONDITIONS_LON` (public NOAA station and coordinates)
+  - Variables: `TRAKT_CLIENT_ID` (non-sensitive); `DIVING_NDBC_STATION`, `DIVING_LAT`, `DIVING_LON` (public NOAA station and coordinates)
 - If any integration test is skipped, the pytest session exits with code 5
   (NO_TESTS_COLLECTED), making the advisory job visibly fail rather than silently pass
 - When adding a new integration, also add `tests/integrations/test_<name>_integration.py`,
@@ -362,7 +365,7 @@ prevention here — not just a one-off fix. See #65 for extended notes.
    ```
    gh api repos/JasonPuglisi/e-note-ion/rulesets/13082160 --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'
    ```
-9. **Integration test hygiene** — advisory CI job passing on `main`; GitHub environment secrets/vars present (`VESTABOARD_VIRTUAL_API_KEY`, `CALENDAR_URL`, `CALENDAR_CALDAV_URL`, `CALENDAR_USERNAME`, `CALENDAR_PASSWORD`, `CALENDAR_CARDDAV_URL`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `DISCOGS_TOKEN` as secrets; `TRAKT_CLIENT_ID`, `DIVE_CONDITIONS_NDBC_STATION`, `DIVE_CONDITIONS_LAT`, `DIVE_CONDITIONS_LON` as variables); new integrations have `test_<name>_integration.py` and env vars in `tests/integrations/conftest.py`
+9. **Integration test hygiene** — advisory CI job passing on `main`; GitHub environment secrets/vars present (`VESTABOARD_VIRTUAL_API_KEY`, `CALENDAR_URL`, `CALENDAR_CALDAV_URL`, `CALENDAR_USERNAME`, `CALENDAR_PASSWORD`, `CALENDAR_CARDDAV_URL`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `DISCOGS_TOKEN` as secrets; `TRAKT_CLIENT_ID`, `DIVING_NDBC_STATION`, `DIVING_LAT`, `DIVING_LON` as variables); new integrations have `test_<name>_integration.py` and env vars in `tests/integrations/conftest.py`
    - **`TRAKT_ACCESS_TOKEN` expires every ~90 days** — if the Trakt integration tests start failing with an auth error, copy the current `access_token` from `config.toml` (kept fresh by the prod refresh flow) into the `integration` environment secret
 10. **Issue/milestone hygiene**:
     - Every open issue has a milestone (no orphans); scope is right-sized
