@@ -16,6 +16,9 @@ _INTEGRATION_VARS: list[tuple[str, str]] = [
   ('TRAKT_ACCESS_TOKEN', 'Trakt integration'),
   ('DISCOGS_TOKEN', 'Discogs integration'),
   ('TMDB_API_READ_ACCESS_TOKEN', 'TMDb integration'),
+  ('DIVE_CONDITIONS_NDBC_STATION', 'Dive conditions integration (NDBC)'),
+  ('DIVE_CONDITIONS_LAT', 'Dive conditions integration (Open-Meteo fallback)'),
+  ('DIVE_CONDITIONS_LON', 'Dive conditions integration (Open-Meteo fallback)'),
 ]
 
 _skipped = 0
