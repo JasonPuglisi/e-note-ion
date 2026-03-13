@@ -178,6 +178,7 @@ template to keep everything playing nicely together.
 | Slot | Integration | Pri | Hold | Timeout | Notes |
 |---|---|---|---|---|---|
 | `:00` every hour | `weather` | 5 | 600s | 1800s | |
+| `:15` 07/12/16 | `dive_conditions` | 5 | 600s | 1800s | Refresh 1800s; avoids :00 weather slot |
 | `:00` every 4h | `trakt.calendar` | 4 | 1200s | 1800s | Private; queues behind weather |
 | `:30` every hour | `calendar` | 5 | 300s | 1800s | |
 | `8:30` daily | `discogs` | 5 | 600s | 3600s | Queues behind calendar at :30 |
@@ -252,3 +253,4 @@ Don't inflate priority to "win" — see the priority guidelines above.
 | [`plex.json`](contrib/plex.md) | Plex Media Server now-playing via webhook |
 | [`message.json`](contrib/message.md) | Friend messages via iOS Shortcuts → webhook |
 | [`notion.json`](contrib/notion.md) | Notion automation notifications via webhook |
+| [`dive_conditions.json`](contrib/dive_conditions.md) | Scuba diving conditions via NOAA NDBC buoy data or Open-Meteo |

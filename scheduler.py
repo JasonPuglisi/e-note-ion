@@ -66,7 +66,7 @@ class _IndentedFormatter(logging.Formatter):
 # Allowlist of valid integration names. Must be extended when a new integration
 # is added to integrations/.
 _KNOWN_INTEGRATIONS: frozenset[str] = frozenset(
-  {'bart', 'calendar', 'discogs', 'message', 'moon', 'morning', 'notion', 'plex', 'trakt', 'weather'}
+  {'bart', 'calendar', 'discogs', 'dive_conditions', 'message', 'moon', 'morning', 'notion', 'plex', 'trakt', 'weather'}
 )
 
 # Cache of loaded integration modules, keyed by name.
