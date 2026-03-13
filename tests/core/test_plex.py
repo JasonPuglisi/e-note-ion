@@ -832,3 +832,41 @@ def test_handle_webhook_episode_uses_title_search_when_no_guid(monkeypatch: pyte
   assert result is not None
   assert result.data['variables']['show_name'] == [['JUJUTSU KAISEN']]
   assert result.data['variables']['episode_line'] == [['S3E4 PERFECT PREPARATION']]
+
+
+def test_handle_webhook_episode_uses_episode_group_fallback_when_base_lookup_fails(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  """When base S/E lookup returns None, episode-group lookup is tried.
+
+  Covers anime like Frieren and JJK where TMDb base data uses a flat Season 1
+  but Plex uses broadcast-season numbering matching the type-6 episode group.
+  """
+  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_tmdb, 'search_show_by_title', lambda title: 209867)
+  monkeypatch.setattr(_tmdb, 'get_episode_by_number', lambda show_id, s, e: None)  # base lookup fails (404)
+  monkeypatch.setattr(
+    _tmdb,
+    'find_episode_in_group',
+    lambda show_id, s, e: ('A Gravestone and an Autumnal Journey', 5551234),
+  )
+  monkeypatch.setattr(_tmdb, 'get_show_title', lambda show_id: "Frieren: Beyond Journey's End")
+
+  payload = {
+    'event': 'media.play',
+    'Metadata': {
+      'type': 'episode',
+      'grandparentTitle': "Frieren: Beyond Journey's End",
+      'parentIndex': 2,
+      'index': 7,
+      'title': 'Episode 7',
+      'Guid': [],
+    },
+  }
+  result = _plex.handle_webhook(payload)
+
+  assert result is not None
+  # Show name is longer than model.cols so it's ellipsis-truncated
+  assert result.data['variables']['show_name'] == [['FRIEREN: BEY...']]
+  # "A" leading article stripped; "an" preserved mid-title
+  assert result.data['variables']['episode_line'] == [['S2E7 GRAVESTONE AND AN AUTUMNAL JOURNEY']]
