@@ -430,6 +430,10 @@ def truncate_line(
     return ''.join(result).rstrip() + '...'
   if strategy == 'hard' or last_word_end < 0:
     return ''.join(result)
+  # If the loop exited right at a word boundary (next char is a space or end
+  # of text), the full result is valid — don't trim the last word.
+  if result and result[-1] != ' ' and (i >= len(text) or text[i] == ' '):
+    return ''.join(result)
   return ''.join(result[:last_word_end])
 
 

@@ -324,12 +324,23 @@ def _canonicalize_episode(
       if canonical:
         title = canonical
     tvdb_ep_id = ep_data.get('ids', {}).get('tvdb')
-    if tvdb_ep_id:
+    if tvdb_ep_id and tmdb_show_id:
       resolved = _tmdb.find_episode_by_tvdb_id(int(tvdb_ep_id))
       if resolved:
-        season, number, ep_title, _ = resolved
+        res_season, res_number, res_ep_title, res_show_id, res_tmdb_ep_id = resolved
+        if res_show_id != int(tmdb_show_id):
+          logger.debug(
+            'TMDb: episode show_id mismatch (got %d, expected %d) — falling back to Trakt S/E',
+            res_show_id,
+            int(tmdb_show_id),
+          )
+        else:
+          season, number, ep_title = res_season, res_number, res_ep_title
+          group_pos = _tmdb.get_episode_group_position(int(tmdb_show_id), res_tmdb_ep_id)
+          if group_pos:
+            season, number = group_pos
 
-  show_name = _vb.truncate_line(title.upper(), _vb.model.cols, 'word')
+  show_name = _vb.truncate_line(title.upper(), _vb.model.cols, 'ellipsis')
   return show_name, season, number, ep_title
 
 
@@ -503,7 +514,7 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
     episode_ref = _media.format_episode_ref(season, number)
     episode_title = _media.strip_leading_article(ep_title.upper())
   elif media_type == 'movie':
-    show_name = _vb.truncate_line(_canonicalize_movie(data['movie']).upper(), _vb.model.cols, 'word')
+    show_name = _vb.truncate_line(_canonicalize_movie(data['movie']).upper(), _vb.model.cols, 'ellipsis')
     episode_ref = 'MOVIE'
     episode_title = ''
   else:

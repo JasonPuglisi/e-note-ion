@@ -503,15 +503,15 @@ def test_handle_webhook_movie_title_preserves_article() -> None:
 
 
 def test_handle_webhook_long_show_name_truncated_to_one_row() -> None:
-  """A show name longer than model.cols must be word-truncated, not left to wrap."""
+  """A show name longer than model.cols must be ellipsis-truncated, not left to wrap."""
   long_show = 'Star Trek The Next Generation'
   result = _plex.handle_webhook(_episode_payload(show=long_show))
   assert result is not None
   show_name = result.data['variables']['show_name'][0][0]
   upper = long_show.upper()
   assert _vb.display_len(show_name) <= _vb.model.cols
-  assert upper.startswith(show_name)
-  assert show_name == upper or upper[len(show_name)] == ' '
+  assert show_name.endswith('...')
+  assert upper.startswith(show_name[:-3])
 
 
 # ---------------------------------------------------------------------------
@@ -627,8 +627,8 @@ def _movie_payload_with_guid(tmdb_id: int, title: str = 'Inception') -> dict[str
 def test_handle_webhook_episode_uses_tmdb_canonical_show_name(monkeypatch: pytest.MonkeyPatch) -> None:
   """TVDb episode ID → find_episode_by_tvdb_id → show_id → get_show_title."""
   monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
-  # find returns (season, episode, title, show_id=40290)
-  monkeypatch.setattr(_tmdb, 'find_episode_by_tvdb_id', lambda tvdb_id: (1, 3, 'The Dish', 40290))
+  # find returns (season, episode, title, show_id=40290, tmdb_episode_id=99001)
+  monkeypatch.setattr(_tmdb, 'find_episode_by_tvdb_id', lambda tvdb_id: (1, 3, 'The Dish', 40290, 99001))
   show_calls: list[int] = []
 
   def _mock_get_show_title(tmdb_id: int) -> str:

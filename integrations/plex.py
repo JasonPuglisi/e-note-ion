@@ -115,7 +115,7 @@ def _canonicalize_plex_title(raw_title: str, guids: list[dict[str, Any]], media_
     if ep_result is None:
       logger.debug('plex: tvdb ep lookup failed for id=%d, using raw title %r', tvdb_id, raw_title)
       return raw_title
-    _, _, _, show_id = ep_result
+    _, _, _, show_id, _ = ep_result
     canonical = _tmdb.get_show_title(show_id)
   else:
     tmdb_id = _parse_guid_id(guids, 'tmdb://')
@@ -246,14 +246,14 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
     if media_type == 'episode' and metadata:
       guids: list[dict[str, Any]] = metadata.get('Guid') or []
       raw_show = _canonicalize_plex_title(metadata['grandparentTitle'], guids, 'episode')
-      show_name = _vb.truncate_line(raw_show.upper(), _vb.model.cols, 'word')
+      show_name = _vb.truncate_line(raw_show.upper(), _vb.model.cols, 'ellipsis')
       episode_ref = _media.format_episode_ref(metadata['parentIndex'], metadata['index'])
       episode_detail = _media.strip_leading_article((metadata.get('title') or '').upper())
       episode_line = f'{episode_ref} {episode_detail}'.strip()
     elif media_type == 'movie' and metadata:
       guids = metadata.get('Guid') or []
       raw_movie = _canonicalize_plex_title(metadata['title'], guids, 'movie')
-      show_name = _vb.truncate_line(raw_movie.upper(), _vb.model.cols, 'word')
+      show_name = _vb.truncate_line(raw_movie.upper(), _vb.model.cols, 'ellipsis')
       episode_line = ''
     else:
       logger.debug('plex: no displayable metadata (type=%r)', media_type)
