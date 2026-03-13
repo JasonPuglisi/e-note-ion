@@ -136,6 +136,49 @@ def find_episode_by_tvdb_id(tvdb_episode_id: int) -> tuple[int, int, str, int, i
   return None
 
 
+@functools.lru_cache(maxsize=512)
+def find_episode_by_imdb_id(imdb_id: str) -> tuple[int, int, str, int, int] | None:
+  """Return (season, episode, title, show_id, tmdb_episode_id) for an IMDb episode ID.
+
+  Uses TMDb's /find endpoint with external_source=imdb_id. Same return shape as
+  find_episode_by_tvdb_id; used as a fallback when no TVDb episode ID is available.
+
+  Result is cached in-memory by IMDb ID for the lifetime of the process.
+  Returns None if the lookup fails or returns no results.
+  """
+  try:
+    r = fetch_with_retry(
+      'GET',
+      f'{_TMDB_API_BASE}/find/{imdb_id}',
+      headers=_request_headers(),
+      params={'external_source': 'imdb_id'},
+      timeout=10,
+    )
+    r.raise_for_status()
+    results = r.json().get('tv_episode_results', [])
+    if results:
+      ep = results[0]
+      season = ep.get('season_number')
+      episode = ep.get('episode_number')
+      show_id = ep.get('show_id')
+      tmdb_episode_id = ep.get('id')
+      title: str = ep.get('name') or ''
+      if season is not None and episode is not None and show_id is not None and tmdb_episode_id is not None:
+        logger.debug(
+          'TMDb: imdb_ep %s → S%dE%d %r (show=%d, tmdb_ep=%d)',
+          imdb_id,
+          season,
+          episode,
+          title,
+          show_id,
+          tmdb_episode_id,
+        )
+        return (season, episode, title, show_id, tmdb_episode_id)
+  except Exception as e:  # noqa: BLE001
+    logger.debug('TMDb: find_episode_by_imdb_id(%r) failed — %s', imdb_id, e)
+  return None
+
+
 @functools.lru_cache(maxsize=128)
 def _get_type6_group_id(show_id: int) -> str | None:
   """Return the TMDb episode group ID for the type-6 (TV seasons) group, or None."""
