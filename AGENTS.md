@@ -448,10 +448,10 @@ Semver rules (strict post-1.0):
 - **Major** (`x+1.0.0`): breaking changes to content JSON, CLI, config.toml
   keys, or Docker env vars
 
-Milestones are prioritization batches (e.g. "Next", "Later"), not version
-targets. They group issues by when to work on them, not what version they'll
-ship in. Close and recreate as priorities shift. Version numbers are determined
-by semver based on the actual changes in each PR.
+Milestones are numbered batches (e.g. "Batch 1", "Batch 2"), not version
+targets. They group issues by priority and theme — close each batch when
+done and create the next. Version numbers are determined by semver based on
+the actual changes in each PR, not by which batch they belong to.
 
 ## Maintenance
 
