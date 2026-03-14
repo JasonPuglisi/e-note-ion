@@ -14,6 +14,7 @@
 # Display model, public mode, and content selection are configured in
 # config.toml under [scheduler].
 
+import argparse
 import email.message
 import email.parser
 import heapq
@@ -1015,48 +1016,60 @@ def load_content(
       logger.warning('content file not found for enabled stem %r — check [scheduler] enabled in config.toml', stem)
 
 
-def _validate_startup() -> None:
-  """Check for bad Docker mount states before loading config or content.
+def _validate_startup(config_path: Path) -> None:
+  """Sanity-check the config file before loading.
 
-  Exits with a clear, actionable message on fatal errors (config.toml is a
+  Exits with a clear, actionable message on fatal errors (config path is a
   directory, missing, or empty). Warns non-fatally if the user content
   directory is empty.
   """
-  config_path = Path('config.toml')
   if config_path.is_dir():
     print(
-      f'Error: {config_path.resolve()} is a directory. '
-      'Docker created it automatically because the host path did not exist at container start. '
-      'Delete it on the host, create a proper config.toml file there, and restart the container.',
+      f'Error: {config_path.resolve()} is a directory, not a file. '
+      'Create a config.toml file (copy config.example.toml) and try again.',
       file=sys.stderr,
     )
     raise SystemExit(1)
   if not config_path.exists():
     print(
       f'Error: config.toml not found at {config_path.resolve()}. '
-      'Copy config.example.toml, fill in your API keys, '
-      'and make sure the host path is mounted correctly before starting the container.',
+      'Copy config.example.toml, fill in your API keys, and try again.',
       file=sys.stderr,
     )
     raise SystemExit(1)
   if config_path.stat().st_size == 0:
     print(
-      'Error: config.toml is empty. Copy config.example.toml and fill in your API keys.',
+      f'Error: {config_path.resolve()} is empty. Copy config.example.toml and fill in your API keys.',
       file=sys.stderr,
     )
     raise SystemExit(1)
 
   user_path = Path('content') / 'user'
   if user_path.is_dir() and not any(user_path.iterdir()):
-    logger.warning(
-      'user content directory is empty. '
-      'If you intended to mount personal content, make sure the host path exists and '
-      'contains JSON files. If Docker created this directory automatically, delete it on '
-      'the host, create it with your content files, and restart the container.'
-    )
+    logger.warning('user content directory is empty — add JSON content files or remove the directory')
 
 
 def main() -> None:
+  parser = argparse.ArgumentParser(
+    prog='e-note-ion',
+    description='Content scheduler for Vestaboard split-flap displays.',
+  )
+  parser.add_argument(
+    '-V',
+    '--version',
+    action='version',
+    version=f'%(prog)s {importlib.metadata.version("e-note-ion")}',
+  )
+  parser.add_argument(
+    '-c',
+    '--config',
+    type=Path,
+    default=Path('config.toml'),
+    metavar='PATH',
+    help='path to config.toml (default: ./config.toml)',
+  )
+  args = parser.parse_args()
+
   _handler = logging.StreamHandler()
   _handler.setFormatter(
     _IndentedFormatter(
@@ -1065,8 +1078,8 @@ def main() -> None:
     )
   )
   logging.basicConfig(level=logging.INFO, handlers=[_handler])
-  _validate_startup()
-  _config_mod.load_config()
+  _validate_startup(args.config)
+  _config_mod.load_config(args.config)
 
   log_level_str = _config_mod.get_optional('scheduler', 'log_level', 'INFO').upper()
   level = getattr(logging, log_level_str, None)

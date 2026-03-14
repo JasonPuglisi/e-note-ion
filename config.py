@@ -16,21 +16,25 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 _CONFIG_PATH = Path('config.toml')
-_EXAMPLE_PATH = Path('config.example.toml')
 
 _config: dict = {}
 
 
-def load_config() -> None:
-  """Load config.toml from the current working directory.
+def load_config(path: Path | None = None) -> None:
+  """Load config.toml, optionally from a custom path.
 
-  Exits with a clear message if the file is missing. Lets
-  tomllib.TOMLDecodeError propagate on parse errors.
+  When *path* is given, updates the module-level ``_CONFIG_PATH`` so that
+  ``write_section_values`` and ``write_config_section`` persist to the
+  same file.  Exits with a clear message if the file is missing.  Lets
+  ``tomllib.TOMLDecodeError`` propagate on parse errors.
   """
-  global _config
+  global _config, _CONFIG_PATH
+  if path is not None:
+    _CONFIG_PATH = path
   if not _CONFIG_PATH.exists():
     print(
-      f'Error: config.toml not found. Copy {_EXAMPLE_PATH} to config.toml and fill in your values.',
+      f'Error: config.toml not found at {_CONFIG_PATH.resolve()}. '
+      'Copy config.example.toml, fill in your API keys, and try again.',
       file=sys.stderr,
     )
     raise SystemExit(1)

@@ -72,8 +72,8 @@ password = "xxxx-xxxx-xxxx-xxxx"
 Calendar colors are read automatically from each calendar's CalDAV properties
 (`apple:calendar-color`) and mapped to the nearest Vestaboard color tag.
 
-> **Note on Google CalDAV:** Google requires OAuth 2.0 for CalDAV as of
-> March 2025 — use the ICS secret-address URL for Google Calendar instead.
+> **Note on Google CalDAV:** Google requires OAuth 2.0 for CalDAV — use
+> the ICS secret-address URL for Google Calendar instead.
 
 ### Both modes together
 
