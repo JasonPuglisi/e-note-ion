@@ -32,12 +32,13 @@ on this project collaboratively with the user.
 - Apply principle of least privilege — integrations should request only the
   OAuth scopes and API permissions they strictly need
 
-**Pre-v1.0 stance:**
-- No backwards compatibility concerns before v1.0 — breaking changes to the
-  content JSON format, CLI flags, Docker env vars, and internal APIs are all
-  fair game
-- Refactor early and often when it sets up a better foundation; don't hold
-  back to preserve existing behaviour
+**Stability (post-1.0):**
+- Content JSON format, CLI flags, Docker env vars, and config.toml keys are
+  part of the public API — breaking changes require a major version bump
+- Deprecate before removing: add a deprecation warning for at least one minor
+  release before removing any public-facing feature
+- Internal APIs (integration module signatures, scheduler internals) may change
+  freely across minor versions
 
 **Decision-making:**
 - Raise security concerns proactively, even when not explicitly asked
@@ -370,12 +371,12 @@ prevention here — not just a one-off fix. See #65 for extended notes.
    ```
 9. **Integration test hygiene** — advisory CI job passing on `main`; GitHub environment secrets/vars match the lists above and in `ci.yml`; new integrations have `test_<name>_integration.py` and env vars in `tests/integrations/conftest.py`
    - **`TRAKT_ACCESS_TOKEN` expires every ~90 days** — if the Trakt integration tests start failing with an auth error, copy the current `access_token` from `config.toml` (kept fresh by the prod refresh flow) into the `integration` environment secret
-10. **Issue/milestone hygiene**:
-    - Every open issue has a milestone (no orphans); scope is right-sized
+10. **Issue hygiene**:
+    - Every open issue has at least one label; no untriaged issues
     - Blocking relationships explicit ("Blocked by #X" in body)
     - Tracking issues have sub-issues linked (`gh api repos/JasonPuglisi/e-note-ion/issues/<n>/sub_issues`)
-    - Issues in wrong milestone reassigned; stale/superseded issues closed with a note
-    - Untriaged issues (missing label, milestone, or assignee) caught and resolved
+    - Stale or superseded issues closed with a note
+    - Milestones used only for concrete release goals; thematic grouping uses labels
 
 ### Planning before implementation
 
@@ -439,10 +440,15 @@ PR contains **release-worthy** changes:
 | `Dockerfile` changes | Docs-only changes |
 | Security fixes | Repo config / tooling changes |
 
-Semver rules when bumping:
-- **Patch** (`0.x.y+1`): bug fixes, dependency updates, security fixes
-- **Minor** (`0.x+1.0`): new features, non-breaking additions
-- **Major** (`x+1.0.0`): breaking changes to content JSON, CLI, or Docker env vars
+Semver rules (strict post-1.0):
+- **Patch** (`x.y.z+1`): bug fixes, dependency updates, security fixes
+- **Minor** (`x.y+1.0`): new features, non-breaking additions
+- **Major** (`x+1.0.0`): breaking changes to content JSON, CLI, config.toml
+  keys, or Docker env vars
+
+Milestones are reserved for concrete release goals with a clear definition of
+done (e.g. "v1.0 — Public Release"). Use labels (`enhancement`, `polish`,
+`bug`, etc.) for ongoing thematic categorisation — not milestones.
 
 ## Maintenance
 
