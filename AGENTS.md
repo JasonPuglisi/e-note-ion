@@ -372,11 +372,11 @@ prevention here — not just a one-off fix. See #65 for extended notes.
 9. **Integration test hygiene** — advisory CI job passing on `main`; GitHub environment secrets/vars match the lists above and in `ci.yml`; new integrations have `test_<name>_integration.py` and env vars in `tests/integrations/conftest.py`
    - **`TRAKT_ACCESS_TOKEN` expires every ~90 days** — if the Trakt integration tests start failing with an auth error, copy the current `access_token` from `config.toml` (kept fresh by the prod refresh flow) into the `integration` environment secret
 10. **Issue hygiene**:
-    - Every open issue has at least one label; no untriaged issues
+    - Every open issue has at least one label and a milestone; no untriaged issues
     - Blocking relationships explicit ("Blocked by #X" in body)
     - Tracking issues have sub-issues linked (`gh api repos/JasonPuglisi/e-note-ion/issues/<n>/sub_issues`)
     - Stale or superseded issues closed with a note
-    - Milestones used only for concrete release goals; thematic grouping uses labels
+    - Milestone assignments reflect current priorities (move issues between Next/Later as needed)
 
 ### Planning before implementation
 
@@ -446,9 +446,10 @@ Semver rules (strict post-1.0):
 - **Major** (`x+1.0.0`): breaking changes to content JSON, CLI, config.toml
   keys, or Docker env vars
 
-Milestones are reserved for concrete release goals with a clear definition of
-done (e.g. "v1.0 — Public Release"). Use labels (`enhancement`, `polish`,
-`bug`, etc.) for ongoing thematic categorisation — not milestones.
+Milestones are prioritization batches (e.g. "Next", "Later"), not version
+targets. They group issues by when to work on them, not what version they'll
+ship in. Close and recreate as priorities shift. Version numbers are determined
+by semver based on the actual changes in each PR.
 
 ## Maintenance
 
