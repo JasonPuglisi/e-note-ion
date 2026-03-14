@@ -1,6 +1,6 @@
 # E•NOTE•ION
 
-![E•NOTE•ION](assets/social-preview.png)
+![E•NOTE•ION](https://raw.githubusercontent.com/JasonPuglisi/e-note-ion/main/assets/social-preview.png)
 
 [![CI](https://github.com/JasonPuglisi/e-note-ion/actions/workflows/ci.yml/badge.svg)](https://github.com/JasonPuglisi/e-note-ion/actions/workflows/ci.yml)
 

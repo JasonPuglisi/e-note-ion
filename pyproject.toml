@@ -1,6 +1,6 @@
 [project]
 name = "e-note-ion"
-version = "0.38.0"
+version = "0.38.1"
 description = "Automation for Vestaboard displays — with emotion"
 keywords = ["vestaboard", "note", "flagship", "automation", "schedule", "scheduling"]
 authors = [
@@ -13,6 +13,15 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE.txt"]
 requires-python = ">=3.14"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Home Automation",
+    "Topic :: Utilities",
+]
 dependencies = [
     "apscheduler>=3.11.2",
     "argon2-cffi>=23.1.0",
@@ -40,6 +49,7 @@ py-modules = ["scheduler", "config", "exceptions"]
 include = ["integrations*"]
 
 [project.urls]
+Homepage = "https://github.com/JasonPuglisi/e-note-ion"
 Repository = "https://github.com/JasonPuglisi/e-note-ion"
 Issues = "https://github.com/JasonPuglisi/e-note-ion/issues"
 
