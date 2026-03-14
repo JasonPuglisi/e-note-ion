@@ -70,21 +70,10 @@ Contrib integrations require their own API keys and configuration — see
 
 ### Unraid
 
-> **Note:** e-note-ion is not yet listed in the Community Applications store
-> (tracked at [#10](https://github.com/JasonPuglisi/e-note-ion/issues/10)).
-
-An Unraid Docker template is included at `unraid/e-note-ion.xml`. To install:
-
-1. Download
-   [`unraid/e-note-ion.xml`](https://raw.githubusercontent.com/JasonPuglisi/e-note-ion/main/unraid/e-note-ion.xml)
-   and place it in `/boot/config/plugins/dockerMan/templates-user/` on your
-   Unraid server
-2. In the Unraid web UI, go to **Docker** → **Add Container** and select
-   **e-note-ion** from the Template dropdown
-3. Fill in the required fields (Vestaboard API Key, etc.) and click **Apply**
-
-The template exposes all environment variables as UI fields and an optional
-path for personal content.
+An Unraid Docker template is available in a
+[separate repository](https://github.com/JasonPuglisi/unraid-templates).
+It exposes config file path, user content directory, timezone, and webhook
+port as UI fields.
 
 ### Viewing container logs
 

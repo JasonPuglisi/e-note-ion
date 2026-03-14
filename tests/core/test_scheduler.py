@@ -1015,6 +1015,7 @@ def _mock_sched() -> MagicMock:
 
 
 def test_main_note_startup_banner(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+  monkeypatch.setattr('sys.argv', ['e-note-ion'])
   mock_sched = _mock_sched()
   with (
     patch.object(_mod, '_validate_startup'),
@@ -1032,7 +1033,8 @@ def test_main_note_startup_banner(monkeypatch: pytest.MonkeyPatch, caplog: pytes
   assert 'Note (3×15)' in caplog.text
 
 
-def test_main_version_in_banner(caplog: pytest.LogCaptureFixture) -> None:
+def test_main_version_in_banner(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+  monkeypatch.setattr('sys.argv', ['e-note-ion'])
   mock_sched = _mock_sched()
   with (
     patch.object(_mod, '_validate_startup'),
@@ -1052,6 +1054,7 @@ def test_main_version_in_banner(caplog: pytest.LogCaptureFixture) -> None:
 
 
 def test_main_flagship_sets_model_and_banner(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+  monkeypatch.setattr('sys.argv', ['e-note-ion'])
   monkeypatch.setattr(vb, 'model', vb.VestaboardModel.NOTE)  # ensures restoration
   mock_sched = _mock_sched()
   with (
@@ -1072,6 +1075,7 @@ def test_main_flagship_sets_model_and_banner(monkeypatch: pytest.MonkeyPatch, ca
 
 
 def test_main_public_mode_in_banner(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+  monkeypatch.setattr('sys.argv', ['e-note-ion'])
   mock_sched = _mock_sched()
   with (
     patch.object(_mod, '_validate_startup'),
@@ -1090,6 +1094,7 @@ def test_main_public_mode_in_banner(monkeypatch: pytest.MonkeyPatch, caplog: pyt
 
 
 def test_main_content_enabled_in_banner(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+  monkeypatch.setattr('sys.argv', ['e-note-ion'])
   mock_sched = _mock_sched()
   with (
     patch.object(_mod, '_validate_startup'),
@@ -1108,6 +1113,7 @@ def test_main_content_enabled_in_banner(monkeypatch: pytest.MonkeyPatch, caplog:
 
 
 def test_main_empty_board_on_startup(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+  monkeypatch.setattr('sys.argv', ['e-note-ion'])
   mock_sched = _mock_sched()
   with (
     patch.object(_mod, '_validate_startup'),
@@ -1130,6 +1136,7 @@ def test_main_passes_timezone_to_scheduler(monkeypatch: pytest.MonkeyPatch) -> N
 
   import config as _cfg
 
+  monkeypatch.setattr('sys.argv', ['e-note-ion'])
   monkeypatch.setattr(_cfg, '_config', {'scheduler': {'timezone': 'America/New_York'}})
   mock_sched = _mock_sched()
   with (

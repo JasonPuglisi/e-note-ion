@@ -110,9 +110,11 @@ assets/
   icon.png                  # App icon (256×256) for Unraid CA
   social-preview.png        # GitHub repository social preview (1280×640)
   README.md                 # AI generation prompts for both images
-unraid/
-  e-note-ion.xml            # Unraid Community Applications template
 ```
+
+The Unraid CA template lives in a separate repository:
+[JasonPuglisi/unraid-templates](https://github.com/JasonPuglisi/unraid-templates).
+Update the XML there when adding new Docker config fields (ports, volumes, env vars).
 
 ## How It Works
 

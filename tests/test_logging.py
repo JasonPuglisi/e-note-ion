@@ -14,6 +14,7 @@ def _run_main_with_log_level(
   """Run main() with the given config, patching away all side effects."""
   import config as _cfg
 
+  monkeypatch.setattr('sys.argv', ['e-note-ion'])
   monkeypatch.setattr(_cfg, '_config', config)
   mock_sched = MagicMock()
   mock_sched.get_jobs.return_value = []
