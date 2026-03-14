@@ -145,7 +145,24 @@ Key `[scheduler]` settings:
 | `timezone` | system TZ | IANA timezone for cron job scheduling (e.g. `"America/Los_Angeles"`) |
 | `min_hold` | `60` | Minimum seconds any message stays on display before a high-priority (≥8) queued message can interrupt it. Set to `0` to disable (not recommended for physical displays). |
 
-## Running directly
+## Installing from PyPI
+
+**Requirements:** Python 3.14+
+
+```bash
+pip install e-note-ion
+```
+
+Create a config file and run:
+
+```bash
+cp config.example.toml config.toml  # fill in your API key
+e-note-ion                           # or: e-note-ion --config /path/to/config.toml
+```
+
+Use `e-note-ion --help` for CLI options.
+
+## Running from source
 
 **Requirements:** Python 3.14+, [uv](https://github.com/astral-sh/uv)
 
@@ -232,5 +249,10 @@ Required keys:
 | `TRAKT_CLIENT_ID` | [trakt.tv/oauth/applications](https://trakt.tv/oauth/applications) → your app |
 | `TRAKT_CLIENT_SECRET` | same app page |
 | `TRAKT_ACCESS_TOKEN` | run Trakt auth flow once and copy from `config.toml` |
+| `TMDB_API_READ_ACCESS_TOKEN` | [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api) (optional; enhances Plex/Trakt metadata) |
+| `CALENDAR_CARDDAV_URL` | `https://contacts.icloud.com/` for iCloud birthday integration |
+| `DIVING_NDBC_STATION` | [ndbc.noaa.gov](https://www.ndbc.noaa.gov/) station ID (e.g. `46221`) |
+| `DIVING_LAT` | Station latitude |
+| `DIVING_LON` | Station longitude |
 
 `.env` is git-ignored — never commit it.

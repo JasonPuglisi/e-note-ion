@@ -58,7 +58,7 @@ on this project collaboratively with the user.
 ## Project Structure
 
 ```
-scheduler.py                # Entry point — scheduler, queue, worker
+scheduler.py                # Entry point — scheduler, queue, worker (argparse CLI)
 config.py                   # TOML config loader (load_config, get, get_optional, get_schedule_override, write_section_values — in-place token persistence)
 exceptions.py               # Custom exception types (IntegrationDataUnavailableError)
 config.toml                 # Runtime config with API keys (git-ignored; copy from config.example.toml)
@@ -73,25 +73,28 @@ integrations/discogs.py     # Daily vinyl suggestion from Discogs collection
 integrations/trakt.py       # Trakt.tv calendar and now-playing (OAuth device flow)
 integrations/diving.py      # Scuba diving conditions and days-since-last-dive (webhook)
 integrations/plex.py        # Plex Media Server now-playing via webhook
+integrations/color.py       # Dominant color extraction from album art (Oklab)
+integrations/media.py       # Shared media display helpers
+integrations/message.py     # Friend message webhook integration
+integrations/moon.py        # Moon phase calculation
+integrations/notion.py      # Notion webhook integration
+integrations/tmdb.py        # TMDb metadata lookups (used by plex, trakt)
 content/
   README.md                 # Content author reference: JSON format, priority, schedule coordination
   DESIGN.md                 # Visual/design conventions: layout, color, tone, character set
   contrib/                  # Bundled community content (disabled by default)
     TEMPLATE.md             # Sidecar doc template for new integrations
-    weather.json            # Current weather conditions
-    weather.md              # Sidecar doc: configuration and data sources
-    calendar.json           # Today's calendar events (ICS and iCloud CalDAV)
-    calendar.md             # Sidecar doc: ICS and CalDAV configuration
-    bart.json               # BART real-time departure board
-    bart.md                 # Sidecar doc: configuration and data sources
-    discogs.json            # Daily vinyl suggestion from Discogs collection
-    discogs.md              # Sidecar doc: configuration and API details
-    trakt.json              # Trakt.tv calendar and now-playing
-    trakt.md                # Sidecar doc: OAuth setup and data sources
-    diving.json             # Scuba diving conditions and days-since-last-dive
-    diving.md               # Sidecar doc: configuration and webhook setup
-    plex.json               # Plex Media Server now-playing (webhook-only)
-    plex.md                 # Sidecar doc: Plex Pass requirement and webhook setup
+    weather.json / .md      # Current weather conditions
+    calendar.json / .md     # Today's calendar events (ICS and iCloud CalDAV)
+    bart.json / .md         # BART real-time departure board
+    birthdays.json / .md    # Birthday reminders from CalDAV contacts
+    discogs.json / .md      # Daily vinyl suggestion from Discogs collection
+    diving.json / .md       # Scuba diving conditions and days-since-last-dive
+    message.json / .md      # Friend messages via webhook
+    morning_night.json / .md  # Morning weather visual + good night
+    notion.json / .md       # Notion webhook notifications
+    plex.json / .md         # Plex Media Server now-playing (webhook-only)
+    trakt.json / .md        # Trakt.tv calendar and now-playing
   user/                     # Personal content (always loaded, git-ignored)
 docs/
   webhook-reverse-proxy.md  # Webhook TLS setup guide (Cloudflare Tunnel, reverse proxy)
@@ -99,8 +102,8 @@ docs/
 Dockerfile                  # Single-stage image using ghcr.io/astral-sh/uv
 .github/workflows/
   ci.yml                    # Runs checks on every push and pull request to main
-  auto-release.yml          # Creates a release on version bump; calls release.yml
-  release.yml               # Builds + pushes multi-arch image to ghcr.io
+  auto-release.yml          # Creates a release on version bump; publishes to PyPI and GHCR
+  release.yml               # Builds + pushes multi-arch Docker image to GHCR
 SECURITY.md                 # Vulnerability disclosure policy and API key guidance
 assets/
   icon.png                  # App icon (256×256) for Unraid CA
@@ -365,7 +368,7 @@ prevention here — not just a one-off fix. See #65 for extended notes.
    ```
    gh api repos/JasonPuglisi/e-note-ion/rulesets/13082160 --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'
    ```
-9. **Integration test hygiene** — advisory CI job passing on `main`; GitHub environment secrets/vars present (`VESTABOARD_VIRTUAL_API_KEY`, `CALENDAR_URL`, `CALENDAR_CALDAV_URL`, `CALENDAR_USERNAME`, `CALENDAR_PASSWORD`, `CALENDAR_CARDDAV_URL`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `DISCOGS_TOKEN` as secrets; `TRAKT_CLIENT_ID`, `DIVING_NDBC_STATION`, `DIVING_LAT`, `DIVING_LON` as variables); new integrations have `test_<name>_integration.py` and env vars in `tests/integrations/conftest.py`
+9. **Integration test hygiene** — advisory CI job passing on `main`; GitHub environment secrets/vars match the lists above and in `ci.yml`; new integrations have `test_<name>_integration.py` and env vars in `tests/integrations/conftest.py`
    - **`TRAKT_ACCESS_TOKEN` expires every ~90 days** — if the Trakt integration tests start failing with an auth error, copy the current `access_token` from `config.toml` (kept fresh by the prod refresh flow) into the `integration` environment secret
 10. **Issue/milestone hygiene**:
     - Every open issue has a milestone (no orphans); scope is right-sized
@@ -400,8 +403,9 @@ step may be skipped — use judgement.
    same commit as the source change** — never a follow-up PR. Rule of thumb:
    if any `.py` or `.json` file is staged, check whether a bump is needed. Always stage
    `uv.lock` alongside `pyproject.toml` to avoid pre-commit stash conflicts.
-4. Commit with `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
-   (commits are auto-signed via `commit.gpgsign = true` in global git config)
+4. Commit with `Co-Authored-By: Claude <model> <noreply@anthropic.com>`
+   (use your current model name, e.g. `Opus 4.6` or `Sonnet 4.6`;
+   commits are auto-signed via `commit.gpgsign = true` in global git config)
 5. Verify signing succeeded: `git log -1 --show-signature` must show a valid signature before pushing
 6. `git push -u origin feat/description`
 7. `gh pr create --label <label> --assignee JasonPuglisi`

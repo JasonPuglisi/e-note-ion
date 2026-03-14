@@ -1390,7 +1390,7 @@ def test_validate_startup_errors_on_config_dir(
   config_dir.mkdir()
   monkeypatch.chdir(tmp_path)
   with pytest.raises(SystemExit):
-    _mod._validate_startup()
+    _mod._validate_startup(config_dir)
   assert 'directory' in capsys.readouterr().err.lower()
 
 
@@ -1399,35 +1399,38 @@ def test_validate_startup_errors_on_missing_config(
 ) -> None:
   monkeypatch.chdir(tmp_path)
   with pytest.raises(SystemExit):
-    _mod._validate_startup()
+    _mod._validate_startup(tmp_path / 'config.toml')
   assert 'not found' in capsys.readouterr().err.lower()
 
 
 def test_validate_startup_errors_on_empty_config(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-  (tmp_path / 'config.toml').write_text('')
+  config_path = tmp_path / 'config.toml'
+  config_path.write_text('')
   monkeypatch.chdir(tmp_path)
   with pytest.raises(SystemExit):
-    _mod._validate_startup()
+    _mod._validate_startup(config_path)
   assert 'empty' in capsys.readouterr().err.lower()
 
 
 def test_validate_startup_warns_on_empty_content_dir(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-  (tmp_path / 'config.toml').write_text('[vestaboard]\napi_key = "x"\n')
+  config_path = tmp_path / 'config.toml'
+  config_path.write_text('[vestaboard]\napi_key = "x"\n')
   user_dir = tmp_path / 'content' / 'user'
   user_dir.mkdir(parents=True)
   monkeypatch.chdir(tmp_path)
-  _mod._validate_startup()  # must not raise
+  _mod._validate_startup(config_path)  # must not raise
   assert 'WARNING' in caplog.text
 
 
 def test_validate_startup_passes_with_valid_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-  (tmp_path / 'config.toml').write_text('[vestaboard]\napi_key = "x"\n')
+  config_path = tmp_path / 'config.toml'
+  config_path.write_text('[vestaboard]\napi_key = "x"\n')
   monkeypatch.chdir(tmp_path)
-  _mod._validate_startup()  # must not raise
+  _mod._validate_startup(config_path)  # must not raise
 
 
 # --- _do_hold tests ---
