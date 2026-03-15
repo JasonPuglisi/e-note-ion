@@ -552,26 +552,26 @@ def _patch_birthdays(
 
 
 def test_birthday_formats_today(monkeypatch: pytest.MonkeyPatch) -> None:
-  """Birthday today → 'FIRSTNAME TODAY'."""
+  """Birthday today → 'TODAY FIRSTNAME'."""
   _patch_birthdays(monkeypatch, [('ADAM', _BDAY_TODAY.month, _BDAY_TODAY.day)])
   result = calendar.get_variables_birthdays()
-  assert result['birthdays'][0] == ['ADAM TODAY']
+  assert result['birthdays'][0] == ['TODAY ADAM']
 
 
 def test_birthday_formats_day_name(monkeypatch: pytest.MonkeyPatch) -> None:
-  """Birthday in 3 days → 'FIRSTNAME <DAY>'."""
+  """Birthday in 3 days → '<DAY> FIRSTNAME'."""
   target = _BDAY_TODAY + timedelta(days=3)
   expected_day = target.strftime('%a').upper()
   _patch_birthdays(monkeypatch, [('BRIANNA', target.month, target.day)])
   result = calendar.get_variables_birthdays()
-  assert result['birthdays'][0] == [f'BRIANNA {expected_day}']
+  assert result['birthdays'][0] == [f'{expected_day} BRIANNA']
 
 
-def test_birthday_uses_first_name_only(monkeypatch: pytest.MonkeyPatch) -> None:
-  """Contacts are already stored as first names — pass-through check."""
+def test_birthday_uses_display_name(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Display name from cache appears after the day label."""
   _patch_birthdays(monkeypatch, [('ADAM', _BDAY_TODAY.month, _BDAY_TODAY.day)])
   result = calendar.get_variables_birthdays()
-  assert result['birthdays'][0][0].startswith('ADAM')
+  assert result['birthdays'][0][0].endswith('ADAM')
 
 
 def test_birthday_filters_outside_window(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -594,9 +594,9 @@ def test_birthday_multiple_sorted(monkeypatch: pytest.MonkeyPatch) -> None:
   _patch_birthdays(monkeypatch, contacts)
   result = calendar.get_variables_birthdays()
   lines = result['birthdays'][0]
-  assert lines[0].startswith('ADAM')
-  assert lines[1].startswith('BLAKE')
-  assert lines[2].startswith('ZARA')
+  assert lines[0].endswith('ADAM')
+  assert lines[1].endswith('BLAKE')
+  assert lines[2].endswith('ZARA')
 
 
 def test_birthday_no_results_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -726,10 +726,10 @@ def _patch_self_birthday(
 
 
 def test_self_birthday_today(monkeypatch: pytest.MonkeyPatch) -> None:
-  """Birthday matches today → returns {'name': [['ALEX']]}."""
+  """Birthday matches today → returns display name (first + last initial)."""
   _patch_self_birthday(monkeypatch)
   result = calendar.get_variables_self_birthday()
-  assert result == {'name': [['ALEX']]}
+  assert result == {'name': [['ALEX S']]}
 
 
 def test_self_birthday_not_today(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -785,7 +785,7 @@ def test_self_birthday_me_card_discovery(monkeypatch: pytest.MonkeyPatch) -> Non
   _patch_self_birthday(monkeypatch)
   assert calendar._self_contact_cache is None
   calendar.get_variables_self_birthday()
-  assert calendar._self_contact_cache == ('ALEX', _SELF_BDAY_TODAY.month, _SELF_BDAY_TODAY.day)
+  assert calendar._self_contact_cache == ('ALEX S', _SELF_BDAY_TODAY.month, _SELF_BDAY_TODAY.day)
 
 
 def test_birthdays_suppresses_self(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -805,6 +805,6 @@ def test_birthdays_suppresses_self(monkeypatch: pytest.MonkeyPatch) -> None:
     ],
   )
   result = calendar.get_variables_birthdays()
-  names = [line.split()[0] for line in result['birthdays'][0]]
-  assert 'ALEX' not in names
-  assert 'BLAKE' in names
+  lines = result['birthdays'][0]
+  assert not any('ALEX' in line for line in lines)
+  assert any('BLAKE' in line for line in lines)

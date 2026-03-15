@@ -84,11 +84,11 @@ _carddav_addressbook_url: str | None = None
 _carddav_home_url: str | None = None
 
 # Birthday contacts cache: (contacts, monotonic_fetch_time) or None.
-# contacts is a list of (first_name, month, day).
+# contacts is a list of (display_name, month, day).
 _birthday_cache: tuple[list[tuple[str, int, int]], float] | None = None
 _BIRTHDAY_CACHE_TTL = 24 * 60 * 60  # 24 hours
 
-# Self contact cache: (first_name, month, day) or None (process lifetime).
+# Self contact cache: (display_name, month, day) or None (process lifetime).
 # Populated by _resolve_self_contact(); BDAY never changes in practice.
 _self_contact_cache: tuple[str, int, int] | None = None
 
@@ -453,6 +453,18 @@ def _collect_candidates_caldav(
 # ── CardDAV / birthdays ────────────────────────────────────────────────────────
 
 
+def _resolve_display_name(nickname: str | None, fn_parts: list[str]) -> str:
+  """Return the preferred display name for a contact, uppercased.
+
+  Priority: nickname → first + last initial → first name only.
+  """
+  if nickname and nickname.strip():
+    return nickname.strip().upper()
+  if len(fn_parts) >= 2:
+    return f'{fn_parts[0].upper()} {fn_parts[-1][0].upper()}'
+  return fn_parts[0].upper() if fn_parts else ''
+
+
 def _parse_bday(bday_str: str) -> tuple[int, int] | None:
   """Parse a BDAY vCard value into (month, day), or None if unparseable.
 
@@ -612,11 +624,14 @@ def _fetch_birthday_contacts(
     if not data:
       continue
     fn: str | None = None
+    nickname: str | None = None
     bday_raw: str | None = None
     for line in data.splitlines():
       upper = line.upper()
       if upper.startswith('FN:'):
         fn = line[3:].strip()
+      elif upper.startswith('NICKNAME:'):
+        nickname = line[9:].strip()
       elif upper.startswith('BDAY') and ':' in line:
         bday_raw = line.split(':', 1)[1].strip()
     if not fn or not bday_raw:
@@ -627,7 +642,8 @@ def _fetch_birthday_contacts(
     parts = fn.split()
     if not parts:
       continue
-    contacts.append((parts[0].upper(), parsed[0], parsed[1]))
+    display_name = _resolve_display_name(nickname, parts)
+    contacts.append((display_name, parsed[0], parsed[1]))
 
   logger.debug('calendar: fetched %d birthday contact(s)', len(contacts))
   _birthday_cache = (contacts, time.monotonic())
@@ -693,11 +709,14 @@ def _resolve_self_contact(
     r.raise_for_status()
 
     fn: str | None = None
+    nickname: str | None = None
     bday_raw: str | None = None
     for line in r.text.splitlines():
       upper = line.upper()
       if upper.startswith('FN:'):
         fn = line[3:].strip()
+      elif upper.startswith('NICKNAME:'):
+        nickname = line[9:].strip()
       elif upper.startswith('BDAY') and ':' in line:
         bday_raw = line.split(':', 1)[1].strip()
 
@@ -710,8 +729,8 @@ def _resolve_self_contact(
       logger.debug('calendar: me-card BDAY unparseable — self-birthday unavailable')
       return None
 
-    first_name = fn.split()[0].upper()
-    _self_contact_cache = (first_name, parsed[0], parsed[1])
+    display_name = _resolve_display_name(nickname, fn.split())
+    _self_contact_cache = (display_name, parsed[0], parsed[1])
     logger.debug('calendar: self contact resolved')
     return _self_contact_cache
 
@@ -845,9 +864,9 @@ def get_variables_birthdays() -> dict[str, list[list[str]]]:
 
   self_contact = _resolve_self_contact(carddav_url, username, password)
 
-  entries: list[tuple[int, str, str]] = []  # (days_ahead, first_name, line)
-  for first_name, month, day in contacts:
-    if self_contact and (first_name, month, day) == self_contact:
+  entries: list[tuple[int, str, str]] = []  # (days_ahead, display_name, line)
+  for display_name, month, day in contacts:
+    if self_contact and (display_name, month, day) == self_contact:
       continue  # shown exclusively via birthday_self.json
     try:
       candidate = today.replace(month=month, day=day)
@@ -862,7 +881,7 @@ def get_variables_birthdays() -> dict[str, list[list[str]]]:
     if days_ahead > lookahead:
       continue
     day_label = 'TODAY' if days_ahead == 0 else candidate.strftime('%a').upper()
-    entries.append((days_ahead, first_name, f'{first_name} {day_label}'))
+    entries.append((days_ahead, display_name, f'{day_label} {display_name}'))
 
   if not entries:
     raise IntegrationDataUnavailableError(f'calendar: no birthdays in the next {lookahead} days')
@@ -895,7 +914,7 @@ def get_variables_self_birthday() -> dict[str, list[list[str]]]:
   if self_contact is None:
     raise IntegrationDataUnavailableError('calendar: self contact could not be resolved (iCloud me-card required)')
 
-  first_name, month, day = self_contact
+  display_name, month, day = self_contact
 
   tz = _display_tz()
   now = _get_now(tz)
@@ -909,4 +928,4 @@ def get_variables_self_birthday() -> dict[str, list[list[str]]]:
   if today != birthday_this_year:
     raise IntegrationDataUnavailableError("calendar: today is not the owner's birthday")
 
-  return {'name': [[first_name]]}
+  return {'name': [[display_name]]}
