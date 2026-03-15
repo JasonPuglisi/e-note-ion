@@ -105,5 +105,5 @@ def test_birthdays_mode_real_icloud(require_env: None, monkeypatch: pytest.Monke
   for line in lines:
     assert isinstance(line, str) and line.strip(), f'empty line in birthdays: {lines!r}'
     parts = line.split()
-    assert len(parts) == 2, f'expected "FIRSTNAME DAY", got: {line!r}'  # noqa: PLR2004
-    assert parts[1] in {'TODAY', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'}, f'unexpected day label: {line!r}'
+    assert len(parts) >= 2, f'expected "DAY NAME", got: {line!r}'  # noqa: PLR2004
+    assert parts[0] in {'TODAY', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'}, f'unexpected day label: {line!r}'
