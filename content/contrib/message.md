@@ -75,7 +75,7 @@ edit them manually. Valid color values: `R` (red), `O` (orange), `Y` (yellow),
 Credential hashes (written alongside the friend config):
 
 ```toml
-[webhook.credentials.alice]
+[webhook.credentials.message.friend.alice]
 secret_hash = "$argon2id$..."
 webhooks = ["message"]
 ```
@@ -90,7 +90,7 @@ The admin uses their named credential to register a friend. The Shortcut generat
 a random 3-word passphrase client-side, registers it with the board, then shares the
 passphrase with the friend.
 
-The admin credential can be any `[webhook.credentials.*]` entry scoped to `message`.
+The admin credential is the auto-generated `[webhook.credentials.message.admin]` entry.
 Use the same `python -c "from argon2 import PasswordHasher; print(PasswordHasher().hash('your-secret'))"` command to hash it, and put the plaintext in the Shortcut's import question.
 
 A template Shortcut is available at `content/contrib/shortcuts/Register Vestaboard Friend.shortcut`.
@@ -224,8 +224,9 @@ are needed — name and color come from the board's config.
 
 Re-registering an existing `name` overwrites the previous credential and display config.
 
-Registration must be sent using any named credential (not a friend passphrase that has
-no `[webhook.credentials.*]` entry with `webhooks = ["message"]`).
+Registration must be sent using any named credential scoped to `message` — the
+admin credential (`[webhook.credentials.message.admin]`) or another registered friend
+passphrase both work.
 
 ## Display format
 

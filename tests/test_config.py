@@ -419,3 +419,188 @@ def test_write_config_section_updates_memory_cache(
   _setup_wcs(tmp_path, monkeypatch, '[webhook]\nsecret = "x"\n')
   _mod.write_config_section('webhook.credentials.alice', {'secret_hash': 'h', 'webhooks': ['message']})
   assert _mod._config['webhook']['credentials']['alice']['secret_hash'] == 'h'  # noqa: SLF001
+
+
+# --- delete_config_section ---
+
+
+def test_delete_config_section_removes_section(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  content = (
+    '[webhook]\nport = 8080\n\n'
+    '[webhook.credentials.alice]\nsecret_hash = "h"\nwebhooks = ["message"]\n\n'
+    '[message.friends.alice]\ncolor = "R"\n'
+  )
+  cfg = _setup_wcs(tmp_path, monkeypatch, content)
+  _mod.delete_config_section('webhook.credentials.alice')
+  text = cfg.read_text()
+  assert '[webhook.credentials.alice]' not in text
+  assert 'secret_hash' not in text
+  assert '[webhook]' in text
+  assert '[message.friends.alice]' in text
+
+
+def test_delete_config_section_preserves_separator_for_next_section(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  # The blank line before the deleted section must survive as separator for the next.
+  content = (
+    '[webhook]\nport = 8080\n\n[webhook.credentials.alice]\nsecret_hash = "h"\n\n[message.friends.alice]\ncolor = "R"\n'
+  )
+  cfg = _setup_wcs(tmp_path, monkeypatch, content)
+  _mod.delete_config_section('webhook.credentials.alice')
+  text = cfg.read_text()
+  assert '\n\n[message.friends.alice]' in text
+
+
+def test_delete_config_section_no_double_blank_lines(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  content = (
+    '[webhook]\nport = 8080\n\n[webhook.credentials.alice]\nsecret_hash = "h"\n\n[message.friends.alice]\ncolor = "R"\n'
+  )
+  cfg = _setup_wcs(tmp_path, monkeypatch, content)
+  _mod.delete_config_section('webhook.credentials.alice')
+  assert '\n\n\n' not in cfg.read_text()
+
+
+def test_delete_config_section_last_section_no_trailing_blank(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  content = '[webhook]\nport = 8080\n\n[webhook.credentials.alice]\nsecret_hash = "h"\n'
+  cfg = _setup_wcs(tmp_path, monkeypatch, content)
+  _mod.delete_config_section('webhook.credentials.alice')
+  text = cfg.read_text()
+  assert text.endswith('8080\n')
+  assert not text.endswith('\n\n')
+
+
+def test_delete_config_section_noop_when_absent(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  content = '[webhook]\nport = 8080\n'
+  cfg = _setup_wcs(tmp_path, monkeypatch, content)
+  _mod.delete_config_section('webhook.credentials.alice')
+  assert cfg.read_text() == content
+
+
+def test_delete_config_section_updates_memory_cache(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  content = '[webhook]\nport = "8080"\n\n[webhook.credentials.alice]\nsecret_hash = "h"\nwebhooks = ["message"]\n'
+  _setup_wcs(tmp_path, monkeypatch, content)
+  _mod._config = {  # noqa: SLF001
+    'webhook': {'port': '8080', 'credentials': {'alice': {'secret_hash': 'h', 'webhooks': ['message']}}},
+  }
+  _mod.delete_config_section('webhook.credentials.alice')
+  assert 'alice' not in _mod._config['webhook']['credentials']  # noqa: SLF001
+
+
+def test_delete_config_section_missing_file_raises(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  monkeypatch.setattr(_mod, '_CONFIG_PATH', tmp_path / 'config.toml')
+  with pytest.raises(FileNotFoundError):
+    _mod.delete_config_section('webhook.credentials.alice')
+
+
+# --- migrate_message_credentials ---
+
+
+def test_migrate_message_credentials_rewrites_friend_to_nested_path(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  content = (
+    '[webhook]\nport = 8080\n\n'
+    '[webhook.credentials.alice]\nsecret_hash = "h"\nwebhooks = ["message"]\n\n'
+    '[message.friends.alice]\ncolor = "R"\n'
+  )
+  cfg = _setup_wcs(tmp_path, monkeypatch, content)
+  _mod._config = {  # noqa: SLF001
+    'webhook': {'port': 8080, 'credentials': {'alice': {'secret_hash': 'h', 'webhooks': ['message']}}},
+    'message': {'friends': {'alice': {'color': 'R'}}},
+  }
+  count = _mod.migrate_message_credentials()
+  assert count == 1
+  text = cfg.read_text()
+  assert '[webhook.credentials.message.friend.alice]' in text
+  assert '[webhook.credentials.alice]' not in text
+
+
+def test_migrate_message_credentials_rewrites_admin_to_nested_path(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  content = (
+    '[webhook]\nport = 8080\n\n[webhook.credentials.message-admin]\nsecret_hash = "ha"\nwebhooks = ["message"]\n'
+  )
+  cfg = _setup_wcs(tmp_path, monkeypatch, content)
+  _mod._config = {  # noqa: SLF001
+    'webhook': {'port': 8080, 'credentials': {'message-admin': {'secret_hash': 'ha', 'webhooks': ['message']}}},
+  }
+  count = _mod.migrate_message_credentials()
+  assert count == 1
+  text = cfg.read_text()
+  assert '[webhook.credentials.message.admin]' in text
+  assert '[webhook.credentials.message-admin]' not in text
+
+
+def test_migrate_message_credentials_skips_other_integrations(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  content = '[webhook]\nport = 8080\n\n[webhook.credentials.plex]\nsecret_hash = "hp"\nwebhooks = ["plex"]\n'
+  cfg = _setup_wcs(tmp_path, monkeypatch, content)
+  _mod._config = {  # noqa: SLF001
+    'webhook': {'port': 8080, 'credentials': {'plex': {'secret_hash': 'hp', 'webhooks': ['plex']}}},
+  }
+  count = _mod.migrate_message_credentials()
+  assert count == 0
+  assert '[webhook.credentials.plex]' in cfg.read_text()
+
+
+def test_migrate_message_credentials_noop_when_already_nested(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  content = (
+    '[webhook]\nport = 8080\n\n[webhook.credentials.message.friend.alice]\nsecret_hash = "h"\nwebhooks = ["message"]\n'
+  )
+  cfg = _setup_wcs(tmp_path, monkeypatch, content)
+  _mod._config = {  # noqa: SLF001
+    'webhook': {
+      'port': 8080,
+      'credentials': {'message': {'friend': {'alice': {'secret_hash': 'h', 'webhooks': ['message']}}}},
+    },
+  }
+  count = _mod.migrate_message_credentials()
+  assert count == 0
+  assert '[webhook.credentials.message.friend.alice]' in cfg.read_text()
+
+
+def test_migrate_message_credentials_file_stays_clean(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  # After migration the file must not have double blank lines.
+  content = (
+    '[webhook]\nport = 8080\n\n'
+    '[webhook.credentials.alice]\nsecret_hash = "h"\nwebhooks = ["message"]\n\n'
+    '[message.friends.alice]\ncolor = "R"\n'
+  )
+  cfg = _setup_wcs(tmp_path, monkeypatch, content)
+  _mod._config = {  # noqa: SLF001
+    'webhook': {'port': 8080, 'credentials': {'alice': {'secret_hash': 'h', 'webhooks': ['message']}}},
+    'message': {'friends': {'alice': {'color': 'R'}}},
+  }
+  _mod.migrate_message_credentials()
+  assert '\n\n\n' not in cfg.read_text()

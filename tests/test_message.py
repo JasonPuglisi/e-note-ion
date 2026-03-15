@@ -265,7 +265,7 @@ def test_register_stores_credential_and_friend() -> None:
   # First call: credential section
   cred_call = mock_write.call_args_list[0]
   assert cred_call == call(
-    'webhook.credentials.alice',
+    'webhook.credentials.message.friend.alice',
     {
       'secret_hash': cred_call.args[1]['secret_hash'],  # argon2 hash varies
       'webhooks': ['message'],
@@ -289,7 +289,7 @@ def test_register_overwrite_is_idempotent() -> None:
 def test_register_spaces_in_name_converted_to_hyphens() -> None:
   with patch('config.write_config_section') as mock_write:
     message.handle_webhook(_make_register_payload(name='Bob Smith'), credential_name='message-admin')
-  assert mock_write.call_args_list[0].args[0] == 'webhook.credentials.bob-smith'
+  assert mock_write.call_args_list[0].args[0] == 'webhook.credentials.message.friend.bob-smith'
 
 
 def test_register_invalid_name_returns_none(caplog: pytest.LogCaptureFixture) -> None:
