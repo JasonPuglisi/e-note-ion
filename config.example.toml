@@ -50,19 +50,26 @@
 # Read/Write API key from https://store.vestaboard.com/pages/read-write-api
 api_key = "your-vestaboard-read-write-api-key"
 
-[weather]
-# City to display weather for. Geocoded via Open-Meteo on first call; no API
-# key required.
-city = "San Francisco"
+[bart]
+# Free API key — register at https://api.bart.gov/api/register.aspx
+api_key = "your-bart-api-key"
 
-# Unit system: "imperial" (°F, mph, default) or "metric" (°C, km/h).
-# units = "imperial"
+# Originating station abbreviation code.
+# See full list: https://api.bart.gov/docs/overview/abbrev.aspx
+station = "MLPT"
 
-# [weather.schedules.conditions]
-# cron = "0 * * * *"
-# hold = 600
-# timeout = 1800
-# priority = 5
+# Destination abbreviation code for the first departure line (required).
+line1_dest = "DALY"
+
+# Second departure line (optional — remove or leave blank for one line).
+# line2_dest = "BERY"
+
+# [bart.schedules.departures]
+# cron = "*/5 7-9 * * 1-5"
+# hold = 290
+# timeout = 60
+# priority = 8
+# refresh_interval = 60  # re-fetch departure times every 60s during the hold (min 30)
 
 [calendar]
 # Fetch today's events from ICS feeds and/or a private iCloud account.
@@ -100,27 +107,6 @@ city = "San Francisco"
 # timeout = 1800
 # priority = 5
 
-[bart]
-# Free API key — register at https://api.bart.gov/api/register.aspx
-api_key = "your-bart-api-key"
-
-# Originating station abbreviation code.
-# See full list: https://api.bart.gov/docs/overview/abbrev.aspx
-station = "MLPT"
-
-# Destination abbreviation code for the first departure line (required).
-line1_dest = "DALY"
-
-# Second departure line (optional — remove or leave blank for one line).
-# line2_dest = "BERY"
-
-# [bart.schedules.departures]
-# cron = "*/5 7-9 * * 1-5"
-# hold = 290
-# timeout = 60
-# priority = 8
-# refresh_interval = 60  # re-fetch departure times every 60s during the hold (min 30)
-
 [discogs]
 # Personal access token (read-only) — generate at https://www.discogs.com/settings/developers
 # Your username is resolved automatically from the token; no username key required.
@@ -135,21 +121,6 @@ token = "your-discogs-personal-access-token"
 # hold = 600
 # timeout = 3600
 # priority = 5
-
-[trakt]
-# OAuth credentials — create an application at https://trakt.tv/oauth/applications/new
-# Set Redirect URI to: urn:ietf:wg:oauth:2.0:oob
-client_id = "your-trakt-client-id"
-client_secret = "your-trakt-client-secret"
-
-# Written by the auth flow — do not edit manually.
-# Start the container, check logs for auth instructions, then approve in a browser.
-# access_token = "..."
-# refresh_token = "..."
-# expires_at = 1234567890
-
-# Optional: number of days ahead to show in the calendar (default 7, max 33)
-# calendar_days = 7
 
 [diving]
 # Scuba diving conditions — wave height, swell period, wind, and water temperature.
@@ -181,23 +152,6 @@ client_secret = "your-trakt-client-secret"
 # priority = 5
 # refresh_interval = 1800
 
-[tmdb]
-# Optional: canonical media metadata authority for the Plex and Trakt integrations.
-# When set, show/movie titles are resolved to their TMDb canonical form and Trakt
-# episode numbers are corrected via TMDb (important for anime, which Trakt numbers
-# using TVDb's single-season convention). When absent, integrations use their native
-# titles and episode numbers unchanged.
-#
-# Free read access token — sign up at https://www.themoviedb.org and generate one at
-# https://www.themoviedb.org/settings/api (under "API Read Access Token").
-# api_read_access_token = "your-tmdb-api-read-access-token"
-
-[plex]
-# Optional: seconds to wait after a media.stop event before showing the stopped
-# card. If a media.play or media.resume arrives in this window (e.g. between
-# back-to-back episodes), the stopped card is suppressed entirely. Default: 3.
-# stop_debounce = 3
-
 [message]
 # Friend message integration — ad-hoc messages from registered friends via webhook.
 # Friends are registered using the admin iOS Shortcut (see content/contrib/message.md).
@@ -209,13 +163,59 @@ client_secret = "your-trakt-client-secret"
 # [message.friends.alice]
 # color = "R"          # R O Y G B V W K H (H = heart ❤️)
 #
-# (The corresponding [webhook.credentials.alice] entry is written to [webhook] above.)
+# (The corresponding [webhook.credentials.alice] entry is written to [webhook] below.)
 #
 # To override hold/timeout/priority for the notification template:
 # [message.schedules.notification]
 # hold = 60
 # timeout = 60
 # priority = 8
+
+[plex]
+# Optional: seconds to wait after a media.stop event before showing the stopped
+# card. If a media.play or media.resume arrives in this window (e.g. between
+# back-to-back episodes), the stopped card is suppressed entirely. Default: 3.
+# stop_debounce = 3
+
+[tmdb]
+# Optional: canonical media metadata authority for the Plex and Trakt integrations.
+# When set, show/movie titles are resolved to their TMDb canonical form and Trakt
+# episode numbers are corrected via TMDb (important for anime, which Trakt numbers
+# using TVDb's single-season convention). When absent, integrations use their native
+# titles and episode numbers unchanged.
+#
+# Free read access token — sign up at https://www.themoviedb.org and generate one at
+# https://www.themoviedb.org/settings/api (under "API Read Access Token").
+# api_read_access_token = "your-tmdb-api-read-access-token"
+
+[trakt]
+# OAuth credentials — create an application at https://trakt.tv/oauth/applications/new
+# Set Redirect URI to: urn:ietf:wg:oauth:2.0:oob
+client_id = "your-trakt-client-id"
+client_secret = "your-trakt-client-secret"
+
+# Written by the auth flow — do not edit manually.
+# Start the container, check logs for auth instructions, then approve in a browser.
+# access_token = "..."
+# refresh_token = "..."
+# expires_at = 1234567890
+
+# Optional: number of days ahead to show in the calendar (default 7, max 33)
+# calendar_days = 7
+
+[weather]
+# City to display weather for. Geocoded via Open-Meteo on first call; no API
+# key required.
+city = "San Francisco"
+
+# Unit system: "imperial" (°F, mph, default) or "metric" (°C, km/h).
+# units = "imperial"
+
+# [weather.schedules.conditions]
+# cron = "0 * * * *"
+# hold = 600
+# timeout = 1800
+# priority = 5
 
 [webhook]
 # Optional: enable the HTTP webhook listener so external systems (Plex,
