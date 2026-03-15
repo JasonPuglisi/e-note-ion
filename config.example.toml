@@ -245,5 +245,14 @@ city = "San Francisco"
 # secret_hash = "$argon2id$v=19$m=65536,t=3,p=4$..."
 # webhooks = ["notion"]
 #
-# Friend credentials for the message integration are written here automatically
-# by the registration action — see content/contrib/message.md.
+# Message integration credentials live in a nested namespace.
+# The admin credential and all friend credentials are written automatically
+# by the scheduler and registration action — see content/contrib/message.md.
+#
+# [webhook.credentials.message.admin]
+# secret_hash = "$argon2id$v=19$m=65536,t=3,p=4$..."
+# webhooks = ["message"]
+#
+# [webhook.credentials.message.friend.alice]
+# secret_hash = "$argon2id$v=19$m=65536,t=3,p=4$..."
+# webhooks = ["message"]

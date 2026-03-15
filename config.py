@@ -198,17 +198,30 @@ def get_content_enabled() -> set[str] | None:
 def get_credentials(integration_name: str) -> dict[str, dict[str, Any]]:
   """Return named credentials scoped to the given integration, keyed by credential name.
 
-  Reads [[webhook.credentials.*]] sections from the loaded config. Each credential
-  entry must have a 'webhooks' list containing the integration name to be returned.
+  Reads webhook.credentials from config. Supports both the standard flat credential
+  sections (e.g. [webhook.credentials.plex]) and the nested message namespace
+  ([webhook.credentials.message.admin] and [webhook.credentials.message.friend.<name>]).
   """
   creds = _config.get('webhook', {}).get('credentials', {})
   if not isinstance(creds, dict):
     return {}
-  return {
-    name: data
-    for name, data in creds.items()
-    if isinstance(data, dict) and integration_name in data.get('webhooks', [])
-  }
+  result: dict[str, dict[str, Any]] = {}
+  for name, data in creds.items():
+    if isinstance(data, dict) and integration_name in data.get('webhooks', []):
+      result[name] = data
+  # Message credentials live in a nested namespace: webhook.credentials.message.*
+  if integration_name == 'message':
+    msg_creds = creds.get('message', {})
+    if isinstance(msg_creds, dict):
+      admin = msg_creds.get('admin')
+      if isinstance(admin, dict):
+        result['admin'] = admin
+      friends = msg_creds.get('friend', {})
+      if isinstance(friends, dict):
+        for friend_name, friend_data in friends.items():
+          if isinstance(friend_data, dict):
+            result[friend_name] = friend_data
+  return result
 
 
 def get_message_friend(name: str) -> dict[str, Any] | None:
@@ -328,6 +341,101 @@ def write_config_section(section: str, values: dict[str, str | int | list[str]])
     existing.update(values)
   else:
     d[last_part] = dict(values)
+
+
+def delete_config_section(section: str) -> None:
+  """Remove a [section] block from config.toml in-place.
+
+  Removes the section header, all its key-value pairs, and any preceding
+  blank-line separator. No-op if the section is not present.
+
+  Raises FileNotFoundError if config.toml does not exist.
+  """
+  if not _CONFIG_PATH.exists():
+    raise FileNotFoundError(f'config.toml not found at {_CONFIG_PATH.resolve()}')
+
+  lines = _CONFIG_PATH.read_text().splitlines(keepends=True)
+  header = f'[{section}]'
+
+  section_start: int | None = None
+  section_end = len(lines)
+
+  for i, line in enumerate(lines):
+    stripped = line.strip()
+    if stripped == header:
+      section_start = i
+    elif section_start is not None and stripped.startswith('[') and not stripped.startswith('#'):
+      section_end = i
+      break
+
+  if section_start is None:
+    return  # nothing to delete
+
+  # Delete the section header through to (but not including) the next section.
+  # section_end already covers any trailing blank lines between this section
+  # and the next header, so the blank line *before* section_start is preserved
+  # as the separator for whatever follows.
+  del lines[section_start:section_end]
+
+  # Collapse any double blank lines that could arise (e.g. two separators
+  # merging when the deleted section had no preceding blank of its own).
+  result: list[str] = []
+  prev_blank = False
+  for line in lines:
+    is_blank = line.strip() == ''
+    if is_blank and prev_blank:
+      continue
+    result.append(line)
+    prev_blank = is_blank
+  lines = result
+
+  # Strip trailing blank lines left behind when the deleted section was last;
+  # ensure the file still ends with exactly one newline.
+  while lines and lines[-1].strip() == '':
+    lines.pop()
+  if lines and not lines[-1].endswith('\n'):
+    lines[-1] += '\n'
+
+  _CONFIG_PATH.write_text(''.join(lines))
+
+  # Update in-memory cache.
+  parts = section.split('.')
+  d = _config
+  for part in parts[:-1]:
+    if not isinstance(d.get(part), dict):
+      return
+    d = d[part]
+  d.pop(parts[-1], None)
+
+
+def migrate_message_credentials() -> int:
+  """Migrate old-style flat message credentials to the nested namespace.
+
+  Detects [webhook.credentials.<name>] sections with webhooks = ["message"] and
+  rewrites them as [webhook.credentials.message.admin] (for the old 'message-admin'
+  credential) or [webhook.credentials.message.friend.<name>] (for all friends).
+  Removes the old flat sections after writing the new ones.
+
+  Returns the number of credentials migrated. This migration shim is removed in 2.0.
+
+  Raises FileNotFoundError if config.toml does not exist.
+  """
+  creds = _config.get('webhook', {}).get('credentials', {})
+  if not isinstance(creds, dict):
+    return 0
+
+  to_migrate: list[tuple[str, dict]] = [
+    (name, data) for name, data in creds.items() if isinstance(data, dict) and data.get('webhooks') == ['message']
+  ]
+
+  for name, data in to_migrate:
+    new_section = (
+      'webhook.credentials.message.admin' if name == 'message-admin' else f'webhook.credentials.message.friend.{name}'
+    )
+    write_config_section(new_section, data)
+    delete_config_section(f'webhook.credentials.{name}')
+
+  return len(to_migrate)
 
 
 def get_schedule_override(template_id: str) -> dict:

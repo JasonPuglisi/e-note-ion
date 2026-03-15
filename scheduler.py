@@ -661,10 +661,11 @@ def _make_webhook_handler() -> type:
 
 
 # Integrations that get a named credential auto-generated on first startup
-# if none exists yet. For message, the credential name is 'message-admin'.
+# if none exists yet. For message, the credential lives at
+# [webhook.credentials.message.admin] and is keyed as 'admin' in get_credentials.
 _WEBHOOK_AUTOGEN: dict[str, str] = {
   'diving': 'diving',
-  'message': 'message-admin',
+  'message': 'admin',
   'notion': 'notion',
   'plex': 'plex',
 }
@@ -674,8 +675,10 @@ def _autogen_webhook_credential(integration: str, cred_name: str) -> None:
   """Auto-generate and persist a named credential for the given integration.
 
   Hashes a random 32-byte URL-safe secret with argon2id and writes it to
-  [webhook.credentials.<cred_name>] in config.toml. The plaintext secret is
-  logged once so the user can copy it into their webhook sender.
+  config.toml. Message credentials are written under the nested namespace
+  [webhook.credentials.message.<cred_name>]; all others go to the flat
+  [webhook.credentials.<cred_name>]. The plaintext secret is logged once
+  so the user can copy it into their webhook sender.
   """
   try:
     from argon2 import PasswordHasher  # noqa: PLC0415
@@ -688,16 +691,19 @@ def _autogen_webhook_credential(integration: str, cred_name: str) -> None:
   plaintext = secrets.token_urlsafe(32)
   ph = PasswordHasher()
   secret_hash = ph.hash(plaintext)
+  section = (
+    f'webhook.credentials.message.{cred_name}' if integration == 'message' else f'webhook.credentials.{cred_name}'
+  )
   _config_mod.write_config_section(
-    f'webhook.credentials.{cred_name}',
+    section,
     {'secret_hash': secret_hash, 'webhooks': [integration]},
   )
   logger.info(
     'Webhook credential auto-generated for %r and saved to config.toml '
-    'as [webhook.credentials.%s]. '
+    'as [%s]. '
     'Copy this into your webhook sender (as X-Webhook-Secret header or ?secret= query param): %s',
     integration,
-    cred_name,
+    section,
     plaintext,
   )
 
@@ -719,6 +725,15 @@ def _start_webhook_server() -> None:
     port = 8080
 
   bind = _config_mod.get_optional('webhook', 'bind', '127.0.0.1')
+
+  # Migrate old-style flat message credentials to the nested namespace (removed in 2.0).
+  migrated = _config_mod.migrate_message_credentials()
+  if migrated:
+    logger.info(
+      'Auto-migrated %d message credential(s) to webhook.credentials.message.*. '
+      'No action required — your passphrases continue to work unchanged.',
+      migrated,
+    )
 
   # Auto-generate credentials for integrations that have none yet.
   for integration, cred_name in sorted(_WEBHOOK_AUTOGEN.items()):

@@ -448,10 +448,17 @@ Semver rules (strict post-1.0):
 - **Major** (`x+1.0.0`): breaking changes to content JSON, CLI, config.toml
   keys, or Docker env vars
 
-Milestones are numbered batches (e.g. "Batch 1", "Batch 2"), not version
-targets. They group issues by priority and theme — close each batch when
-done and create the next. Version numbers are determined by semver based on
-the actual changes in each PR, not by which batch they belong to.
+Two types of milestones are used:
+
+- **Batch milestones** (e.g. "Batch 1", "Batch 2") — numbered work queues
+  grouping issues by priority and theme. Close each batch when done and
+  create the next. Version numbers are determined by semver based on the
+  actual changes in each PR, not by which batch they belong to.
+- **Release milestones** (e.g. "Release v2.0.0") — accumulate breaking
+  changes that cannot ship until a major version bump is justified. Do not
+  merge issues from a release milestone until there are enough breaking
+  changes to warrant the bump. When ready, close all issues in the release
+  milestone as part of a single major-version PR.
 
 ## Maintenance
 

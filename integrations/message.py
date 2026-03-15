@@ -177,8 +177,8 @@ def _handle_register(
     color        (str, optional): color name (Red, Orange, …, Heart) or code (R O Y G B V W K H); defaults to White
     passphrase   (str, required): plaintext passphrase; hashed with argon2id before storing
 
-  Writes [webhook.credentials.<name>] and [message.friends.<name>] to config.toml.
-  Re-registering an existing name overwrites the previous entry.
+  Writes [webhook.credentials.message.friend.<name>] and [message.friends.<name>]
+  to config.toml. Re-registering an existing name overwrites the previous entry.
   """
   from argon2 import PasswordHasher
 
@@ -209,7 +209,7 @@ def _handle_register(
   secret_hash = ph.hash(passphrase)
 
   _config_mod.write_config_section(
-    f'webhook.credentials.{name}',
+    f'webhook.credentials.message.friend.{name}',
     {'secret_hash': secret_hash, 'webhooks': ['message']},
   )
   _config_mod.write_config_section(
