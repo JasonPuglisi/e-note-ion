@@ -88,26 +88,19 @@ hold = 3600
 | `timeout` | `30` | Seconds the message can wait in the queue before being discarded |
 | `priority` | `8` | Display priority (0–10) |
 
-To tune the stop debounce window, add a top-level `[plex]` key:
-
-```toml
-[plex]
-stop_debounce = 3  # seconds; default 3
-```
-
-When Plex stops playback and immediately starts the next episode, a `media.stop`
-followed by `media.play` arrive in rapid succession. The debounce window
-suppresses the "stopped" card if a play or resume arrives within that many
-seconds — avoiding a brief flash of the stopped state between episodes. Set to
-`0` to disable debouncing and always show the stopped card immediately.
+All three event types (play, pause, stop) are debounced with a hardcoded 3-second
+window. Rapid self-cancelling sequences — play→pause, pause→resume, or stop→play
+between back-to-back episodes — produce no intermediate display flashes. Only the
+settled final state reaches the board.
 
 **Testing during quiet hours:** Plex state transitions (play → pause → stop)
 will not work correctly during the board's quiet hours. Pause and stop events
-include a board-displacement check — they are silently discarded if no Plex
-content is currently showing. During quiet hours, writes fail and the scheduler
-sees the board as idle, so pause/stop events are discarded as if playback
-weren't active. If you observe play/pause/stop not interrupting each other,
-check whether you were testing during quiet hours before investigating further.
+include a board-displacement check that fires when their debounce timers elapse —
+if no Plex content is currently showing at that point, the event is suppressed.
+During quiet hours, writes fail and the scheduler sees the board as idle, so
+pause/stop debounce timers will suppress their messages. If you observe
+play/pause/stop not interrupting each other, check whether you were testing
+during quiet hours before investigating further.
 
 ## Webhook setup
 

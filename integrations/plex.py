@@ -7,9 +7,11 @@
 #   - media.play / media.resume → "NOW PLAYING" with show/movie title
 #   - media.pause               → "PAUSED" with show/movie title
 #   - media.stop                → short "stopped" card ([R] NOW PLAYING, hold=60s)
-#                                 debounced: if a play/resume arrives within the
-#                                 stop_debounce window, the stopped card is suppressed
-#                                 to avoid a flash between back-to-back episodes.
+#
+# All three events are debounced with a 3-second window to suppress display
+# flashes for rapid event sequences (e.g. play→pause, pause→resume, or
+# stop→play between back-to-back episodes). Only the settled final state
+# reaches the board.
 #
 # Requires Plex Pass and a webhook configured in Plex Media Server settings
 # to POST to the scheduler's webhook endpoint. See content/contrib/plex.md
@@ -19,7 +21,6 @@
 # hold/timeout/priority for the now_playing or paused templates, add a
 # [plex.schedules.now_playing] or [plex.schedules.paused] section to
 # config.toml — the same override syntax used for scheduled templates.
-# To tune the stop debounce window, add [plex] stop_debounce = <seconds>.
 
 import enum
 import json
@@ -44,6 +45,9 @@ _STOP_EVENTS = frozenset({'media.stop'})
 # All events this integration handles; others are silently discarded.
 _HANDLED_EVENTS = _PLAY_EVENTS | {_PAUSE_EVENT} | _STOP_EVENTS
 
+# Debounce window applied to play, pause, and stop events.
+_DEBOUNCE_SECS = 3
+
 
 class _State(enum.Enum):
   IDLE = 'idle'
@@ -56,22 +60,22 @@ class _State(enum.Enum):
 # PAUSED. Invalid transitions return None without firing any display update.
 _state: _State = _State.IDLE
 
-# Pending debounce timer for media.stop. When a stop event arrives we delay
-# enqueueing the stopped card by _stop_debounce() seconds. If a play/resume
-# arrives in that window we cancel the timer — suppressing the stopped card
-# entirely to avoid a flash between back-to-back episodes.
+# Pending debounce timers for play, pause, and stop events. All three share
+# the same _DEBOUNCE_SECS window. Incoming events cancel sibling timers so
+# that only the settled final state reaches the board.
+_pending_play_timer: threading.Timer | None = None
+_pending_pause_timer: threading.Timer | None = None
 _pending_stop_timer: threading.Timer | None = None
 
+# Data captured for the currently-pending stop timer, stored at module level
+# so that an incoming play event can rescue it into _saved_stop_data on cancel.
+_pending_stop_data: dict[str, Any] | None = None
 
-def _stop_debounce() -> int:
-  """Return the stop debounce window in seconds from config (default 3)."""
-  import config as _config_mod
-
-  raw = _config_mod.get_optional('plex', 'stop_debounce')
-  try:
-    return max(0, int(raw)) if raw is not None else 3
-  except ValueError:
-    return 3
+# Stop data saved when a stop debounce is cancelled by an incoming play event.
+# If the play debounce is subsequently cancelled by another stop, this data
+# (the original stopped episode) is used instead of the new stop's metadata.
+# Cleared only when the play debounce fires (NOW PLAYING confirmed shown).
+_saved_stop_data: dict[str, Any] | None = None
 
 
 def _parse_guid_id(guids: list[dict[str, Any]], scheme: str) -> int | None:
@@ -247,26 +251,23 @@ def _load_template_config(template_name: str) -> dict[str, Any]:
 
 
 def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) -> WebhookMessage | None:
-  """Process a Plex webhook event and return a WebhookMessage or None.
+  """Process a Plex webhook event and schedule a debounced display update.
 
   Enforces a state machine (IDLE → PLAYING ↔ PAUSED → IDLE):
   - play/resume: always valid; transition to PLAYING.
   - pause: only valid from PLAYING; ignored in IDLE or PAUSED.
   - stop: only valid from PLAYING or PAUSED; ignored in IDLE.
 
-  For pause and stop, also checks whether Plex content is still on the board
-  (via scheduler.current_hold_tag). If the board has moved on to other content,
-  the state still transitions (reflecting reality) but no message is returned —
-  avoiding stale events interrupting unrelated content.
+  All three event types are debounced: the display update is enqueued
+  asynchronously after _DEBOUNCE_SECS seconds. Incoming events cancel
+  sibling timers so that rapid self-cancelling sequences (play→pause,
+  pause→resume, stop→play between episodes) produce no display flashes.
 
-  stop events are debounced: the stopped card is enqueued asynchronously after
-  _stop_debounce() seconds. If a play/resume arrives in that window the timer
-  is cancelled and the stopped card is suppressed entirely.
-
-  Returns None for unrecognised events, invalid state transitions, non-video
-  media, board displacement, or missing metadata.
+  Always returns None — the scheduler receives "Discarded" for every Plex
+  webhook and the actual enqueueing is handled by the timer callbacks.
   """
-  global _state, _pending_stop_timer
+  global _state, _pending_play_timer, _pending_pause_timer, _pending_stop_timer
+  global _pending_stop_data, _saved_stop_data
 
   try:
     event = payload.get('event', '')
@@ -282,96 +283,189 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
     except ImportError:
       pass
 
-    # --- State machine transition and validity check ---
+    # --- State machine transition and timer management ---
 
     if event in _PLAY_EVENTS:
-      # Cancel any pending stop debounce — a follow-up play supersedes the stop.
+      # Cancel all sibling timers. When cancelling a pending stop, rescue its
+      # data into _saved_stop_data so a subsequent quick stop can reuse it.
+      if _pending_play_timer is not None:
+        _pending_play_timer.cancel()
+        _pending_play_timer = None
+      if _pending_pause_timer is not None:
+        _pending_pause_timer.cancel()
+        _pending_pause_timer = None
       if _pending_stop_timer is not None:
         _pending_stop_timer.cancel()
         _pending_stop_timer = None
+        _saved_stop_data = _pending_stop_data
+        _pending_stop_data = None
         logger.debug('plex: cancelled pending stop timer (play/resume arrived)')
       _state = _State.PLAYING
-    elif event == _PAUSE_EVENT:
-      if _state != _State.PLAYING:
-        logger.debug('plex: discarding %s: state=%s, expected playing', event, _state.value)
-        return None
-      _state = _State.PAUSED
-    elif event in _STOP_EVENTS:
-      # Cancel any stale pending stop timer (defensive — shouldn't normally exist).
-      if _pending_stop_timer is not None:
-        _pending_stop_timer.cancel()
-        _pending_stop_timer = None
-      if _state == _State.IDLE:
-        logger.debug('plex: discarding %s: state=idle', event)
-        return None
-      _state = _State.IDLE
 
-    # --- Board displacement check (pause and stop only) ---
-    # play/resume always fires — it initiates a new session regardless of what
-    # is currently on the board. pause and stop are only meaningful if Plex
-    # content is still showing; if the board has moved on, suppress the message
-    # (state has already transitioned above to reflect reality).
+      # Build metadata.
+      metadata = payload.get('Metadata')
+      media_type = metadata.get('type') if metadata else None
+      show_name, episode_line = _build_metadata(metadata, media_type, event)
 
-    if event not in _PLAY_EVENTS:
-      import scheduler as _sched
-
-      hold_tag = _sched.current_hold_tag()
-      if hold_tag != 'plex':
-        logger.debug('plex: discarding %s: board tag=%r, expected "plex"', event, hold_tag)
+      if not show_name:
+        logger.debug('plex: discarding %s: no show_name (media_type=%r)', event, media_type)
         return None
 
-    # --- Build metadata ---
-
-    metadata = payload.get('Metadata')
-    media_type = metadata.get('type') if metadata else None
-
-    if media_type == 'episode' and metadata:
-      guids: list[dict[str, Any]] = metadata.get('Guid') or []
-      logger.debug(
-        'plex: episode guids=%r guid=%r grandparentGuid=%r',
-        guids,
-        metadata.get('guid'),
-        metadata.get('grandparentGuid'),
-      )
-      raw_show, tmdb_ep_title = _canonicalize_plex_title(
-        metadata['grandparentTitle'],
-        guids,
-        'episode',
-        season=metadata.get('parentIndex'),
-        episode=metadata.get('index'),
-      )
-      show_name = _vb.truncate_line(raw_show.upper(), _vb.model.cols, 'ellipsis')
-      episode_ref = _media.format_episode_ref(metadata['parentIndex'], metadata['index'])
-      plex_ep_title = (metadata.get('title') or '').strip()
-      episode_title = tmdb_ep_title or plex_ep_title
-      episode_detail = _media.strip_leading_article_if_needed(episode_title.upper(), _vb.model.cols, f'{episode_ref} ')
-      episode_line = f'{episode_ref} {episode_detail}'.strip()
-    elif media_type == 'movie' and metadata:
-      guids = metadata.get('Guid') or []
-      raw_movie, _ = _canonicalize_plex_title(metadata['title'], guids, 'movie')
-      show_name = _vb.truncate_line(raw_movie.upper(), _vb.model.cols, 'ellipsis')
-      episode_line = ''
-    else:
-      logger.debug('plex: no displayable metadata (type=%r)', media_type)
-      show_name = ''
-      episode_line = ''
-
-    if event in _STOP_EVENTS:
-      cfg = _load_template_config('stopped')
-      has_media = bool(show_name)
-      stop_data = {
+      cfg = _load_template_config('now_playing')
+      play_data = {
         'templates': cfg['templates'],
-        'variables': {'show_name': [[show_name]], 'episode_line': [[episode_line]]} if has_media else {},
+        'variables': {
+          'show_name': [[show_name]],
+          'episode_line': [[episode_line]],
+        },
         'truncation': cfg['truncation'],
       }
       priority = cfg['priority']
       hold = cfg['hold']
       timeout = cfg['timeout']
-      debounce = _stop_debounce()
+      captured_show_name = show_name  # closure needs the local value
+
+      def _enqueue_now_playing() -> None:
+        global _pending_play_timer, _saved_stop_data
+        _pending_play_timer = None
+        _saved_stop_data = None  # NOW PLAYING confirmed shown; discard rescued stop data
+        if _state != _State.PLAYING:
+          logger.debug('plex: play timer fired but state=%s, skipping', _state.value)
+          return
+        if not captured_show_name:  # defensive re-check
+          logger.debug('plex: play timer fired but show_name empty, skipping')
+          return
+        import scheduler as _sched
+
+        logger.debug('plex: play debounce elapsed, enqueueing now_playing (credential=%r)', credential_name)
+        _sched.enqueue(
+          priority=priority,
+          data=play_data,
+          hold=hold,
+          timeout=timeout,
+          name='webhook.plex',
+          indefinite=True,
+          supersede_tag='plex',
+        )
+        _sched.fire_hold_interrupt(supersede_tag='plex')
+
+      logger.debug('plex: play debounce started (%ds)', _DEBOUNCE_SECS)
+      _pending_play_timer = threading.Timer(_DEBOUNCE_SECS, _enqueue_now_playing)
+      _pending_play_timer.daemon = True
+      _pending_play_timer.start()
+      return None
+
+    elif event == _PAUSE_EVENT:
+      if _state != _State.PLAYING:
+        logger.debug('plex: discarding %s: state=%s, expected playing', event, _state.value)
+        return None
+      # Cancel pending play timer. Do NOT touch _saved_stop_data — it is only
+      # cleared when the play debounce fires (NOW PLAYING confirmed shown).
+      if _pending_play_timer is not None:
+        _pending_play_timer.cancel()
+        _pending_play_timer = None
+        logger.debug('plex: cancelled pending play timer (pause arrived)')
+      _state = _State.PAUSED
+
+      # Build metadata.
+      metadata = payload.get('Metadata')
+      media_type = metadata.get('type') if metadata else None
+      show_name, episode_line = _build_metadata(metadata, media_type, event)
+
+      if not show_name:
+        logger.debug('plex: discarding %s: no show_name (media_type=%r)', event, media_type)
+        return None
+
+      cfg = _load_template_config('paused')
+      pause_data = {
+        'templates': cfg['templates'],
+        'variables': {
+          'show_name': [[show_name]],
+          'episode_line': [[episode_line]],
+        },
+        'truncation': cfg['truncation'],
+      }
+      priority = cfg['priority']
+      hold = cfg['hold']
+      timeout = cfg['timeout']
+
+      def _enqueue_paused() -> None:
+        global _pending_pause_timer
+        _pending_pause_timer = None
+        if _state != _State.PAUSED:
+          logger.debug('plex: pause timer fired but state=%s, skipping', _state.value)
+          return
+        import scheduler as _sched
+
+        hold_tag = _sched.current_hold_tag()
+        if hold_tag != 'plex':
+          logger.debug('plex: pause timer fired but board tag=%r, skipping', hold_tag)
+          return
+        logger.debug('plex: pause debounce elapsed, enqueueing paused (credential=%r)', credential_name)
+        _sched.enqueue(
+          priority=priority,
+          data=pause_data,
+          hold=hold,
+          timeout=timeout,
+          name='webhook.plex',
+          indefinite=True,
+          supersede_tag='plex',
+        )
+        _sched.fire_hold_interrupt(supersede_tag='plex')
+
+      logger.debug('plex: pause debounce started (%ds)', _DEBOUNCE_SECS)
+      _pending_pause_timer = threading.Timer(_DEBOUNCE_SECS, _enqueue_paused)
+      _pending_pause_timer.daemon = True
+      _pending_pause_timer.start()
+      return None
+
+    elif event in _STOP_EVENTS:
+      # Cancel any stale pending stop timer (defensive — e.g. duplicate stop).
+      if _pending_stop_timer is not None:
+        _pending_stop_timer.cancel()
+        _pending_stop_timer = None
+        _pending_stop_data = None
+      # Cancel play and pause timers.
+      if _pending_play_timer is not None:
+        _pending_play_timer.cancel()
+        _pending_play_timer = None
+        logger.debug('plex: cancelled pending play timer (stop arrived)')
+      if _pending_pause_timer is not None:
+        _pending_pause_timer.cancel()
+        _pending_pause_timer = None
+        logger.debug('plex: cancelled pending pause timer (stop arrived)')
+      if _state == _State.IDLE:
+        logger.debug('plex: discarding %s: state=idle', event)
+        return None
+      _state = _State.IDLE
+
+      # Build metadata from the current stop event.
+      metadata = payload.get('Metadata')
+      media_type = metadata.get('type') if metadata else None
+      show_name, episode_line = _build_metadata(metadata, media_type, event)
+
+      cfg = _load_template_config('stopped')
+      has_media = bool(show_name)
+      new_stop_data = {
+        'templates': cfg['templates'],
+        'variables': {'show_name': [[show_name]], 'episode_line': [[episode_line]]} if has_media else {},
+        'truncation': cfg['truncation'],
+      }
+
+      # Prefer rescued stop data from an earlier cancelled stop debounce
+      # (e.g. ep1-stop → ep2-play → ep2-stop: show ep1's stopped card).
+      effective_stop_data = _saved_stop_data if _saved_stop_data is not None else new_stop_data
+      _saved_stop_data = None  # consumed regardless
+      _pending_stop_data = effective_stop_data
+
+      priority = cfg['priority']
+      hold = cfg['hold']
+      timeout = cfg['timeout']
 
       def _enqueue_stopped() -> None:
-        global _pending_stop_timer
+        global _pending_stop_timer, _pending_stop_data
         _pending_stop_timer = None
+        _pending_stop_data = None
         if _state != _State.IDLE:
           logger.debug('plex: stop timer fired but state=%s, skipping', _state.value)
           return
@@ -384,7 +478,7 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
         logger.debug('plex: stop debounce elapsed, enqueueing stopped (has_media=%s)', has_media)
         _sched.enqueue(
           priority=priority,
-          data=stop_data,
+          data=effective_stop_data,
           hold=hold,
           timeout=timeout,
           name='webhook.plex',
@@ -392,36 +486,57 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
         )
         _sched.fire_hold_interrupt(supersede_tag='plex')
 
-      logger.debug('plex: stop debounce started (%ds)', debounce)
-      _pending_stop_timer = threading.Timer(debounce, _enqueue_stopped)
+      logger.debug('plex: stop debounce started (%ds)', _DEBOUNCE_SECS)
+      _pending_stop_timer = threading.Timer(_DEBOUNCE_SECS, _enqueue_stopped)
       _pending_stop_timer.daemon = True
       _pending_stop_timer.start()
       return None
 
-    if not show_name:
-      logger.debug('plex: discarding %s: no show_name (media_type=%r)', event, media_type)
-      return None
-
-    template_name = 'paused' if event == _PAUSE_EVENT else 'now_playing'
-    logger.debug('plex: enqueueing %s: %r (credential=%r)', template_name, show_name, credential_name)
-    cfg = _load_template_config(template_name)
-
-    return WebhookMessage(
-      data={
-        'templates': cfg['templates'],
-        'variables': {
-          'show_name': [[show_name]],
-          'episode_line': [[episode_line]],
-        },
-        'truncation': cfg['truncation'],
-      },
-      priority=cfg['priority'],
-      hold=cfg['hold'],
-      timeout=cfg['timeout'],
-      indefinite=True,
-      interrupt=True,
-      supersede_tag='plex',
-    )
   except Exception as e:  # noqa: BLE001
     logger.error('Plex webhook error: %s', e)
     return None
+
+  return None  # unreachable but satisfies type checker
+
+
+def _build_metadata(
+  metadata: dict[str, Any] | None,
+  media_type: str | None,
+  event: str,
+) -> tuple[str, str]:
+  """Parse metadata from a Plex payload and return (show_name, episode_line).
+
+  Returns ('', '') for non-video media or missing/malformed metadata.
+  """
+  if media_type == 'episode' and metadata:
+    guids: list[dict[str, Any]] = metadata.get('Guid') or []
+    logger.debug(
+      'plex: episode guids=%r guid=%r grandparentGuid=%r',
+      guids,
+      metadata.get('guid'),
+      metadata.get('grandparentGuid'),
+    )
+    raw_show, tmdb_ep_title = _canonicalize_plex_title(
+      metadata['grandparentTitle'],
+      guids,
+      'episode',
+      season=metadata.get('parentIndex'),
+      episode=metadata.get('index'),
+    )
+    show_name = _vb.truncate_line(raw_show.upper(), _vb.model.cols, 'ellipsis')
+    episode_ref = _media.format_episode_ref(metadata['parentIndex'], metadata['index'])
+    plex_ep_title = (metadata.get('title') or '').strip()
+    episode_title = tmdb_ep_title or plex_ep_title
+    episode_detail = _media.strip_leading_article_if_needed(episode_title.upper(), _vb.model.cols, f'{episode_ref} ')
+    episode_line = f'{episode_ref} {episode_detail}'.strip()
+  elif media_type == 'movie' and metadata:
+    guids = metadata.get('Guid') or []
+    raw_movie, _ = _canonicalize_plex_title(metadata['title'], guids, 'movie')
+    show_name = _vb.truncate_line(raw_movie.upper(), _vb.model.cols, 'ellipsis')
+    episode_line = ''
+  else:
+    logger.debug('plex: no displayable metadata (type=%r)', media_type)
+    show_name = ''
+    episode_line = ''
+
+  return show_name, episode_line
