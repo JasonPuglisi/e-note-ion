@@ -145,18 +145,18 @@ appropriate priority range and informs scheduling decisions:
 |---|---|---|
 | `birthdays.self` | Personal | 9 |
 | `message.notification` | Social | 8 |
+| `notion.notification` | Social | 7 |
 | `birthdays.today` | Social | 6 |
 | `bart.departures` | Logistics | 8 |
 | `weather.conditions` | Logistics | 5 |
 | `calendar.today` | Logistics | 5 |
-| `notion.notification` | Social | 7 |
-| `trakt.watching` | Entertainment | 7 |
 | `diving.conditions` | Hobbies | 5 |
 | `discogs.morning_spin` | Hobbies | 5 |
 | `diving.last_dive` | Hobbies | 3 |
+| `plex.now_playing`, `plex.paused`, `plex.stopped` | Entertainment | 8 |
+| `trakt.watching` | Entertainment | 7 |
 | `trakt.calendar`, `trakt.next_up` | Entertainment | 4 |
 | `morning_night.good_morning`, `morning_night.good_night` | Ambient | 4 |
-| `plex.now_playing`, `plex.paused`, `plex.stopped` | Entertainment | 8 |
 
 When adding a new template, identify its category first — that gives you the
 priority range to start from before tuning for contention.
@@ -374,14 +374,14 @@ guidelines above.
 
 | File | Description |
 |---|---|
-| [`weather.json`](contrib/weather.md) | Current weather conditions via Open-Meteo |
-| [`calendar.json`](contrib/calendar.md) | Today's calendar events (ICS and iCloud CalDAV) |
-| [`birthdays.json`](contrib/birthdays.md) | Upcoming birthdays from iCloud Contacts; prominent self-birthday display |
 | [`bart.json`](contrib/bart.md) | BART real-time departure board |
+| [`birthdays.json`](contrib/birthdays.md) | Upcoming birthdays from iCloud Contacts; prominent self-birthday display |
+| [`calendar.json`](contrib/calendar.md) | Today's calendar events (ICS and iCloud CalDAV) |
 | [`discogs.json`](contrib/discogs.md) | Daily vinyl suggestion from your Discogs collection |
-| [`trakt.json`](contrib/trakt.md) | Trakt.tv upcoming calendar and now-playing |
-| [`morning_night.json`](contrib/morning_night.md) | Good morning and good night messages with moon phase visual |
-| [`plex.json`](contrib/plex.md) | Plex Media Server now-playing via webhook |
-| [`message.json`](contrib/message.md) | Friend messages via iOS Shortcuts → webhook |
-| [`notion.json`](contrib/notion.md) | Notion automation notifications via webhook |
 | [`diving.json`](contrib/diving.md) | Scuba diving conditions via NOAA NDBC buoy data or Open-Meteo |
+| [`message.json`](contrib/message.md) | Friend messages via iOS Shortcuts → webhook |
+| [`morning_night.json`](contrib/morning_night.md) | Good morning and good night messages with moon phase visual |
+| [`notion.json`](contrib/notion.md) | Notion automation notifications via webhook |
+| [`plex.json`](contrib/plex.md) | Plex Media Server now-playing via webhook |
+| [`trakt.json`](contrib/trakt.md) | Trakt.tv upcoming calendar and now-playing |
+| [`weather.json`](contrib/weather.md) | Current weather conditions via Open-Meteo |

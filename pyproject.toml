@@ -35,23 +35,23 @@ dependencies = [
 [project.scripts]
 e-note-ion = "scheduler:main"
 
-[tool.uv]
-package = true
+[project.urls]
+Homepage = "https://github.com/JasonPuglisi/e-note-ion"
+Repository = "https://github.com/JasonPuglisi/e-note-ion"
+Issues = "https://github.com/JasonPuglisi/e-note-ion/issues"
 
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
+
+[tool.uv]
+package = true
 
 [tool.setuptools]
 py-modules = ["scheduler", "config", "exceptions"]
 
 [tool.setuptools.packages.find]
 include = ["integrations*"]
-
-[project.urls]
-Homepage = "https://github.com/JasonPuglisi/e-note-ion"
-Repository = "https://github.com/JasonPuglisi/e-note-ion"
-Issues = "https://github.com/JasonPuglisi/e-note-ion/issues"
 
 [dependency-groups]
 dev = [
@@ -61,6 +61,24 @@ dev = [
     "pyright>=1.1.408",
     "pytest>=8.3.5",
     "ruff>=0.15.2",
+]
+
+[tool.bandit]
+exclude_dirs = [".venv", "tests"]
+# Add skips = ["BXXX"] here for any false positives that arise
+
+[tool.pyright]
+pythonVersion = "3.14"
+typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-m 'not integration'"
+log_level = "DEBUG"
+markers = [
+  "integration: marks tests that call real external APIs (deselected by default)",
+  "require_env: list env var names required for the test to run",
 ]
 
 [tool.ruff]
@@ -73,21 +91,3 @@ indent-style = "space"
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]  # pycodestyle errors, pyflakes, isort
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["."]
-addopts = "-m 'not integration'"
-log_level = "DEBUG"
-markers = [
-  "integration: marks tests that call real external APIs (deselected by default)",
-  "require_env: list env var names required for the test to run",
-]
-
-[tool.bandit]
-exclude_dirs = [".venv", "tests"]
-# Add skips = ["BXXX"] here for any false positives that arise
-
-[tool.pyright]
-pythonVersion = "3.14"
-typeCheckingMode = "standard"
