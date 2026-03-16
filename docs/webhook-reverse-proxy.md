@@ -137,11 +137,6 @@ The free plan includes **one rate limiting rule**; spending it here is the
 highest-value use. It fires at Cloudflare's edge before the request reaches
 `cloudflared`, so the origin never sees the blocked traffic.
 
-Also enable **Bot Fight Mode** (**Security → Bots → Bot Fight Mode**) if not
-already on. It challenges requests from known bot infrastructure and automated
-scanners globally — free, no configuration required, and safe for
-machine-to-machine webhook senders like Plex, Notion, and iOS Shortcuts.
-
 ### Nginx
 
 ```nginx
