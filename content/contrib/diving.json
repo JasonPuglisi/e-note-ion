@@ -26,6 +26,7 @@
         "timeout": 3600
       },
       "priority": 3,
+      "private": true,
       "integration": "diving",
       "integration_fn": "get_variables_last_dive",
       "templates": [

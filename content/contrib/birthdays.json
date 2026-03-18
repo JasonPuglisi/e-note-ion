@@ -7,6 +7,7 @@
         "timeout": 3600
       },
       "priority": 6,
+      "private": true,
       "truncation": "ellipsis",
       "integration": "calendar",
       "integration_fn": "get_variables_birthdays",
@@ -26,6 +27,7 @@
         "timeout": 7200
       },
       "priority": 9,
+      "private": true,
       "truncation": "word",
       "integration": "calendar",
       "integration_fn": "get_variables_self_birthday",
