@@ -1,0 +1,23 @@
+{
+  "templates": {
+    "status": {
+      "schedule": {
+        "cron": "45 10 * * *",
+        "hold": 300,
+        "timeout": 3600
+      },
+      "priority": 3,
+      "private": true,
+      "integration": "qbittorrent",
+      "templates": [
+        {
+          "format": [
+            "{header}",
+            "{count}",
+            "{size}"
+          ]
+        }
+      ]
+    }
+  }
+}

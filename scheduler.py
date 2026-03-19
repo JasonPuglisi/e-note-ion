@@ -79,8 +79,10 @@ _KNOWN_INTEGRATIONS: frozenset[str] = frozenset(
     'notion',
     'parcel',
     'plex',
+    'qbittorrent',
     'scheduler',
     'trakt',
+    'unraid',
     'weather',
   }
 )

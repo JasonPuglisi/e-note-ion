@@ -247,6 +247,8 @@ new integrations in overnight windows unless there's a specific reason
 | `9:00` daily | `birthdays.today` | Social | 6 | 600 s | 3600 s | Queues behind weather; no-op when no birthdays |
 | `:15` at 09/15 | `parcel.deliveries` | Logistics | 5 | 600 s | 1800 s | Private; no-op when no active deliveries |
 | `10:00` daily | `diving.last_dive` | Hobbies | 3 | 300 s | 3600 s | Skipped when no dive date recorded |
+| `10:45` daily | `qbittorrent.status` | Hobbies | 3 | 300 s | 3600 s | Private; solo `:45` slot; skipped when nothing seeding |
+| `11:45` daily | `unraid.status` | Hobbies | 3 | 300 s | 3600 s | Private; solo `:45` slot |
 | `:00` at 12/20 | `trakt.next_up` | Entertainment | 4 | 1200 s | 1800 s | Private; noon = plan for evening, 20:00 = settle in |
 | `21:00` daily | `morning_night.good_night` | Ambient | 4 | 300 s | 3600 s | Moon phase visual; queues behind weather |
 | `*/5` 07–09 Mon–Fri | `bart.departures` | Logistics | 8 | 290 s | 60 s | Refresh 60 s; dominates weekday mornings |
@@ -396,6 +398,8 @@ guidelines above.
 | [`notion.json`](contrib/notion.md) | Notion automation notifications via webhook |
 | [`parcel.json`](contrib/parcel.md) | Upcoming package delivery from Parcel |
 | [`plex.json`](contrib/plex.md) | Plex Media Server now-playing via webhook |
+| [`qbittorrent.json`](contrib/qbittorrent.md) | Seeding stats from qBittorrent Web UI |
 | (no JSON) [`scheduler`](contrib/scheduler.md) | Software-side quiet mode — webhook-only, no display content |
 | [`trakt.json`](contrib/trakt.md) | Trakt.tv upcoming calendar and now-playing |
+| [`unraid.json`](contrib/unraid.md) | Unraid server status — array capacity and uptime |
 | [`weather.json`](contrib/weather.md) | Current weather conditions via Open-Meteo |

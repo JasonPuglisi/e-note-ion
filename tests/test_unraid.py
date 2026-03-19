@@ -1,0 +1,226 @@
+"""Unit tests for integrations/unraid.py."""
+
+import time
+from unittest.mock import MagicMock, patch
+
+import pytest
+import requests as _requests
+
+import integrations.unraid as unraid
+from exceptions import IntegrationDataUnavailableError
+from integrations.http import CacheEntry
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _graphql_response(data: dict | None = None, errors: list | None = None) -> MagicMock:
+  """Build a mock GraphQL response."""
+  body: dict = {}
+  if data is not None:
+    body['data'] = data
+  if errors is not None:
+    body['errors'] = errors
+  resp = MagicMock()
+  resp.json.return_value = body
+  resp.raise_for_status = MagicMock()
+  return resp
+
+
+def _normal_data(
+  *,
+  uptime: int = 300_000,
+  state: str = 'STARTED',
+  used: int = int(14.2 * 1024**4),
+  total: int = 20 * 1024**4,
+) -> dict:
+  """Build a normal Unraid GraphQL data payload."""
+  return {
+    'info': {'os': {'uptime': uptime}},
+    'array': {
+      'state': state,
+      'capacity': {'disks': {'used': used, 'total': total}},
+    },
+  }
+
+
+def _patched_config() -> dict:
+  return {
+    'unraid': {
+      'url': 'http://192.168.1.10',
+      'api_key': 'test-key',
+    }
+  }
+
+
+# ---------------------------------------------------------------------------
+# _fmt_size
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+  'size_bytes,expected',
+  [
+    (0, '0 GB'),
+    (500 * 1024**3, '500 GB'),
+    (1024**4, '1 TB'),
+    (int(1.2 * 1024**4), '1.2 TB'),
+    (int(14.0 * 1024**4), '14 TB'),
+    (20 * 1024**4, '20 TB'),
+  ],
+)
+def test_fmt_size(size_bytes: int, expected: str) -> None:
+  assert unraid._fmt_size(size_bytes) == expected
+
+
+# ---------------------------------------------------------------------------
+# _fmt_uptime
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+  'seconds,expected',
+  [
+    (0, 'UP 0H'),
+    (3600, 'UP 1H'),
+    (23 * 3600, 'UP 23H'),
+    (24 * 3600, 'UP 1D'),
+    (25 * 3600, 'UP 1D 1H'),
+    (3 * 24 * 3600 + 8 * 3600, 'UP 3D 8H'),
+    (30 * 24 * 3600, 'UP 1M'),
+    (30 * 24 * 3600 + 2 * 24 * 3600 + 8 * 3600, 'UP 1M 2D 8H'),
+    (90 * 24 * 3600, 'UP 3M'),
+    (11 * 30 * 24 * 3600 + 29 * 24 * 3600 + 23 * 3600, 'UP 11M 29D 23H'),
+    (30 * 24 * 3600 + 5 * 3600, 'UP 1M 5H'),
+  ],
+)
+def test_fmt_uptime(seconds: int, expected: str) -> None:
+  assert unraid._fmt_uptime(seconds) == expected
+
+
+# ---------------------------------------------------------------------------
+# get_variables
+# ---------------------------------------------------------------------------
+
+
+def test_get_variables_normal(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  unraid._cache = None
+
+  data = _normal_data(uptime=3 * 30 * 24 * 3600 + 2 * 24 * 3600 + 8 * 3600)
+  with patch('integrations.unraid.fetch_with_retry', return_value=_graphql_response(data)):
+    result = unraid.get_variables()
+
+  assert result['header'] == [['[O] UNRAID']]
+  assert result['capacity'] == [['14.2 TB / 20 TB']]
+  assert result['uptime'] == [['UP 3M 2D 8H']]
+  unraid._cache = None
+
+
+def test_get_variables_array_stopped(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  unraid._cache = None
+
+  data = _normal_data(state='STOPPED')
+  with patch('integrations.unraid.fetch_with_retry', return_value=_graphql_response(data)):
+    result = unraid.get_variables()
+
+  assert result['capacity'] == [['[R] STOPPED']]
+  unraid._cache = None
+
+
+def test_get_variables_array_degraded(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  unraid._cache = None
+
+  data = _normal_data(state='DEGRADED')
+  with patch('integrations.unraid.fetch_with_retry', return_value=_graphql_response(data)):
+    result = unraid.get_variables()
+
+  assert result['capacity'] == [['[R] DEGRADED']]
+  unraid._cache = None
+
+
+def test_get_variables_graphql_error(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  unraid._cache = None
+
+  resp = _graphql_response(errors=[{'message': 'not authorized'}])
+  with patch('integrations.unraid.fetch_with_retry', return_value=resp):
+    with pytest.raises(IntegrationDataUnavailableError, match='GraphQL error'):
+      unraid.get_variables()
+
+  unraid._cache = None
+
+
+def test_get_variables_network_error(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  unraid._cache = None
+
+  with patch(
+    'integrations.unraid.fetch_with_retry',
+    side_effect=_requests.ConnectionError('refused'),
+  ):
+    with pytest.raises(IntegrationDataUnavailableError, match='API request failed'):
+      unraid.get_variables()
+
+  unraid._cache = None
+
+
+# ---------------------------------------------------------------------------
+# Cache behaviour
+# ---------------------------------------------------------------------------
+
+
+def test_cache_hit_avoids_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _patched_config())
+
+  cached_value: dict = {
+    'header': [['[O] UNRAID']],
+    'capacity': [['14 / 20 TB']],
+    'uptime': [['UP 3D 8H']],
+  }
+  unraid._cache = CacheEntry(cached_value)
+
+  with patch('integrations.unraid.fetch_with_retry') as mock_fetch:
+    result = unraid.get_variables()
+    mock_fetch.assert_not_called()
+
+  assert result == cached_value
+  unraid._cache = None
+
+
+def test_stale_cache_served_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _patched_config())
+
+  stale_value: dict = {
+    'header': [['[O] UNRAID']],
+    'capacity': [['10 / 20 TB']],
+    'uptime': [['UP 1M']],
+  }
+  unraid._cache = CacheEntry(stale_value)
+  unraid._cache.cached_at = time.monotonic() - unraid._CACHE_TTL - 1
+
+  with patch(
+    'integrations.unraid.fetch_with_retry',
+    side_effect=_requests.ConnectionError('refused'),
+  ):
+    result = unraid.get_variables()
+
+  assert result == stale_value
+  unraid._cache = None
