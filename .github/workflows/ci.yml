@@ -67,6 +67,11 @@ jobs:
         with:
           context: .
           push: false
+          load: true
+          tags: e-note-ion:ci
+
+      - name: Smoke test
+        run: docker run --rm e-note-ion:ci python -c "import scheduler"
 
   # Advisory only — not required by the branch ruleset. Failures surface in
   # the PR checks list but do not block merge.
