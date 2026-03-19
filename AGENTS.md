@@ -442,7 +442,10 @@ step may be skipped — use judgement.
     Advisory integration job may fail (missing secrets or API issue) — note but not a blocker.
 11. Keep `README.md` and `AGENTS.md` up to date as part of the same PR —
     new env vars, CLI flags, content format fields, project structure changes,
-    and workflow changes should all be reflected before merge
+    and workflow changes should all be reflected before merge. When adding or
+    renaming a template in `content/contrib/`, update both the template mapping
+    table and the schedule map in `content/README.md` (enforced by CI via
+    `test_schedule_lint.py`)
 12. For any TODOs identified during work, create a GitHub issue assigned to
     JasonPuglisi with an appropriate milestone; reference the issue number in
     commit messages and PRs

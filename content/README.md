@@ -31,7 +31,7 @@ When the key is absent, user files always load and no contrib files load.
 When the key is set, the filter applies to both `user/` and `contrib/`.
 
 This filter only affects **cron-scheduled** templates. Webhook-only
-integrations (`plex`, `message`, `notion`) route incoming webhook events
+integrations (`plex`, `message`, `notion`, `scheduler`) route incoming webhook events
 directly through the webhook listener — their `.json` files never need to be
 in `content_enabled` for webhooks to work.
 
@@ -156,7 +156,10 @@ appropriate priority range and informs scheduling decisions:
 | `plex.now_playing`, `plex.paused`, `plex.stopped` | Entertainment | 8 |
 | `trakt.watching` | Entertainment | 7 |
 | `trakt.calendar`, `trakt.next_up` | Entertainment | 4 |
-| `morning_night.good_morning`, `morning_night.good_night` | Ambient | 4 |
+| `parcel.deliveries` | Logistics | 5 |
+| `qbittorrent.status` | Hobbies | 3 |
+| `unraid.status` | Hobbies | 3 |
+| `morning_night.good_morning`, `morning_night.good_morning_september`, `morning_night.good_night` | Ambient | 4 |
 
 When adding a new template, identify its category first — that gives you the
 priority range to start from before tuning for contention.
@@ -237,7 +240,8 @@ new integrations in overnight windows unless there's a specific reason
 
 | Slot | Template | Category | Pri | Hold | Timeout | Notes |
 |---|---|---|---|---|---|---|
-| `7:00` daily | `morning_night.good_morning` | Ambient | 4 | 300 s | 3600 s | Queues behind weather; Sep 21 variant (pri 4) overrides |
+| `7:00` daily | `morning_night.good_morning` | Ambient | 4 | 300 s | 3600 s | Queues behind weather; morning integration skips Sep 21 — static September variant fires instead |
+| `7:00` Sep 21 | `morning_night.good_morning_september` | Ambient | 4 | 300 s | 3600 s | Static; sole morning message on Sep 21 |
 | `:00` every hour | `weather.conditions` | Logistics | 5 | 600 s | 1800 s | Fires first in every `:00` slot |
 | `:15` at 07/12/16 | `diving.conditions` | Hobbies | 5 | 600 s | 1800 s | Refresh 1800 s; dedicated `:15` slot avoids `:00` weather |
 | `8:00` daily | `birthdays.self` | Personal | 9 | 3600 s | 7200 s | No-op on non-birthday days; dominates the display for 1 h on birthday — intentional |
@@ -253,7 +257,7 @@ new integrations in overnight windows unless there's a specific reason
 | `21:00` daily | `morning_night.good_night` | Ambient | 4 | 300 s | 3600 s | Moon phase visual; queues behind weather |
 | `*/5` 07–09 Mon–Fri | `bart.departures` | Logistics | 8 | 290 s | 60 s | Refresh 60 s; dominates weekday mornings |
 | `*/3` 07–23 daily | `trakt.watching` | Entertainment | 7 | 180 s | 120 s | Refresh 30 s; no-op when not watching |
-| webhook only | `plex` (3 templates) | Entertainment | 8 | indef / 60 s | 30 s | Private; interrupts on state change |
+| webhook only | `plex` (3 templates) | Entertainment | 8 | 14400 / 60 s | 30 s | Private; indefinite semantics (14400 s = 4 h safety ceiling); interrupts on state change |
 | webhook only | `message.notification` | Social | 8 | 120 s | 600 s | Queues normally; shows at next hold break |
 | webhook only | `notion.notification` | Social | 7 | 120 s | 120 s | |
 

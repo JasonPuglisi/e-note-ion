@@ -24,6 +24,7 @@ import pytest
 _CONTENT_ROOT = Path(__file__).parent.parent / 'content'
 _CONTRIB_DIR = _CONTENT_ROOT / 'contrib'
 _USER_DIR = _CONTENT_ROOT / 'user'
+_README = _CONTENT_ROOT / 'README.md'
 
 _SLOT_BUDGET_SECS = 1800
 _PERSONAL_PRIORITY_FLOOR = 9  # templates at this priority or above are excluded from slot budget
@@ -188,3 +189,64 @@ def test_slot_hold_budget() -> None:
         )
 
   assert not violations, 'Slot hold budget exceeded:\n' + '\n'.join(violations)
+
+
+# --- Docs sync ---
+
+
+def _collect_contrib_templates() -> set[str]:
+  """Return {file_stem}.{template_name} for every template in contrib/*.json."""
+  templates: set[str] = set()
+  for json_file in sorted(_CONTRIB_DIR.glob('*.json')):
+    with open(json_file) as f:
+      data = json.load(f)
+    stem = json_file.stem
+    for name in data.get('templates', {}):
+      templates.add(f'{stem}.{name}')
+  return templates
+
+
+def _extract_section(readme: str, start_marker: str) -> str:
+  """Return text from start_marker to the next markdown heading (## or ###)."""
+  idx = readme.index(start_marker)
+  rest = readme[idx + len(start_marker) :]
+  m = re.search(r'\n#{2,3}\s', rest)
+  return rest[: m.start()] if m else rest
+
+
+def _parse_template_refs(section: str, all_templates: set[str]) -> set[str]:
+  """Extract template references from a README table section.
+
+  Handles explicit refs like `foo.bar` and shorthands like `foo (N templates)`.
+  """
+  refs: set[str] = set()
+  for m in re.finditer(r'`(\w+\.\w+)`', section):
+    refs.add(m.group(1))
+  for m in re.finditer(r'`(\w+)`\s*\(\d+\s*templates?\)', section):
+    stem = m.group(1)
+    refs.update(t for t in all_templates if t.startswith(f'{stem}.'))
+  return refs
+
+
+def test_contrib_templates_in_readme_tables() -> None:
+  """Every contrib template must appear in both the template mapping table
+  and the schedule map in content/README.md."""
+  contrib = _collect_contrib_templates()
+  readme = _README.read_text()
+
+  mapping_section = _extract_section(readme, '**Existing template mapping:**')
+  schedule_section = _extract_section(readme, '### Schedule map')
+
+  mapping_refs = _parse_template_refs(mapping_section, contrib)
+  schedule_refs = _parse_template_refs(schedule_section, contrib)
+
+  missing_mapping = contrib - mapping_refs
+  missing_schedule = contrib - schedule_refs
+
+  errors: list[str] = []
+  if missing_mapping:
+    errors.append(f'Missing from template mapping table: {sorted(missing_mapping)}')
+  if missing_schedule:
+    errors.append(f'Missing from schedule map: {sorted(missing_schedule)}')
+
+  assert not errors, '\n'.join(errors)

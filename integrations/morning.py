@@ -13,8 +13,11 @@
 # No config.toml keys required. When [weather] is present, the current
 # WMO weather code drives the visual; otherwise the sunrise grid is used.
 
+import datetime
 import logging
 import random
+
+from exceptions import IntegrationDataUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +132,9 @@ def _grid_key_from_weather() -> str:
 
 
 def get_variables() -> dict[str, list[list[str]]]:
+  today = datetime.date.today()
+  if today.month == 9 and today.day == 21:
+    raise IntegrationDataUnavailableError('Sep 21 uses static template')
   key = _grid_key_from_weather()
   if key in _RANDOM_GRIDS:
     color, density, min_cells = _RANDOM_GRIDS[key]

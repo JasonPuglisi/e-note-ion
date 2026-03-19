@@ -1,3 +1,4 @@
+import datetime
 from unittest.mock import patch
 
 import pytest
@@ -147,3 +148,20 @@ def test_get_variables_rows_are_seven_wide() -> None:
     row = result[key][0][0]
     width = _count_visual_width(row)
     assert width == 7, f'{key}: expected 7-wide row, got {row!r}'
+
+
+# --- Sep 21 skip ---
+
+
+def test_get_variables_raises_on_september_21() -> None:
+  with patch('integrations.morning.datetime') as mock_dt:
+    mock_dt.date.today.return_value = datetime.date(2026, 9, 21)
+    with pytest.raises(IntegrationDataUnavailableError, match='Sep 21'):
+      get_variables()
+
+
+def test_get_variables_normal_on_september_20() -> None:
+  with patch('integrations.morning.datetime') as mock_dt:
+    mock_dt.date.today.return_value = datetime.date(2026, 9, 20)
+    result = get_variables()
+    assert set(result.keys()) == {'morning_r1', 'morning_r2', 'morning_r3'}
