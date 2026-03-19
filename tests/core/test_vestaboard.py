@@ -678,3 +678,65 @@ def test_render_grid_flagship_dimensions(monkeypatch: pytest.MonkeyPatch) -> Non
   output = vb.render_grid(grid)
   lines = output.splitlines()
   assert len(lines) == vb.VestaboardModel.FLAGSHIP.rows + 2
+
+
+# --- render ---
+
+
+def test_render_returns_character_grid() -> None:
+  grid = vb.render([{'format': ['HELLO']}], {})
+  assert len(grid) == vb.model.rows
+  assert all(len(row) == vb.model.cols for row in grid)
+  # First row should start with H=8, E=5, L=12, L=12, O=15
+  assert grid[0][:5] == [8, 5, 12, 12, 15]
+
+
+def test_render_does_not_call_api() -> None:
+  with patch('integrations.vestaboard.requests.post') as mock_post:
+    vb.render([{'format': ['HELLO']}], {})
+  mock_post.assert_not_called()
+
+
+# --- set_state_raw ---
+
+
+def test_set_state_raw_posts_grid(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  grid = [[0] * vb.model.cols for _ in range(vb.model.rows)]
+  mock_resp = MagicMock()
+  mock_resp.status_code = 200
+  mock_resp.raise_for_status.return_value = None
+  with patch('integrations.vestaboard.requests.post', return_value=mock_resp) as mock_post:
+    vb.set_state_raw(grid)
+  mock_post.assert_called_once()
+  _, kwargs = mock_post.call_args
+  assert kwargs['json'] == grid
+
+
+def test_set_state_raw_raises_board_locked(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  mock_resp = MagicMock()
+  mock_resp.status_code = 423
+  with patch('integrations.vestaboard.requests.post', return_value=mock_resp):
+    with pytest.raises(vb.BoardLockedError):
+      vb.set_state_raw([[0] * vb.model.cols] * vb.model.rows)
+
+
+def test_set_state_calls_render_then_raw(monkeypatch: pytest.MonkeyPatch) -> None:
+  """set_state() convenience wrapper calls render() then set_state_raw()."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  mock_resp = MagicMock()
+  mock_resp.status_code = 200
+  mock_resp.raise_for_status.return_value = None
+  with patch('integrations.vestaboard.requests.post', return_value=mock_resp) as mock_post:
+    vb.set_state([{'format': ['TEST']}], {})
+  mock_post.assert_called_once()
+  _, kwargs = mock_post.call_args
+  grid = kwargs['json']
+  assert len(grid) == vb.model.rows

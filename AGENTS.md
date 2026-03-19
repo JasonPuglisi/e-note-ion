@@ -60,11 +60,13 @@ on this project collaboratively with the user.
 
 ```
 scheduler.py                # Entry point — scheduler, queue, worker (argparse CLI)
+quiet.py                    # Software-side quiet mode state (thread-safe, persisted to config.toml)
 config.py                   # TOML config loader (load_config, get, get_optional, get_schedule_override, write_section_values — in-place token persistence)
 exceptions.py               # Custom exception types (IntegrationDataUnavailableError)
 config.toml                 # Runtime config with API keys (git-ignored; copy from config.example.toml)
 config.example.toml         # Config template committed to the repo
-integrations/vestaboard.py  # Vestaboard API client (get_state, set_state)
+integrations/vestaboard.py  # Vestaboard API client (get_state, set_state, render)
+integrations/scheduler.py   # Scheduler control webhook (quiet/wake actions)
 integrations/http.py        # Shared HTTP helper with retry logic
 integrations/weather.py     # Current weather via Open-Meteo (no API key required)
 integrations/morning.py     # Morning weather visual grid (optional; falls back to sunrise)
@@ -95,6 +97,7 @@ content/
     morning_night.json / .md  # Morning weather visual + good night
     notion.json / .md       # Notion webhook notifications
     plex.json / .md         # Plex Media Server now-playing (webhook-only)
+    scheduler.md            # Software-side quiet mode (webhook-only, no JSON)
     trakt.json / .md        # Trakt.tv calendar and now-playing
   user/                     # Personal content (always loaded, git-ignored)
 docs/

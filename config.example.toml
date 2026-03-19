@@ -237,6 +237,10 @@ city = "San Francisco"
 # To generate an argon2id hash for a plaintext secret:
 #   python -c "from argon2 import PasswordHasher; print(PasswordHasher().hash('your-secret'))"
 #
+# [webhook.credentials.scheduler]
+# secret_hash = "$argon2id$v=19$m=65536,t=3,p=4$..."
+# webhooks = ["scheduler"]
+#
 # [webhook.credentials.plex]
 # secret_hash = "$argon2id$v=19$m=65536,t=3,p=4$..."
 # webhooks = ["plex"]

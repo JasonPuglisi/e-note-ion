@@ -530,24 +530,32 @@ class EmptyBoardError(Exception):
   """Raised when get_state() finds no message on a fresh board (HTTP 404)."""
 
 
-def set_state(
+def render(
   templates: list[dict],
   variables: dict[str, list],
   truncation: TruncationStrategy = 'hard',
-) -> None:
-  """Render a template and write it to the Vestaboard.
+) -> list[list[int]]:
+  """Render a template into a character code grid without sending to the board.
 
   `templates` is the list of {"format": [...]} objects from the content JSON.
   One entry is chosen at random each time.
 
-  Raises BoardLockedError on HTTP 423 so the caller can decide whether to
-  retry. All other HTTP errors raise requests.exceptions.HTTPError.
+  Returns a model.rows × model.cols grid of integer character codes.
   """
   template = random.choice(templates)  # nosec B311
   lines = _expand_format(template['format'], variables)
   lines = _wrap_lines(lines, truncation)
   grid = _build_grid(lines)
   logger.debug(render_grid(grid))
+  return grid
+
+
+def set_state_raw(grid: list[list[int]]) -> None:
+  """Write a pre-rendered character code grid to the Vestaboard.
+
+  Raises BoardLockedError on HTTP 423, DuplicateContentError on HTTP 409.
+  All other HTTP errors raise requests.exceptions.HTTPError.
+  """
   for attempt in range(1 + _RATE_LIMIT_RETRIES):
     r = requests.post(_HOST, json=grid, headers=_get_headers(), timeout=10)
     if r.status_code == 409:
@@ -574,3 +582,19 @@ def set_state(
     except requests.HTTPError as e:
       raise requests.HTTPError(f'Vestaboard API error: {e.response.status_code} {e.response.reason}') from None
     return
+
+
+def set_state(
+  templates: list[dict],
+  variables: dict[str, list],
+  truncation: TruncationStrategy = 'hard',
+) -> None:
+  """Render a template and write it to the Vestaboard.
+
+  Convenience wrapper that calls render() then set_state_raw().
+
+  Raises BoardLockedError on HTTP 423 so the caller can decide whether to
+  retry. All other HTTP errors raise requests.exceptions.HTTPError.
+  """
+  grid = render(templates, variables, truncation)
+  set_state_raw(grid)
