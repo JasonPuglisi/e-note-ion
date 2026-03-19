@@ -131,18 +131,18 @@ def test_concurrent_activate_deactivate() -> None:
 
   def _toggle(n: int) -> None:
     try:
-      with patch('quiet._config_mod.write_config_section'):
-        for _ in range(n):
-          _mod.activate()
-          _mod.deactivate()
+      for _ in range(n):
+        _mod.activate()
+        _mod.deactivate()
     except Exception as e:  # noqa: BLE001
       errors.append(e)
 
-  threads = [threading.Thread(target=_toggle, args=(50,)) for _ in range(4)]
-  for t in threads:
-    t.start()
-  for t in threads:
-    t.join()
+  with patch('quiet._config_mod.write_config_section'):
+    threads = [threading.Thread(target=_toggle, args=(50,)) for _ in range(4)]
+    for t in threads:
+      t.start()
+    for t in threads:
+      t.join()
   assert not errors
   # Final state should be inactive (all threads did activate+deactivate pairs)
   assert not _mod.is_active()
