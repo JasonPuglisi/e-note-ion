@@ -455,6 +455,7 @@ PR contains **release-worthy** changes:
 | Runtime dependency changes | Dev-only dependency changes |
 | `Dockerfile` changes | Docs-only changes |
 | Security fixes | Repo config / tooling changes |
+|  | Test-only changes (`tests/`) |
 
 Semver rules (strict post-1.0):
 - **Patch** (`x.y.z+1`): bug fixes, dependency updates, security fixes
