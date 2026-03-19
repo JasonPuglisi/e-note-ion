@@ -319,6 +319,9 @@ PR labels (apply one or more):
 - CI runs `uv run pytest` — tests must pass before merge
 - When working on existing code that lacks tests, add retroactive coverage as
   part of the same PR where feasible
+- When a change affects output format or data shape, grep all test directories
+  (`tests/`, `tests/core/`, `tests/integrations/`) for assertions on the old
+  format before committing — not just the files being directly edited
 
 #### Integration tests
 
