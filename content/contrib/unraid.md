@@ -81,14 +81,18 @@ or `[R] DEGRADED` instead of usage numbers.
   info { os { uptime } }
   array {
     state
-    capacity { disks { used, total } }
+    capacity { kilobytes { used, total } }
   }
 }
 ```
 
 `uptime` is an ISO 8601 boot timestamp (e.g. `"2026-02-25T22:24:40.075Z"`).
-The integration computes seconds since boot from the timestamp delta.
-`used` and `total` are in bytes. Months are approximated as 30 days.
+The integration computes seconds since boot from the timestamp delta. Note:
+this timestamp reflects when the Unraid management API started, not the OS
+boot — expect ~1 hour less than the dashboard's uptime.
+`used` and `total` are in SI kilobytes. Sizes are displayed in decimal
+TB/GB units to match the Unraid dashboard. Months are approximated as
+30 days.
 
 ## Keeping data current
 
@@ -98,5 +102,5 @@ Authoritative source: https://docs.unraid.net/API/
 
 The Unraid API is under active development. Monitor the docs and the
 [unraid/api](https://github.com/unraid/api) repository for schema changes.
-The integration queries `info.os.uptime` and `array.capacity.disks` — verify
-these fields exist after major Unraid updates.
+The integration queries `info.os.uptime` and `array.capacity.kilobytes` —
+verify these fields exist after major Unraid updates.
