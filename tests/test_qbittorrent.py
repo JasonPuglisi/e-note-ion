@@ -203,3 +203,54 @@ def test_stale_cache_served_on_login_error(monkeypatch: pytest.MonkeyPatch) -> N
 
   assert result == stale_value
   qbt._cache = None
+
+
+# ---------------------------------------------------------------------------
+# verify_tls
+# ---------------------------------------------------------------------------
+
+
+def test_verify_tls_false_passes_verify(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  cfg = _patched_config()
+  cfg['qbittorrent']['verify_tls'] = False
+  monkeypatch.setattr(_cfg, '_config', cfg)
+  qbt._cache = None
+
+  session_mock = MagicMock()
+  session_mock.post.return_value = _login_response_ok()
+  session_mock.cookies = MagicMock()
+
+  torrents = [_torrent()]
+  with (
+    patch('integrations.qbittorrent.requests.Session', return_value=session_mock),
+    patch('integrations.qbittorrent.fetch_with_retry', return_value=_torrents_response(torrents)) as mock_fetch,
+  ):
+    qbt.get_variables()
+
+  assert session_mock.verify is False
+  assert mock_fetch.call_args.kwargs['verify'] is False
+  qbt._cache = None
+
+
+def test_verify_tls_default_true(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  qbt._cache = None
+
+  session_mock = MagicMock()
+  session_mock.post.return_value = _login_response_ok()
+  session_mock.cookies = MagicMock()
+
+  torrents = [_torrent()]
+  with (
+    patch('integrations.qbittorrent.requests.Session', return_value=session_mock),
+    patch('integrations.qbittorrent.fetch_with_retry', return_value=_torrents_response(torrents)) as mock_fetch,
+  ):
+    qbt.get_variables()
+
+  assert session_mock.verify is True
+  assert mock_fetch.call_args.kwargs['verify'] is True
+  qbt._cache = None

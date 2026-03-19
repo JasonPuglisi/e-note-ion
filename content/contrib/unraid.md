@@ -36,6 +36,7 @@ api_key = "your-unraid-api-key"
 |---|---|---|
 | `url` | Yes | Server base URL — must be a **local network** address |
 | `api_key` | Yes | API key from Settings → Management Access → API Keys |
+| `verify_tls` | No | Set to `false` to skip TLS cert verification (self-signed certs). Default: `true` |
 
 ### Security — local network only
 

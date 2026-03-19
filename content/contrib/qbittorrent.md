@@ -39,6 +39,7 @@ password = "your-password"
 | `url` | Yes | Web UI base URL — must be a **local network** address |
 | `username` | Yes | Web UI username |
 | `password` | Yes | Web UI password |
+| `verify_tls` | No | Set to `false` to skip TLS cert verification (self-signed certs). Default: `true` |
 
 ### Security — local network only
 
