@@ -206,6 +206,21 @@ password = "your-webui-password"
 # back-to-back episodes), the stopped card is suppressed entirely. Default: 3.
 # stop_debounce = 3
 
+[ynab]
+# Net worth tracker — sums all account balances from your YNAB budget.
+# Personal access token — generate at https://app.ynab.com/settings/developer
+api_key = "your-ynab-personal-access-token"
+
+# Budget UUID — optional if you have only one budget (auto-detected).
+# Find in the YNAB web app URL: app.ynab.com/<budget_id>/budget
+# budget_id = "your-budget-id"
+
+# [ynab.schedules.net_worth]
+# cron = "15 11 * * *"
+# hold = 300
+# timeout = 3600
+# priority = 3
+
 [unraid]
 # Unraid server status — array capacity and uptime. Requires Unraid 7.2+ and
 # an API key from Settings → Management Access → API Keys.

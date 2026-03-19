@@ -244,5 +244,7 @@ Required keys:
 | `DIVING_NDBC_STATION` | [ndbc.noaa.gov](https://www.ndbc.noaa.gov/) station ID (e.g. `46221`) |
 | `DIVING_LAT` | Station latitude |
 | `DIVING_LON` | Station longitude |
+| `YNAB_API_KEY` | [app.ynab.com/settings/developer](https://app.ynab.com/settings/developer) → Personal Access Token |
+| `YNAB_BUDGET_ID` | Budget UUID from the YNAB web app URL |
 
 `.env` is git-ignored — never commit it.

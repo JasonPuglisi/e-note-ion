@@ -20,6 +20,8 @@ _INTEGRATION_VARS: list[tuple[str, str]] = [
   ('DIVING_LAT', 'Dive conditions integration (Open-Meteo fallback)'),
   ('DIVING_LON', 'Dive conditions integration (Open-Meteo fallback)'),
   ('PARCEL_API_KEY', 'Parcel integration'),
+  ('YNAB_API_KEY', 'YNAB integration'),
+  ('YNAB_BUDGET_ID', 'YNAB integration (optional — auto-detected for single-budget accounts)'),
 ]
 
 _skipped = 0
