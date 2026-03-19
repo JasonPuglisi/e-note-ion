@@ -66,7 +66,7 @@ def _detail_line(status_code: int, date_expected: str | None) -> str:
   if not date_expected:
     return ''
   try:
-    expected = datetime.strptime(date_expected, '%Y-%m-%d').date()
+    expected = datetime.strptime(date_expected[:10], '%Y-%m-%d').date()
   except ValueError:
     return ''
   today = date.today()

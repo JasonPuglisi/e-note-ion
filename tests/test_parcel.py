@@ -128,6 +128,23 @@ def test_detail_in_n_days(monkeypatch: pytest.MonkeyPatch) -> None:
   assert pc._detail_line(2, '2026-03-21') == 'IN 3 DAYS'
 
 
+def test_detail_datetime_format(monkeypatch: pytest.MonkeyPatch) -> None:
+  from datetime import date
+
+  monkeypatch.setattr(
+    pc,
+    'date',
+    type(
+      'MockDate',
+      (),
+      {
+        'today': staticmethod(lambda: date(2026, 3, 18)),
+      },
+    ),
+  )
+  assert pc._detail_line(2, '2026-03-19 00:00:00') == 'TOMORROW'
+
+
 def test_detail_no_date() -> None:
   assert pc._detail_line(2, None) == ''
 
