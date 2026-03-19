@@ -4,10 +4,20 @@ import pytest
 
 import integrations.weather as weather_mod
 from exceptions import IntegrationDataUnavailableError
-from integrations.morning import _CONDITION_MAP, _DEFAULT, _GRIDS, _grid_key_from_weather, get_variables
+from integrations.morning import (
+  _CONDITION_MAP,
+  _DEFAULT,
+  _GRIDS,
+  _RANDOM_GRIDS,
+  _grid_key_from_weather,
+  _random_grid,
+  get_variables,
+)
 
 _COLOR_TAGS = {'[W]', '[K]', '[R]', '[O]', '[Y]', '[G]', '[B]', '[V]'}
 _TAG_LEN = 3
+
+_ALL_GRID_KEYS = set(_GRIDS) | set(_RANDOM_GRIDS)
 
 
 def _count_visual_width(row: str) -> int:
@@ -22,10 +32,15 @@ def _count_visual_width(row: str) -> int:
   return count
 
 
+def _count_color_cells(grid: tuple[str, str, str], color: str) -> int:
+  tag = f'[{color}]'
+  return sum(row.count(tag) for row in grid)
+
+
 # --- Grid shape ---
 
 
-def test_all_grids_are_seven_wide() -> None:
+def test_all_static_grids_are_seven_wide() -> None:
   for key, (r1, r2, r3) in _GRIDS.items():
     for row in (r1, r2, r3):
       width = _count_visual_width(row)
@@ -33,12 +48,40 @@ def test_all_grids_are_seven_wide() -> None:
 
 
 def test_default_grid_exists() -> None:
-  assert _DEFAULT in _GRIDS
+  assert _DEFAULT in _ALL_GRID_KEYS
 
 
 def test_all_condition_map_values_are_valid_grid_keys() -> None:
   for condition, key in _CONDITION_MAP.items():
-    assert key in _GRIDS, f'{condition!r} maps to unknown grid key {key!r}'
+    assert key in _ALL_GRID_KEYS, f'{condition!r} maps to unknown grid key {key!r}'
+
+
+# --- Random grid generation ---
+
+
+@pytest.mark.parametrize('key,config', _RANDOM_GRIDS.items())
+def test_random_grid_is_seven_wide(key: str, config: tuple[str, float, int]) -> None:
+  color, density, min_cells = config
+  grid = _random_grid(color, density, min_cells)
+  for row in grid:
+    width = _count_visual_width(row)
+    assert width == 7, f'{key}: row {row!r} has width {width}, expected 7'
+
+
+@pytest.mark.parametrize('key,config', _RANDOM_GRIDS.items())
+def test_random_grid_meets_minimum_cells(key: str, config: tuple[str, float, int]) -> None:
+  color, density, min_cells = config
+  for _ in range(20):
+    grid = _random_grid(color, density, min_cells)
+    count = _count_color_cells(grid, color)
+    assert count >= min_cells, f'{key}: got {count} cells, expected >= {min_cells}'
+
+
+def test_random_grid_uses_only_specified_color_and_black() -> None:
+  grid = _random_grid('B', 0.5, 4)
+  for row in grid:
+    stripped = row.replace('[B]', '').replace('[K]', '')
+    assert stripped == '', f'unexpected tags in row: {row!r}'
 
 
 # --- Condition mapping ---

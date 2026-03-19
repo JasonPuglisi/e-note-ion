@@ -14,48 +14,63 @@
 # WMO weather code drives the visual; otherwise the sunrise grid is used.
 
 import logging
+import random
 
 logger = logging.getLogger(__name__)
 
-# 7×3 [color] grids for each weather condition group.
+_GRID_COLS = 7
+_GRID_ROWS = 3
+_GRID_CELLS = _GRID_COLS * _GRID_ROWS
+
+# 7×3 [color] grids for static weather condition groups.
 # Each entry is (r1, r2, r3) — three 7-cell color-tag strings.
 _GRIDS: dict[str, tuple[str, str, str]] = {
   'CLEAR': (
-    '[K][K][K][Y][K][K][K]',
+    '[K][K][O][O][O][K][K]',
     '[K][O][Y][Y][Y][O][K]',
     '[O][Y][Y][Y][Y][Y][O]',
   ),
   'PARTLY': (
-    '[W][W][K][K][K][W][W]',
+    '[W][W][O][O][O][W][W]',
     '[K][O][Y][Y][Y][O][K]',
     '[O][Y][Y][Y][Y][Y][O]',
   ),
   'CLOUDY': (
     '[K][W][W][W][W][W][K]',
     '[W][W][W][W][W][W][W]',
-    '[W][W][W][W][W][W][W]',
-  ),
-  'RAIN_LIGHT': (
-    '[B][K][B][K][B][K][B]',
-    '[K][B][K][B][K][B][K]',
-    '[B][K][B][K][B][K][B]',
-  ),
-  'RAIN_HEAVY': (
-    '[B][B][K][B][B][K][B]',
-    '[B][K][B][B][K][B][B]',
-    '[K][B][B][K][B][B][K]',
-  ),
-  'SNOW': (
-    '[W][K][W][K][W][K][W]',
-    '[K][W][K][W][K][W][K]',
-    '[W][K][W][K][W][K][W]',
-  ),
-  'STORM': (
-    '[R][R][K][R][K][R][R]',
-    '[R][K][R][R][R][K][R]',
-    '[K][R][R][K][R][R][K]',
+    '[K][W][W][W][W][W][K]',
   ),
 }
+
+# Random scatter grid config: (color_tag, density, min_cells).
+# Each call to get_variables() generates a fresh random pattern.
+_RANDOM_GRIDS: dict[str, tuple[str, float, int]] = {
+  'RAIN_LIGHT': ('B', 0.30, 4),
+  'RAIN_HEAVY': ('B', 0.55, 8),
+  'SNOW': ('W', 0.25, 4),
+  'STORM': ('R', 0.50, 7),
+}
+
+
+def _random_grid(
+  color: str,
+  density: float,
+  min_cells: int,
+) -> tuple[str, str, str]:
+  """Generate a random 7×3 scatter grid with a minimum cell count."""
+  cells = [random.random() < density for _ in range(_GRID_CELLS)]  # nosec B311
+  filled = sum(cells)
+  if filled < min_cells:
+    empty = [i for i, c in enumerate(cells) if not c]
+    random.shuffle(empty)
+    for i in empty[: min_cells - filled]:
+      cells[i] = True
+  rows: list[str] = []
+  for r in range(_GRID_ROWS):
+    row = ''.join(f'[{color}]' if cells[r * _GRID_COLS + c] else '[K]' for c in range(_GRID_COLS))
+    rows.append(row)
+  return (rows[0], rows[1], rows[2])
+
 
 _DEFAULT = 'CLEAR'
 
@@ -115,7 +130,11 @@ def _grid_key_from_weather() -> str:
 
 def get_variables() -> dict[str, list[list[str]]]:
   key = _grid_key_from_weather()
-  r1, r2, r3 = _GRIDS[key]
+  if key in _RANDOM_GRIDS:
+    color, density, min_cells = _RANDOM_GRIDS[key]
+    r1, r2, r3 = _random_grid(color, density, min_cells)
+  else:
+    r1, r2, r3 = _GRIDS[key]
   return {
     'morning_r1': [[r1]],
     'morning_r2': [[r2]],

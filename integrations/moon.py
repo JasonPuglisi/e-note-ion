@@ -26,18 +26,18 @@ _SYNODIC_PERIOD = 29.53059
 # Each entry is (row1, row2, row3).
 _GRIDS: dict[str, tuple[str, str, str]] = {
   'NEW MOON': (
-    '[K][W][W][W][K]',
-    '[W][K][K][K][W]',
-    '[K][W][W][W][K]',
+    '[K][K][K][K][K]',
+    '[K][K][K][K][K]',
+    '[K][K][K][K][K]',
   ),
   'WAXING CRESCENT': (
-    '[K][K][W][K][K]',
-    '[K][K][W][W][K]',
-    '[K][K][W][K][K]',
+    '[K][K][K][W][K]',
+    '[K][K][K][W][W]',
+    '[K][K][K][W][K]',
   ),
   'FIRST QUARTER': (
     '[K][K][W][W][K]',
-    '[K][K][W][W][K]',
+    '[K][K][W][W][W]',
     '[K][K][W][W][K]',
   ),
   'WAXING GIBBOUS': (
@@ -57,13 +57,13 @@ _GRIDS: dict[str, tuple[str, str, str]] = {
   ),
   'LAST QUARTER': (
     '[K][W][W][K][K]',
-    '[K][W][W][K][K]',
+    '[W][W][W][K][K]',
     '[K][W][W][K][K]',
   ),
   'WANING CRESCENT': (
-    '[K][K][W][K][K]',
-    '[K][W][W][K][K]',
-    '[K][K][W][K][K]',
+    '[K][W][K][K][K]',
+    '[W][W][K][K][K]',
+    '[K][W][K][K][K]',
   ),
 }
 
