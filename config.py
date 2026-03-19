@@ -150,8 +150,16 @@ def get_optional_bool(section: str, key: str, default: bool = False) -> bool:
 
   Uses the raw TOML value rather than casting through str, so TOML booleans
   (e.g. `public = true`) are returned as Python bools correctly.
+
+  Supports dotted section names (e.g. ``'scheduler.quiet'``) by traversing
+  nested dicts — matching the TOML nesting produced by ``[scheduler.quiet]``.
   """
-  value = _config.get(section, {}).get(key)
+  node: dict[str, object] = _config
+  for part in section.split('.'):
+    node = node.get(part, {})  # type: ignore[assignment]
+    if not isinstance(node, dict):
+      return default
+  value = node.get(key)
   if value is None:
     return default
   return bool(value)

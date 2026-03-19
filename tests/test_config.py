@@ -102,6 +102,21 @@ def test_get_optional_bool_false(monkeypatch: pytest.MonkeyPatch) -> None:
   assert _mod.get_optional_bool('scheduler', 'public') is False
 
 
+def test_get_optional_bool_dotted_section(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'quiet': {'active': True}}})
+  assert _mod.get_optional_bool('scheduler.quiet', 'active') is True
+
+
+def test_get_optional_bool_dotted_section_false(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'quiet': {'active': False}}})
+  assert _mod.get_optional_bool('scheduler.quiet', 'active') is False
+
+
+def test_get_optional_bool_dotted_section_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {}})
+  assert _mod.get_optional_bool('scheduler.quiet', 'active') is False
+
+
 # --- get_model ---
 
 
