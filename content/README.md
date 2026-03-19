@@ -225,14 +225,13 @@ template's schedule to the zone where it's most useful:
 | Afternoon | 16:00–20:00 | Transition | Weather, Trakt calendar refresh (16:00), diving conditions (16:15) |
 | Evening anchor | 20:00 | Personal ritual | Personal-tier content (pri 9) wins the queue; weather and Trakt next-up follow |
 | Wind-down | 21:00–21:45 | Closing mood | Good night visual; weather |
-| Quiet hours | 21:45+ | Board silent (hardware) | Crons continue firing; nothing reaches the display |
+| Quiet hours | ~22:00+ | Board silent (software quiet mode) | Crons continue firing; content rendered to virtual state; board wakes with latest content |
 
-Nothing is useful before 07:00 — quiet hours end at 06:15 but content
-shouldn't be scheduled before 07:00. Crons that fire during quiet hours
-(e.g. overnight weather) are harmless — the board ignores them at the
-hardware level — but avoid scheduling new integrations in these windows
-unless there's a specific reason (e.g. an overnight job that needs to be
-ready by 07:00).
+Nothing is useful before 07:00 — quiet mode keeps the board dark overnight.
+Crons that fire during quiet hours continue rendering to virtual state, so
+the board always wakes with contextually relevant content. Avoid scheduling
+new integrations in overnight windows unless there's a specific reason
+(e.g. an overnight job that needs to be ready by 07:00).
 
 ### Schedule map
 
@@ -348,11 +347,19 @@ playback, they will show at the next natural pause. If no pause occurs within
 10 min the message expires — this is a deliberate trade-off that avoids
 disrupting media playback.
 
-**Quiet hours and the interrupt model:** The interrupt mechanism assumes content
-was successfully sent to the board. During quiet hours the board rejects writes
-with a locked error — the scheduler clears its hold state and re-enqueues the
-message, so from the scheduler's perspective the board is idle. Two
-consequences:
+**Software quiet mode and the interrupt model:** When software quiet mode is
+active (see [`scheduler`](contrib/scheduler.md)), the worker renders content
+to virtual state instead of sending it to the board. Cron jobs, webhooks, and
+idle refresh all continue running — only the final API call is suppressed.
+On wake, the latest virtual state is sent immediately. This avoids the stale-
+state issues of hardware quiet hours: the board always wakes with the most
+recent content.
+
+**Hardware quiet hours and the interrupt model:** If using the Vestaboard's
+built-in quiet hours (instead of or alongside software quiet mode), the board
+rejects writes with a locked error — the scheduler clears its hold state and
+re-enqueues the message, so from the scheduler's perspective the board is idle.
+Two consequences:
 
 - **Webhooks that queue (no board-displacement check):** messages pile up in
   the queue and drain in priority order once quiet hours end. State may be
@@ -360,8 +367,12 @@ consequences:
 - **Webhooks with a board-displacement check** (currently only `plex`): state-
   change events (pause, stop) are silently discarded while the board appears
   idle. After quiet hours end the display may show a stale state until the next
-  event arrives. Avoid testing Plex state transitions during quiet hours — the
-  behaviour is misleading and is not a bug in the integration.
+  event arrives. Avoid testing Plex state transitions during hardware quiet
+  hours — the behaviour is misleading and is not a bug in the integration.
+
+For most setups, software quiet mode is preferred — disable the Vestaboard's
+hardware quiet hours and control the display entirely via iOS Shortcuts
+automations tied to your sleep schedule.
 
 ### Priority reminder
 
@@ -383,5 +394,6 @@ guidelines above.
 | [`morning_night.json`](contrib/morning_night.md) | Good morning and good night messages with moon phase visual |
 | [`notion.json`](contrib/notion.md) | Notion automation notifications via webhook |
 | [`plex.json`](contrib/plex.md) | Plex Media Server now-playing via webhook |
+| (no JSON) [`scheduler`](contrib/scheduler.md) | Software-side quiet mode — webhook-only, no display content |
 | [`trakt.json`](contrib/trakt.md) | Trakt.tv upcoming calendar and now-playing |
 | [`weather.json`](contrib/weather.md) | Current weather conditions via Open-Meteo |

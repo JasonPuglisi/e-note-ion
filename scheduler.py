@@ -39,6 +39,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 import config as _config_mod
 import integrations.vestaboard as vestaboard
+import quiet as _quiet_mod
 from exceptions import IntegrationDataUnavailableError
 
 # When run via `python scheduler.py` or the `e-note-ion` entry point, Python
@@ -67,7 +68,20 @@ class _IndentedFormatter(logging.Formatter):
 # Allowlist of valid integration names. Must be extended when a new integration
 # is added to integrations/.
 _KNOWN_INTEGRATIONS: frozenset[str] = frozenset(
-  {'bart', 'calendar', 'discogs', 'diving', 'message', 'moon', 'morning', 'notion', 'plex', 'trakt', 'weather'}
+  {
+    'bart',
+    'calendar',
+    'discogs',
+    'diving',
+    'message',
+    'moon',
+    'morning',
+    'notion',
+    'plex',
+    'scheduler',
+    'trakt',
+    'weather',
+  }
 )
 
 # Cache of loaded integration modules, keyed by name.
@@ -357,6 +371,22 @@ def worker() -> None:
   _idle_refresh_interval: int | None = None
   _idle_last_refresh: float = 0.0
   while True:
+    # Handle quiet→wake transition: send the last virtual state to the board
+    # so it wakes to contextually relevant content. Detected within ≤1s of
+    # the wake webhook firing (the pop_valid_message timeout).
+    if not _quiet_mod.is_active():
+      virtual = _quiet_mod.pop_virtual_state()
+      if virtual is not None:
+        logger.info('Quiet mode ended — sending virtual state to board')
+        try:
+          vestaboard.set_state_raw(virtual)
+        except vestaboard.DuplicateContentError:
+          pass  # content already showing
+        except vestaboard.BoardLockedError:
+          logger.warning('Board locked on wake — virtual state discarded')
+        except Exception as e:  # noqa: BLE001
+          logger.error('Error sending virtual state on wake: %s', e)
+
     # Idle refresh: if the queue is empty and the previous integration message
     # is still on the board, keep refreshing at the same interval until a new
     # message is successfully sent. Errors are logged; the loop continues.
@@ -378,9 +408,11 @@ def worker() -> None:
 
     scheduled = datetime.fromtimestamp(time.time() - (time.monotonic() - message.scheduled_at))
     hold_desc = f'{message.hold}s (indefinite)' if message.indefinite else f'{message.hold}s'
+    quiet_tag = ' [quiet]' if _quiet_mod.is_active() else ''
     logger.info(
-      'Sending %s | scheduled: %s | priority: %d | hold: %s',
+      'Sending %s%s | scheduled: %s | priority: %d | hold: %s',
       message.name,
+      quiet_tag,
       scheduled.strftime('%H:%M:%S'),
       message.priority,
       hold_desc,
@@ -399,11 +431,13 @@ def worker() -> None:
       if 'integration' in message.data:
         fn_name = message.data.get('integration_fn', 'get_variables')
         variables = getattr(_get_integration(message.data['integration']), fn_name)()
-      vestaboard.set_state(
-        message.data['templates'],
-        variables,
-        message.data.get('truncation', 'hard'),
-      )
+      templates = message.data['templates']
+      truncation = message.data.get('truncation', 'hard')
+      if _quiet_mod.is_active():
+        grid = vestaboard.render(templates, variables, truncation)
+        _quiet_mod.set_virtual_state(grid)
+      else:
+        vestaboard.set_state(templates, variables, truncation)
     except IntegrationDataUnavailableError as e:
       with _current_hold_lock:
         _current_hold_supersede_tag = ''
@@ -431,6 +465,41 @@ def worker() -> None:
       logger.error('Error sending to board: %s', e)
       continue
 
+    # During quiet mode, skip hold — no physical display to keep showing.
+    # Transfer refresh capability to idle state so virtual state stays current,
+    # then immediately process the next message.
+    if _quiet_mod.is_active():
+      with _current_hold_lock:
+        _current_hold_supersede_tag = ''
+        _current_hold_priority = None
+      refresh_interval = message.data.get('refresh_interval')
+      if refresh_interval and 'integration' in message.data:
+        _integration = _get_integration(message.data['integration'])
+        _fn_name = message.data.get('integration_fn', 'get_variables')
+        _templates = message.data['templates']
+        _truncation = message.data.get('truncation', 'hard')
+
+        def _do_quiet_refresh(
+          _i: Any = _integration,
+          _f: Any = _fn_name,
+          _t: Any = _templates,
+          _tr: Any = _truncation,
+        ) -> None:
+          new_vars = getattr(_i, _f)()
+          if _quiet_mod.is_active():
+            _grid = vestaboard.render(_t, new_vars, _tr)
+            _quiet_mod.set_virtual_state(_grid)
+          else:
+            try:
+              vestaboard.set_state(_t, new_vars, _tr)
+            except vestaboard.DuplicateContentError, IntegrationDataUnavailableError:
+              pass
+
+        _idle_refresh_fn = _do_quiet_refresh
+        _idle_refresh_interval = refresh_interval
+        _idle_last_refresh = 0.0
+      continue
+
     # New message successfully sent (or DuplicateContentError fell through) —
     # clear idle refresh state before setting up the new hold.
     _idle_refresh_fn = None
@@ -451,10 +520,14 @@ def worker() -> None:
         _tr: Any = _truncation,
       ) -> None:
         new_vars = getattr(_i, _f)()
-        try:
-          vestaboard.set_state(_t, new_vars, _tr)
-        except vestaboard.DuplicateContentError, IntegrationDataUnavailableError:
-          pass  # content unchanged or no data — keep showing current
+        if _quiet_mod.is_active():
+          _grid = vestaboard.render(_t, new_vars, _tr)
+          _quiet_mod.set_virtual_state(_grid)
+        else:
+          try:
+            vestaboard.set_state(_t, new_vars, _tr)
+          except vestaboard.DuplicateContentError, IntegrationDataUnavailableError:
+            pass
 
       _refresh_fn = _do_refresh
 
@@ -668,6 +741,7 @@ _WEBHOOK_AUTOGEN: dict[str, str] = {
   'message': 'admin',
   'notion': 'notion',
   'plex': 'plex',
+  'scheduler': 'scheduler',
 }
 
 
@@ -1095,6 +1169,7 @@ def main() -> None:
   logging.basicConfig(level=logging.INFO, handlers=[_handler])
   _validate_startup(args.config)
   _config_mod.load_config(args.config)
+  _quiet_mod.init()
 
   log_level_str = _config_mod.get_optional('scheduler', 'log_level', 'INFO').upper()
   level = getattr(logging, log_level_str, None)
@@ -1122,6 +1197,8 @@ def main() -> None:
     extras.append('no content loaded')
   if public_mode:
     extras.append('public mode')
+  if _quiet_mod.is_active():
+    extras.append('quiet mode')
   version = importlib.metadata.version('e-note-ion')
   logger.info('Starting e-note-ion v%s — %s, %s', version, board_desc, ', '.join(extras))
 

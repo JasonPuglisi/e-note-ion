@@ -2111,3 +2111,90 @@ def test_load_file_warns_and_skips_unknown_integration(
   output = caplog.text
   assert 'skipping template' in output
   assert 'notreal' in output
+
+
+# --- quiet mode ---
+
+
+def test_worker_quiet_mode_stores_virtual_state() -> None:
+  """During quiet mode, worker renders content and stores as virtual state
+  instead of sending to the board."""
+  import quiet as quiet_mod
+
+  msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  quiet_mod._active = True
+  quiet_mod._virtual_state = None
+  try:
+    with (
+      patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+      patch('integrations.vestaboard.set_state') as mock_set_state,
+    ):
+      with pytest.raises(KeyboardInterrupt):
+        _mod.worker()
+    # set_state should NOT have been called (quiet mode)
+    mock_set_state.assert_not_called()
+    # Virtual state should be populated
+    assert quiet_mod.get_virtual_state() is not None
+  finally:
+    quiet_mod._active = False
+    quiet_mod._virtual_state = None
+
+
+def test_worker_quiet_mode_skips_hold() -> None:
+  """During quiet mode, worker should not hold — it processes messages
+  immediately and moves to the next one."""
+  import quiet as quiet_mod
+
+  msg1 = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  msg1.name = 'first'
+  msg2 = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  msg2.name = 'second'
+  msg2.seq = 1
+  quiet_mod._active = True
+  quiet_mod._virtual_state = None
+  try:
+    with patch.object(_mod, 'pop_valid_message', side_effect=[msg1, msg2, KeyboardInterrupt()]):
+      with pytest.raises(KeyboardInterrupt):
+        _mod.worker()
+    # Both messages processed without hold — virtual state is from the second
+    assert quiet_mod.get_virtual_state() is not None
+  finally:
+    quiet_mod._active = False
+    quiet_mod._virtual_state = None
+
+
+def test_worker_wake_sends_virtual_state() -> None:
+  """When quiet mode deactivates, worker sends the virtual state to the board."""
+  import quiet as quiet_mod
+
+  grid = [[8, 5, 12, 12, 15] + [0] * 10] * 3
+  quiet_mod._active = False
+  quiet_mod._virtual_state = grid
+  try:
+    with (
+      patch.object(_mod, 'pop_valid_message', side_effect=[None, KeyboardInterrupt()]),
+      patch('integrations.vestaboard.set_state_raw') as mock_raw,
+    ):
+      with pytest.raises(KeyboardInterrupt):
+        _mod.worker()
+    mock_raw.assert_called_once_with(grid)
+    # Virtual state should be consumed
+    assert quiet_mod.get_virtual_state() is None
+  finally:
+    quiet_mod._active = False
+    quiet_mod._virtual_state = None
+
+
+def test_worker_wake_no_virtual_state_is_noop() -> None:
+  """Wake with no virtual state should not call set_state_raw."""
+  import quiet as quiet_mod
+
+  quiet_mod._active = False
+  quiet_mod._virtual_state = None
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[None, KeyboardInterrupt()]),
+    patch('integrations.vestaboard.set_state_raw') as mock_raw,
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+  mock_raw.assert_not_called()

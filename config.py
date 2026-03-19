@@ -230,7 +230,7 @@ def get_message_friend(name: str) -> dict[str, Any] | None:
   return dict(friend) if isinstance(friend, dict) else None
 
 
-def write_config_section(section: str, values: dict[str, str | int | list[str]]) -> None:
+def write_config_section(section: str, values: dict[str, str | int | bool | list[str]]) -> None:
   """Create-or-update a config section in config.toml.
 
   Handles dotted section names (e.g. 'webhook.credentials.alice').
@@ -258,7 +258,9 @@ def write_config_section(section: str, values: dict[str, str | int | list[str]])
       section_end = i
       break
 
-  def _render(v: str | int | list[str]) -> str:
+  def _render(v: str | int | bool | list[str]) -> str:
+    if isinstance(v, bool):
+      return 'true' if v else 'false'
     if isinstance(v, list):
       return '[' + ', '.join(f'"{item}"' for item in v) + ']'
     if isinstance(v, int):
