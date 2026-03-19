@@ -10,10 +10,16 @@
 #   url      — Web UI base URL (e.g. "http://192.168.1.50:8080")
 #   username — Web UI username
 #   password — Web UI password
+#
+# Optional config.toml keys:
+#   verify_tls — set to false to skip TLS certificate verification
+#                (e.g. for self-signed certs). Default: true.
 
 import logging
+import warnings
 
 import requests
+import urllib3
 
 from exceptions import IntegrationDataUnavailableError
 from integrations.http import CacheEntry, fetch_with_retry
@@ -45,9 +51,10 @@ def _fmt_size(size_bytes: int) -> str:
   return f'{rounded} GB'
 
 
-def _login(base_url: str, username: str, password: str) -> requests.Session:
+def _login(base_url: str, username: str, password: str, *, verify: bool = True) -> requests.Session:
   """Authenticate with the qBittorrent Web API and return a session."""
   session = requests.Session()
+  session.verify = verify
   r = session.post(
     f'{base_url}/api/v2/auth/login',
     data={'username': username, 'password': password},
@@ -77,9 +84,13 @@ def get_variables() -> dict[str, list[list[str]]]:
   base_url = _cfg.get('qbittorrent', 'url').rstrip('/')
   username = _cfg.get('qbittorrent', 'username')
   password = _cfg.get('qbittorrent', 'password')
+  verify = _cfg.get_optional_bool('qbittorrent', 'verify_tls', default=True)
 
   try:
-    session = _login(base_url, username, password)
+    with warnings.catch_warnings():
+      if not verify:
+        warnings.simplefilter('ignore', urllib3.exceptions.InsecureRequestWarning)
+      session = _login(base_url, username, password, verify=verify)
   except requests.RequestException as e:
     if _cache is not None:
       logger.warning('qBittorrent: login failed — serving stale cache — %s', e)
@@ -87,13 +98,17 @@ def get_variables() -> dict[str, list[list[str]]]:
     raise IntegrationDataUnavailableError(f'qBittorrent: login failed — {e}') from None
 
   try:
-    r = fetch_with_retry(
-      'GET',
-      f'{base_url}/api/v2/torrents/info',
-      params={'filter': 'seeding'},
-      cookies=session.cookies,
-      timeout=10,
-    )
+    with warnings.catch_warnings():
+      if not verify:
+        warnings.simplefilter('ignore', urllib3.exceptions.InsecureRequestWarning)
+      r = fetch_with_retry(
+        'GET',
+        f'{base_url}/api/v2/torrents/info',
+        params={'filter': 'seeding'},
+        cookies=session.cookies,
+        timeout=10,
+        verify=verify,
+      )
     r.raise_for_status()
   except requests.RequestException as e:
     if _cache is not None:

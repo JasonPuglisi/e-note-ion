@@ -190,6 +190,10 @@ url = "http://192.168.1.50:8080"
 username = "admin"
 password = "your-webui-password"
 
+# Skip TLS certificate verification (e.g. for self-signed certs).
+# Only relevant when using https:// URLs. Default: true.
+# verify_tls = false
+
 # [qbittorrent.schedules.status]
 # cron = "45 10 * * *"
 # hold = 300
@@ -208,6 +212,10 @@ password = "your-webui-password"
 # ⚠  Local network only — do not expose the Unraid API to the internet.
 url = "http://192.168.1.10"
 api_key = "your-unraid-api-key"
+
+# Skip TLS certificate verification (e.g. for self-signed certs).
+# Only relevant when using https:// URLs. Default: true.
+# verify_tls = false
 
 # [unraid.schedules.status]
 # cron = "45 11 * * *"

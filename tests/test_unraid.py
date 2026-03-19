@@ -224,3 +224,38 @@ def test_stale_cache_served_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
   assert result == stale_value
   unraid._cache = None
+
+
+# ---------------------------------------------------------------------------
+# verify_tls
+# ---------------------------------------------------------------------------
+
+
+def test_verify_tls_false_passes_verify(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  cfg = _patched_config()
+  cfg['unraid']['verify_tls'] = False
+  monkeypatch.setattr(_cfg, '_config', cfg)
+  unraid._cache = None
+
+  data = _normal_data()
+  with patch('integrations.unraid.fetch_with_retry', return_value=_graphql_response(data)) as mock_fetch:
+    unraid.get_variables()
+
+  assert mock_fetch.call_args.kwargs['verify'] is False
+  unraid._cache = None
+
+
+def test_verify_tls_default_true(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  unraid._cache = None
+
+  data = _normal_data()
+  with patch('integrations.unraid.fetch_with_retry', return_value=_graphql_response(data)) as mock_fetch:
+    unraid.get_variables()
+
+  assert mock_fetch.call_args.kwargs['verify'] is True
+  unraid._cache = None
