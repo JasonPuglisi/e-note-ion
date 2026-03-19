@@ -36,24 +36,24 @@ _QUERY = """\
   info { os { uptime } }
   array {
     state
-    capacity { disks { used, total } }
+    capacity { kilobytes { used, total } }
   }
 }"""
 
 
 def _fmt_size(size_bytes: int) -> str:
-  """Format a byte count as a human-readable TB/GB string.
+  """Format a byte count as a human-readable TB/GB string (decimal/SI units).
 
-  Uses TB for >= 1 TB, GB otherwise. Rounds to one decimal place and drops
-  a trailing '.0' (e.g. 1.2 TB, 14 TB, 850 GB).
+  Uses TB (10**12) for >= 1 TB, GB (10**9) otherwise. Rounds to one decimal
+  place and drops a trailing '.0' (e.g. 1.2 TB, 14 TB, 850 GB).
   """
-  tb = size_bytes / (1024**4)
+  tb = size_bytes / 10**12
   if tb >= 1.0:
     rounded = round(tb, 1)
     if rounded == int(rounded):
       return f'{int(rounded)} TB'
     return f'{rounded} TB'
-  gb = size_bytes / (1024**3)
+  gb = size_bytes / 10**9
   rounded = round(gb, 1)
   if rounded == int(rounded):
     return f'{int(rounded)} GB'
@@ -140,14 +140,14 @@ def get_variables() -> dict[str, list[list[str]]]:
 
   # Array
   array_state = data.get('array', {}).get('state', '').upper()
-  disks = data.get('array', {}).get('capacity', {}).get('disks', {})
-  used = disks.get('used')
-  total = disks.get('total')
+  kb = data.get('array', {}).get('capacity', {}).get('kilobytes', {})
+  used = kb.get('used')
+  total = kb.get('total')
 
   if array_state in ('STOPPED', 'DEGRADED'):
     capacity_line = f'[R] {array_state}'
   elif used is not None and total is not None:
-    capacity_line = f'{_fmt_size(int(used))} / {_fmt_size(int(total))}'
+    capacity_line = f'{_fmt_size(int(used) * 1000)} / {_fmt_size(int(total) * 1000)}'
   else:
     capacity_line = ''
 

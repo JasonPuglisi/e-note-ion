@@ -39,15 +39,15 @@ def _normal_data(
   *,
   uptime_secs: int = 300_000,
   state: str = 'STARTED',
-  used: int = int(14.2 * 1024**4),
-  total: int = 20 * 1024**4,
+  used_kb: str = '14200000000',
+  total_kb: str = '20000000000',
 ) -> dict:
   """Build a normal Unraid GraphQL data payload."""
   return {
     'info': {'os': {'uptime': _boot_timestamp(uptime_secs)}},
     'array': {
       'state': state,
-      'capacity': {'disks': {'used': used, 'total': total}},
+      'capacity': {'kilobytes': {'used': used_kb, 'total': total_kb}},
     },
   }
 
@@ -70,11 +70,11 @@ def _patched_config() -> dict:
   'size_bytes,expected',
   [
     (0, '0 GB'),
-    (500 * 1024**3, '500 GB'),
-    (1024**4, '1 TB'),
-    (int(1.2 * 1024**4), '1.2 TB'),
-    (int(14.0 * 1024**4), '14 TB'),
-    (20 * 1024**4, '20 TB'),
+    (500 * 10**9, '500 GB'),
+    (10**12, '1 TB'),
+    (int(1.2 * 10**12), '1.2 TB'),
+    (int(14.0 * 10**12), '14 TB'),
+    (20 * 10**12, '20 TB'),
   ],
 )
 def test_fmt_size(size_bytes: int, expected: str) -> None:
@@ -122,7 +122,7 @@ def test_get_variables_normal(monkeypatch: pytest.MonkeyPatch) -> None:
     result = unraid.get_variables()
 
   assert result['header'] == [['[O] UNRAID']]
-  assert result['capacity'] == [['14.2 TB / 20 TB']]
+  assert result['capacity'] == [['14.2 TB / 20 TB']]  # 14200000000 KB * 1000 / 10^12
   # Uptime computed from boot timestamp delta — allow ±1 hour of rounding.
   uptime_str = result['uptime'][0][0]
   assert uptime_str.startswith('UP 3M 2D')
@@ -303,7 +303,7 @@ def test_uptime_unparseable_returns_empty(monkeypatch: pytest.MonkeyPatch) -> No
     'info': {'os': {'uptime': 'not-a-timestamp'}},
     'array': {
       'state': 'STARTED',
-      'capacity': {'disks': {'used': 1024**4, 'total': 2 * 1024**4}},
+      'capacity': {'kilobytes': {'used': '1000000000', 'total': '2000000000'}},
     },
   }
   with patch('integrations.unraid.fetch_with_retry', return_value=_graphql_response(data)):
