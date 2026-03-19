@@ -245,6 +245,7 @@ new integrations in overnight windows unless there's a specific reason
 | `:30` every hour | `calendar.today` | Logistics | 5 | 300 s | 1800 s | |
 | `8:30` daily | `discogs.morning_spin` | Hobbies | 5 | 600 s | 3600 s | Queues behind calendar at `:30` |
 | `9:00` daily | `birthdays.today` | Social | 6 | 600 s | 3600 s | Queues behind weather; no-op when no birthdays |
+| `:15` at 09/15 | `parcel.deliveries` | Logistics | 5 | 600 s | 1800 s | Private; no-op when no active deliveries |
 | `10:00` daily | `diving.last_dive` | Hobbies | 3 | 300 s | 3600 s | Skipped when no dive date recorded |
 | `:00` at 12/20 | `trakt.next_up` | Entertainment | 4 | 1200 s | 1800 s | Private; noon = plan for evening, 20:00 = settle in |
 | `21:00` daily | `morning_night.good_night` | Ambient | 4 | 300 s | 3600 s | Moon phase visual; queues behind weather |
@@ -393,6 +394,7 @@ guidelines above.
 | [`message.json`](contrib/message.md) | Friend messages via iOS Shortcuts → webhook |
 | [`morning_night.json`](contrib/morning_night.md) | Good morning and good night messages with moon phase visual |
 | [`notion.json`](contrib/notion.md) | Notion automation notifications via webhook |
+| [`parcel.json`](contrib/parcel.md) | Upcoming package delivery from Parcel |
 | [`plex.json`](contrib/plex.md) | Plex Media Server now-playing via webhook |
 | (no JSON) [`scheduler`](contrib/scheduler.md) | Software-side quiet mode — webhook-only, no display content |
 | [`trakt.json`](contrib/trakt.md) | Trakt.tv upcoming calendar and now-playing |
