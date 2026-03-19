@@ -69,15 +69,15 @@ def _patched_config() -> dict:
 @pytest.mark.parametrize(
   'size_bytes,expected',
   [
-    (0, '0 GB'),
-    (500 * 10**9, '500 GB'),
-    (10**12, '1 TB'),
-    (int(1.2 * 10**12), '1.2 TB'),
-    (int(14.0 * 10**12), '14 TB'),
-    (20 * 10**12, '20 TB'),
+    (0, ('0', 'GB')),
+    (500 * 10**9, ('500', 'GB')),
+    (10**12, ('1', 'TB')),
+    (int(1.2 * 10**12), ('1.2', 'TB')),
+    (int(14.0 * 10**12), ('14', 'TB')),
+    (20 * 10**12, ('20', 'TB')),
   ],
 )
-def test_fmt_size(size_bytes: int, expected: str) -> None:
+def test_fmt_size(size_bytes: int, expected: tuple[str, str]) -> None:
   assert unraid._fmt_size(size_bytes) == expected
 
 
@@ -122,7 +122,7 @@ def test_get_variables_normal(monkeypatch: pytest.MonkeyPatch) -> None:
     result = unraid.get_variables()
 
   assert result['header'] == [['[O] UNRAID']]
-  assert result['capacity'] == [['14.2 TB / 20 TB']]  # 14200000000 KB * 1000 / 10^12
+  assert result['capacity'] == [['14.2 / 20 TB']]
   # Uptime computed from boot timestamp delta — allow ±1 hour of rounding.
   uptime_str = result['uptime'][0][0]
   assert uptime_str.startswith('UP 3M 2D')
