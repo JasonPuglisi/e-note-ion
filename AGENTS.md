@@ -339,8 +339,10 @@ come from GitHub secrets env vars directly.
   - Vestaboard: `VESTABOARD_VIRTUAL_API_KEY` (use a virtual board, not physical)
   - Calendar (ICS mode): `CALENDAR_URL`
   - Calendar (CalDAV mode): `CALENDAR_CALDAV_URL`, `CALENDAR_USERNAME`, `CALENDAR_PASSWORD`
+  - Calendar (CardDAV/birthdays mode): `CALENDAR_CARDDAV_URL`
   - BART: `BART_API_KEY`
   - Trakt: `TRAKT_CLIENT_ID`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`
+  - TMDb: `TMDB_API_READ_ACCESS_TOKEN`
   - Discogs: `DISCOGS_TOKEN`
   - Diving: `DIVING_NDBC_STATION`, `DIVING_LAT`, `DIVING_LON`
   - Parcel: `PARCEL_API_KEY`
@@ -350,14 +352,17 @@ come from GitHub secrets env vars directly.
   `integration` environment (Settings → Environments), restricted to the `main`
   branch; this scopes them tighter than repo secrets and prevents any PR branch
   from accessing them even if a workflow runs there:
-  - Secrets: `VESTABOARD_VIRTUAL_API_KEY`, `CALENDAR_URL`, `CALENDAR_CALDAV_URL`, `CALENDAR_USERNAME`, `CALENDAR_PASSWORD`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `DISCOGS_TOKEN`, `PARCEL_API_KEY`
+  - Secrets: `VESTABOARD_VIRTUAL_API_KEY`, `CALENDAR_URL`, `CALENDAR_CALDAV_URL`, `CALENDAR_USERNAME`, `CALENDAR_PASSWORD`, `CALENDAR_CARDDAV_URL`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `TMDB_API_READ_ACCESS_TOKEN`, `DISCOGS_TOKEN`, `PARCEL_API_KEY`
   - Variables: `TRAKT_CLIENT_ID` (non-sensitive); `DIVING_NDBC_STATION`, `DIVING_LAT`, `DIVING_LON` (public NOAA station and coordinates)
 - If any integration test is skipped, the pytest session exits with code 5
   (NO_TESTS_COLLECTED), making the advisory job visibly fail rather than silently pass
 - When adding a new integration, also add `tests/integrations/test_<name>_integration.py`,
   add its env vars to the `_INTEGRATION_VARS` list in `tests/integrations/conftest.py`,
   and wire them into the `env:` block of the integration job in `.github/workflows/ci.yml`
-  (use `${{ secrets.VAR }}` for sensitive values, `${{ vars.VAR }}` for non-sensitive ones)
+  (use `${{ secrets.VAR }}` for sensitive values, `${{ vars.VAR }}` for non-sensitive ones).
+  Also update env vars in all five synced locations: `conftest.py`, `ci.yml`,
+  `.env.example`, `README.md` integration test table, and the env var lists in
+  this file (AGENTS.md)
 
 ### Periodic health review
 

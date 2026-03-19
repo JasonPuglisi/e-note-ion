@@ -240,6 +240,7 @@ Required keys:
 | `TRAKT_ACCESS_TOKEN` | run Trakt auth flow once and copy from `config.toml` |
 | `TMDB_API_READ_ACCESS_TOKEN` | [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api) (optional; enhances Plex/Trakt metadata) |
 | `CALENDAR_CARDDAV_URL` | `https://contacts.icloud.com/` for iCloud birthday integration |
+| `PARCEL_API_KEY` | [web.parcelapp.net](https://web.parcelapp.net) → API key (requires Parcel Premium) |
 | `DIVING_NDBC_STATION` | [ndbc.noaa.gov](https://www.ndbc.noaa.gov/) station ID (e.g. `46221`) |
 | `DIVING_LAT` | Station latitude |
 | `DIVING_LON` | Station longitude |
