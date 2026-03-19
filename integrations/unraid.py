@@ -41,23 +41,21 @@ _QUERY = """\
 }"""
 
 
-def _fmt_size(size_bytes: int) -> str:
-  """Format a byte count as a human-readable TB/GB string (decimal/SI units).
+def _fmt_size(size_bytes: int) -> tuple[str, str]:
+  """Format a byte count as (number, unit) using decimal/SI units.
 
   Uses TB (10**12) for >= 1 TB, GB (10**9) otherwise. Rounds to one decimal
-  place and drops a trailing '.0' (e.g. 1.2 TB, 14 TB, 850 GB).
+  place and drops a trailing '.0' (e.g. ('1.2', 'TB'), ('14', 'TB')).
   """
   tb = size_bytes / 10**12
   if tb >= 1.0:
     rounded = round(tb, 1)
-    if rounded == int(rounded):
-      return f'{int(rounded)} TB'
-    return f'{rounded} TB'
+    num = str(int(rounded)) if rounded == int(rounded) else str(rounded)
+    return (num, 'TB')
   gb = size_bytes / 10**9
   rounded = round(gb, 1)
-  if rounded == int(rounded):
-    return f'{int(rounded)} GB'
-  return f'{rounded} GB'
+  num = str(int(rounded)) if rounded == int(rounded) else str(rounded)
+  return (num, 'GB')
 
 
 def _fmt_uptime(seconds: int) -> str:
@@ -147,7 +145,12 @@ def get_variables() -> dict[str, list[list[str]]]:
   if array_state in ('STOPPED', 'DEGRADED'):
     capacity_line = f'[R] {array_state}'
   elif used is not None and total is not None:
-    capacity_line = f'{_fmt_size(int(used) * 1000)} / {_fmt_size(int(total) * 1000)}'
+    used_num, used_unit = _fmt_size(int(used) * 1000)
+    total_num, total_unit = _fmt_size(int(total) * 1000)
+    if used_unit == total_unit:
+      capacity_line = f'{used_num} / {total_num} {total_unit}'
+    else:
+      capacity_line = f'{used_num} {used_unit} / {total_num} {total_unit}'
   else:
     capacity_line = ''
 
