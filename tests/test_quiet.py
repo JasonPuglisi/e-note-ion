@@ -19,15 +19,29 @@ def _reset_state() -> None:
 
 
 def test_init_defaults_to_inactive(tmp_path: Path) -> None:
-  with patch('quiet._config_mod.get_optional_bool', return_value=False):
+  with patch('quiet._config_mod.get_optional_bool', return_value=False) as mock:
     _mod.init()
+  mock.assert_called_once_with('scheduler.quiet', 'active', default=False)
   assert not _mod.is_active()
 
 
 def test_init_restores_active_state(tmp_path: Path) -> None:
-  with patch('quiet._config_mod.get_optional_bool', return_value=True):
+  with patch('quiet._config_mod.get_optional_bool', return_value=True) as mock:
     _mod.init()
+  mock.assert_called_once_with('scheduler.quiet', 'active', default=False)
   assert _mod.is_active()
+
+
+def test_init_active_false_stays_inactive() -> None:
+  """Regression: [scheduler.quiet] active = false must not activate quiet mode.
+
+  Previously init() read _config['scheduler']['quiet'] which returned the dict
+  {'active': False} — bool of a non-empty dict is True, so quiet mode was
+  always restored as active.  See #456.
+  """
+  with patch.dict('config._config', {'scheduler': {'quiet': {'active': False}}}):
+    _mod.init()
+  assert not _mod.is_active()
 
 
 # --- activate ---

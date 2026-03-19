@@ -34,7 +34,7 @@ def init() -> None:
   """
   global _active
   with _lock:
-    _active = _config_mod.get_optional_bool('scheduler', 'quiet', default=False)
+    _active = _config_mod.get_optional_bool('scheduler.quiet', 'active', default=False)
     if _active:
       logger.info('Quiet mode restored from config (board is quiet)')
 
