@@ -19,6 +19,7 @@ _INTEGRATION_VARS: list[tuple[str, str]] = [
   ('DIVING_NDBC_STATION', 'Dive conditions integration (NDBC)'),
   ('DIVING_LAT', 'Dive conditions integration (Open-Meteo fallback)'),
   ('DIVING_LON', 'Dive conditions integration (Open-Meteo fallback)'),
+  ('PARCEL_API_KEY', 'Parcel integration'),
 ]
 
 _skipped = 0

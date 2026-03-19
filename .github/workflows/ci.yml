@@ -112,3 +112,4 @@ jobs:
           DIVING_NDBC_STATION: ${{ vars.DIVING_NDBC_STATION }}
           DIVING_LAT: ${{ vars.DIVING_LAT }}
           DIVING_LON: ${{ vars.DIVING_LON }}
+          PARCEL_API_KEY: ${{ secrets.PARCEL_API_KEY }}

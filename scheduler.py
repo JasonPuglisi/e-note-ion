@@ -77,6 +77,7 @@ _KNOWN_INTEGRATIONS: frozenset[str] = frozenset(
     'moon',
     'morning',
     'notion',
+    'parcel',
     'plex',
     'scheduler',
     'trakt',

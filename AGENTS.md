@@ -81,6 +81,7 @@ integrations/media.py       # Shared media display helpers
 integrations/message.py     # Friend message webhook integration
 integrations/moon.py        # Moon phase calculation
 integrations/notion.py      # Notion webhook integration
+integrations/parcel.py      # Parcel package delivery tracking
 integrations/tmdb.py        # TMDb metadata lookups (used by plex, trakt)
 content/
   README.md                 # Content author reference: JSON format, priority, schedule coordination
@@ -96,6 +97,7 @@ content/
     message.json / .md      # Friend messages via webhook
     morning_night.json / .md  # Morning weather visual + good night
     notion.json / .md       # Notion webhook notifications
+    parcel.json / .md       # Upcoming package delivery from Parcel
     plex.json / .md         # Plex Media Server now-playing (webhook-only)
     scheduler.md            # Software-side quiet mode (webhook-only, no JSON)
     trakt.json / .md        # Trakt.tv calendar and now-playing
@@ -341,13 +343,14 @@ come from GitHub secrets env vars directly.
   - Trakt: `TRAKT_CLIENT_ID`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`
   - Discogs: `DISCOGS_TOKEN`
   - Diving: `DIVING_NDBC_STATION`, `DIVING_LAT`, `DIVING_LON`
+  - Parcel: `PARCEL_API_KEY`
 - CI runs the `integration` job on `main` pushes only; it is advisory
   (`continue-on-error: true`) and not required by the branch ruleset
 - GitHub secrets/vars needed — store as **environment secrets** (or vars) on the
   `integration` environment (Settings → Environments), restricted to the `main`
   branch; this scopes them tighter than repo secrets and prevents any PR branch
   from accessing them even if a workflow runs there:
-  - Secrets: `VESTABOARD_VIRTUAL_API_KEY`, `CALENDAR_URL`, `CALENDAR_CALDAV_URL`, `CALENDAR_USERNAME`, `CALENDAR_PASSWORD`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `DISCOGS_TOKEN`
+  - Secrets: `VESTABOARD_VIRTUAL_API_KEY`, `CALENDAR_URL`, `CALENDAR_CALDAV_URL`, `CALENDAR_USERNAME`, `CALENDAR_PASSWORD`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `DISCOGS_TOKEN`, `PARCEL_API_KEY`
   - Variables: `TRAKT_CLIENT_ID` (non-sensitive); `DIVING_NDBC_STATION`, `DIVING_LAT`, `DIVING_LON` (public NOAA station and coordinates)
 - If any integration test is skipped, the pytest session exits with code 5
   (NO_TESTS_COLLECTED), making the advisory job visibly fail rather than silently pass

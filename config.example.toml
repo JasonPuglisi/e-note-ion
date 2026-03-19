@@ -171,6 +171,17 @@ token = "your-discogs-personal-access-token"
 # timeout = 60
 # priority = 8
 
+[parcel]
+# Parcel package tracking — shows the soonest active delivery.
+# Requires Parcel Premium ($4.99/year). Generate a key at web.parcelapp.net.
+api_key = "your-parcel-api-key"
+
+# [parcel.schedules.deliveries]
+# cron = "15 9,15 * * *"
+# hold = 600
+# timeout = 1800
+# priority = 5
+
 [plex]
 # Optional: seconds to wait after a media.stop event before showing the stopped
 # card. If a media.play or media.resume arrives in this window (e.g. between

@@ -1,0 +1,24 @@
+{
+  "templates": {
+    "deliveries": {
+      "schedule": {
+        "cron": "15 9,15 * * *",
+        "hold": 600,
+        "timeout": 1800
+      },
+      "priority": 5,
+      "private": true,
+      "truncation": "ellipsis",
+      "integration": "parcel",
+      "templates": [
+        {
+          "format": [
+            "{status_line}",
+            "{description}",
+            "{detail}"
+          ]
+        }
+      ]
+    }
+  }
+}
