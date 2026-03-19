@@ -1,6 +1,7 @@
 """Unit tests for integrations/unraid.py."""
 
 import time
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -28,16 +29,22 @@ def _graphql_response(data: dict | None = None, errors: list | None = None) -> M
   return resp
 
 
+def _boot_timestamp(seconds_ago: int) -> str:
+  """Return an ISO 8601 UTC timestamp for N seconds ago (matches Unraid API)."""
+  boot = datetime.now(timezone.utc) - timedelta(seconds=seconds_ago)
+  return boot.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+
+
 def _normal_data(
   *,
-  uptime: int = 300_000,
+  uptime_secs: int = 300_000,
   state: str = 'STARTED',
   used: int = int(14.2 * 1024**4),
   total: int = 20 * 1024**4,
 ) -> dict:
   """Build a normal Unraid GraphQL data payload."""
   return {
-    'info': {'os': {'uptime': uptime}},
+    'info': {'os': {'uptime': _boot_timestamp(uptime_secs)}},
     'array': {
       'state': state,
       'capacity': {'disks': {'used': used, 'total': total}},
@@ -110,13 +117,15 @@ def test_get_variables_normal(monkeypatch: pytest.MonkeyPatch) -> None:
   monkeypatch.setattr(_cfg, '_config', _patched_config())
   unraid._cache = None
 
-  data = _normal_data(uptime=3 * 30 * 24 * 3600 + 2 * 24 * 3600 + 8 * 3600)
+  data = _normal_data(uptime_secs=3 * 30 * 24 * 3600 + 2 * 24 * 3600 + 8 * 3600)
   with patch('integrations.unraid.fetch_with_retry', return_value=_graphql_response(data)):
     result = unraid.get_variables()
 
   assert result['header'] == [['[O] UNRAID']]
   assert result['capacity'] == [['14.2 TB / 20 TB']]
-  assert result['uptime'] == [['UP 3M 2D 8H']]
+  # Uptime computed from boot timestamp delta — allow ±1 hour of rounding.
+  uptime_str = result['uptime'][0][0]
+  assert uptime_str.startswith('UP 3M 2D')
   unraid._cache = None
 
 
@@ -258,4 +267,47 @@ def test_verify_tls_default_true(monkeypatch: pytest.MonkeyPatch) -> None:
     unraid.get_variables()
 
   assert mock_fetch.call_args.kwargs['verify'] is True
+  unraid._cache = None
+
+
+# ---------------------------------------------------------------------------
+# Uptime ISO timestamp parsing
+# ---------------------------------------------------------------------------
+
+
+def test_uptime_iso_timestamp(monkeypatch: pytest.MonkeyPatch) -> None:
+  """The API returns a boot timestamp, not seconds — verify parsing works."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  unraid._cache = None
+
+  data = _normal_data(uptime_secs=3600)
+  with patch('integrations.unraid.fetch_with_retry', return_value=_graphql_response(data)):
+    result = unraid.get_variables()
+
+  uptime_str = result['uptime'][0][0]
+  assert uptime_str.startswith('UP ')
+  assert 'H' in uptime_str
+  unraid._cache = None
+
+
+def test_uptime_unparseable_returns_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Unparseable uptime value should produce an empty line, not crash."""
+  import config as _cfg
+
+  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  unraid._cache = None
+
+  data = {
+    'info': {'os': {'uptime': 'not-a-timestamp'}},
+    'array': {
+      'state': 'STARTED',
+      'capacity': {'disks': {'used': 1024**4, 'total': 2 * 1024**4}},
+    },
+  }
+  with patch('integrations.unraid.fetch_with_retry', return_value=_graphql_response(data)):
+    result = unraid.get_variables()
+
+  assert result['uptime'] == [['']]
   unraid._cache = None

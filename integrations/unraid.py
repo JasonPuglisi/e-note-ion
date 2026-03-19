@@ -16,6 +16,7 @@
 
 import logging
 import warnings
+from datetime import datetime, timezone
 
 import requests
 import urllib3
@@ -124,9 +125,18 @@ def get_variables() -> dict[str, list[list[str]]]:
     msg = errors[0].get('message', 'unknown') if errors else 'no data'
     raise IntegrationDataUnavailableError(f'Unraid: GraphQL error — {msg}')
 
-  # Uptime
-  uptime_secs = data.get('info', {}).get('os', {}).get('uptime')
-  uptime_line = _fmt_uptime(int(uptime_secs)) if uptime_secs is not None else ''
+  # Uptime — the API returns a boot timestamp (ISO 8601), not seconds.
+  uptime_raw = data.get('info', {}).get('os', {}).get('uptime')
+  if uptime_raw is not None:
+    try:
+      boot_time = datetime.fromisoformat(str(uptime_raw).replace('Z', '+00:00'))
+      uptime_secs = int((datetime.now(timezone.utc) - boot_time).total_seconds())
+      uptime_line = _fmt_uptime(max(0, uptime_secs))
+    except ValueError, TypeError:
+      logger.warning('Unraid: could not parse uptime %r', uptime_raw)
+      uptime_line = ''
+  else:
+    uptime_line = ''
 
   # Array
   array_state = data.get('array', {}).get('state', '').upper()

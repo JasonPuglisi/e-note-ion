@@ -86,8 +86,9 @@ or `[R] DEGRADED` instead of usage numbers.
 }
 ```
 
-`uptime` is in seconds. `used` and `total` are in bytes. Months are
-approximated as 30 days.
+`uptime` is an ISO 8601 boot timestamp (e.g. `"2026-02-25T22:24:40.075Z"`).
+The integration computes seconds since boot from the timestamp delta.
+`used` and `total` are in bytes. Months are approximated as 30 days.
 
 ## Keeping data current
 
