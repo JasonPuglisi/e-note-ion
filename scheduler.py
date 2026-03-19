@@ -84,6 +84,7 @@ _KNOWN_INTEGRATIONS: frozenset[str] = frozenset(
     'trakt',
     'unraid',
     'weather',
+    'ynab',
   }
 )
 

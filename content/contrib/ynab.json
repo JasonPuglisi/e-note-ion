@@ -1,0 +1,23 @@
+{
+  "templates": {
+    "net_worth": {
+      "schedule": {
+        "cron": "15 11 * * *",
+        "hold": 300,
+        "timeout": 3600
+      },
+      "priority": 3,
+      "private": true,
+      "integration": "ynab",
+      "templates": [
+        {
+          "format": [
+            "{header}",
+            "{amount}",
+            "{delta}"
+          ]
+        }
+      ]
+    }
+  }
+}

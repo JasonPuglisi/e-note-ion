@@ -85,6 +85,7 @@ integrations/parcel.py      # Parcel package delivery tracking
 integrations/qbittorrent.py # qBittorrent seeding stats (Web API v2, local network)
 integrations/tmdb.py        # TMDb metadata lookups (used by plex, trakt)
 integrations/unraid.py      # Unraid server status (GraphQL API, local network)
+integrations/ynab.py        # YNAB net worth tracker (REST API, personal access token)
 content/
   README.md                 # Content author reference: JSON format, priority, schedule coordination
   DESIGN.md                 # Visual/design conventions: layout, color, tone, character set
@@ -105,6 +106,7 @@ content/
     scheduler.md            # Software-side quiet mode (webhook-only, no JSON)
     trakt.json / .md        # Trakt.tv calendar and now-playing
     unraid.json / .md       # Unraid server status
+    ynab.json / .md         # YNAB net worth tracker
   user/                     # Personal content (always loaded, git-ignored)
 docs/
   webhook-reverse-proxy.md  # Webhook TLS setup guide (Cloudflare Tunnel, reverse proxy)
@@ -353,13 +355,14 @@ come from GitHub secrets env vars directly.
   - Discogs: `DISCOGS_TOKEN`
   - Diving: `DIVING_NDBC_STATION`, `DIVING_LAT`, `DIVING_LON`
   - Parcel: `PARCEL_API_KEY`
+  - YNAB: `YNAB_API_KEY` (required), `YNAB_BUDGET_ID` (optional — auto-detected for single-budget accounts)
 - CI runs the `integration` job on `main` pushes only; it is advisory
   (`continue-on-error: true`) and not required by the branch ruleset
 - GitHub secrets/vars needed — store as **environment secrets** (or vars) on the
   `integration` environment (Settings → Environments), restricted to the `main`
   branch; this scopes them tighter than repo secrets and prevents any PR branch
   from accessing them even if a workflow runs there:
-  - Secrets: `VESTABOARD_VIRTUAL_API_KEY`, `CALENDAR_URL`, `CALENDAR_CALDAV_URL`, `CALENDAR_USERNAME`, `CALENDAR_PASSWORD`, `CALENDAR_CARDDAV_URL`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `TMDB_API_READ_ACCESS_TOKEN`, `DISCOGS_TOKEN`, `PARCEL_API_KEY`
+  - Secrets: `VESTABOARD_VIRTUAL_API_KEY`, `CALENDAR_URL`, `CALENDAR_CALDAV_URL`, `CALENDAR_USERNAME`, `CALENDAR_PASSWORD`, `CALENDAR_CARDDAV_URL`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `TMDB_API_READ_ACCESS_TOKEN`, `DISCOGS_TOKEN`, `PARCEL_API_KEY`, `YNAB_API_KEY`, `YNAB_BUDGET_ID`
   - Variables: `TRAKT_CLIENT_ID` (non-sensitive); `DIVING_NDBC_STATION`, `DIVING_LAT`, `DIVING_LON` (public NOAA station and coordinates)
 - If any integration test is skipped, the pytest session exits with code 5
   (NO_TESTS_COLLECTED), making the advisory job visibly fail rather than silently pass
@@ -420,19 +423,23 @@ step may be skipped — use judgement.
 
 1. `git checkout -b feat/description`
 2. Make changes; run the full check suite
-3. If release-worthy (see below), bump `version` in `pyproject.toml` **in the
+3. For new integrations or API-dependent changes, verify locally against the
+   real API before committing — unit test mocks cannot catch API contract
+   mismatches. Use `config.toml` with real credentials and confirm the
+   integration returns the expected output.
+4. If release-worthy (see below), bump `version` in `pyproject.toml` **in the
    same commit as the source change** — never a follow-up PR. Rule of thumb:
    if any `.py` or `.json` file is staged, check whether a bump is needed. Always stage
    `uv.lock` alongside `pyproject.toml` to avoid pre-commit stash conflicts.
-4. Commit with `Co-Authored-By: Claude <model> <noreply@anthropic.com>`
+5. Commit with `Co-Authored-By: Claude <model> <noreply@anthropic.com>`
    (use your current model name, e.g. `Opus 4.6` or `Sonnet 4.6`;
    commits are auto-signed via `commit.gpgsign = true` in global git config)
-5. Verify signing succeeded: `git log -1 --show-signature` must show a valid signature before pushing
-6. `git push -u origin feat/description`
-7. `gh pr create --label <label> --assignee JasonPuglisi`
-8. Enable auto-merge: `gh pr merge --squash --delete-branch --auto`
-9. Wait for merge: `gh pr checks <number> --watch`; once all pass and the PR merges, proceed
-10. After merge: `git checkout main && git pull && git branch -d feat/description`;
+6. Verify signing succeeded: `git log -1 --show-signature` must show a valid signature before pushing
+7. `git push -u origin feat/description`
+8. `gh pr create --label <label> --assignee JasonPuglisi`
+9. Enable auto-merge: `gh pr merge --squash --delete-branch --auto`
+10. Wait for merge: `gh pr checks <number> --watch`; once all pass and the PR merges, proceed
+11. After merge: `git checkout main && git pull && git branch -d feat/description`;
     get merge SHA via `git rev-parse HEAD`; run `gh run list --branch main --commit <sha>`
     and watch all in-progress runs to completion (`gh run watch <id>`). This step is
     non-negotiable — run it even when PR checks looked clean.
@@ -440,13 +447,13 @@ step may be skipped — use judgement.
     "Analyze (actions)", "Analyze (python)", and "CodeQL" checks (GitHub's built-in
     code scanning — runs automatically, not defined in `ci.yml`).
     Advisory integration job may fail (missing secrets or API issue) — note but not a blocker.
-11. Keep `README.md` and `AGENTS.md` up to date as part of the same PR —
+12. Keep `README.md` and `AGENTS.md` up to date as part of the same PR —
     new env vars, CLI flags, content format fields, project structure changes,
     and workflow changes should all be reflected before merge. When adding or
     renaming a template in `content/contrib/`, update both the template mapping
     table and the schedule map in `content/README.md` (enforced by CI via
     `test_schedule_lint.py`)
-12. For any TODOs identified during work, create a GitHub issue assigned to
+13. For any TODOs identified during work, create a GitHub issue assigned to
     JasonPuglisi with an appropriate milestone; reference the issue number in
     commit messages and PRs
 
