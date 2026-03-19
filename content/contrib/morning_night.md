@@ -22,9 +22,9 @@ where the commute window (07:00–09:00) fills the queue.
 **Cron:** `0 7 21 9 *` — fires at 07:00 on September 21st only.
 **Hold:** 300 s | **Timeout:** 3600 s | **Priority:** 4 (Ambient)
 
-Same slot as `good_morning`; at the same priority, the scheduler processes
-whichever was registered first. Use a `config.toml` override to give it
-priority 5 if you want it to appear before weather on that day.
+On September 21st, the morning integration raises `IntegrationDataUnavailableError`,
+so the integration-backed `good_morning` template is skipped. This static
+September variant is the sole morning message that day.
 
 ### `good_night`
 
