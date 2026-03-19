@@ -82,7 +82,9 @@ integrations/message.py     # Friend message webhook integration
 integrations/moon.py        # Moon phase calculation
 integrations/notion.py      # Notion webhook integration
 integrations/parcel.py      # Parcel package delivery tracking
+integrations/qbittorrent.py # qBittorrent seeding stats (Web API v2, local network)
 integrations/tmdb.py        # TMDb metadata lookups (used by plex, trakt)
+integrations/unraid.py      # Unraid server status (GraphQL API, local network)
 content/
   README.md                 # Content author reference: JSON format, priority, schedule coordination
   DESIGN.md                 # Visual/design conventions: layout, color, tone, character set
@@ -99,8 +101,10 @@ content/
     notion.json / .md       # Notion webhook notifications
     parcel.json / .md       # Upcoming package delivery from Parcel
     plex.json / .md         # Plex Media Server now-playing (webhook-only)
+    qbittorrent.json / .md  # qBittorrent seeding stats
     scheduler.md            # Software-side quiet mode (webhook-only, no JSON)
     trakt.json / .md        # Trakt.tv calendar and now-playing
+    unraid.json / .md       # Unraid server status
   user/                     # Personal content (always loaded, git-ignored)
 docs/
   webhook-reverse-proxy.md  # Webhook TLS setup guide (Cloudflare Tunnel, reverse proxy)
