@@ -153,6 +153,7 @@ appropriate priority range and informs scheduling decisions:
 | `diving.conditions` | Hobbies | 5 |
 | `discogs.morning_spin` | Hobbies | 5 |
 | `diving.last_dive` | Hobbies | 3 |
+| `uptimerobot.status` | Logistics | 8 |
 | `plex.now_playing`, `plex.paused`, `plex.stopped` | Entertainment | 8 |
 | `trakt.watching` | Entertainment | 7 |
 | `trakt.calendar`, `trakt.next_up` | Entertainment | 4 |
@@ -262,6 +263,7 @@ new integrations in overnight windows unless there's a specific reason
 | webhook only | `plex` (3 templates) | Entertainment | 8 | 14400 / 60 s | 30 s | Private; indefinite semantics (14400 s = 4 h safety ceiling); interrupts on state change |
 | webhook only | `message.notification` | Social | 8 | 120 s | 600 s | Queues normally; shows at next hold break |
 | webhook only | `notion.notification` | Social | 7 | 120 s | 120 s | |
+| `*/5` daily | `uptimerobot.status` | Logistics | 8 | 300 s | 120 s | Private; refresh 60 s; no-op when all monitors up |
 
 **Personal-tier note:** Priority-9 templates (e.g. `birthdays.self`, or
 personal pet feeding reminders in `content/user/`) are excluded from the slot
@@ -408,5 +410,6 @@ guidelines above.
 | (no JSON) [`scheduler`](contrib/scheduler.md) | Software-side quiet mode — webhook-only, no display content |
 | [`trakt.json`](contrib/trakt.md) | Trakt.tv upcoming calendar and now-playing |
 | [`unraid.json`](contrib/unraid.md) | Unraid server status — array capacity and uptime |
+| [`uptimerobot.json`](contrib/uptimerobot.md) | Service outage alerts from UptimeRobot (API polling) |
 | [`weather.json`](contrib/weather.md) | Current weather conditions via Open-Meteo |
 | [`ynab.json`](contrib/ynab.md) | Net worth tracker from YNAB (You Need A Budget) |

@@ -85,6 +85,7 @@ integrations/parcel.py      # Parcel package delivery tracking
 integrations/qbittorrent.py # qBittorrent seeding stats (Web API v2, local network)
 integrations/tmdb.py        # TMDb metadata lookups (used by plex, trakt)
 integrations/unraid.py      # Unraid server status (GraphQL API, local network)
+integrations/uptimerobot.py # UptimeRobot service outage alerts (REST API, free tier)
 integrations/ynab.py        # YNAB net worth tracker (REST API, personal access token)
 content/
   README.md                 # Content author reference: JSON format, priority, schedule coordination
@@ -106,6 +107,7 @@ content/
     scheduler.md            # Software-side quiet mode (webhook-only, no JSON)
     trakt.json / .md        # Trakt.tv calendar and now-playing
     unraid.json / .md       # Unraid server status
+    uptimerobot.json / .md  # UptimeRobot service outage alerts (API polling)
     ynab.json / .md         # YNAB net worth tracker
   user/                     # Personal content (always loaded, git-ignored)
 docs/
@@ -355,6 +357,7 @@ come from GitHub secrets env vars directly.
   - Discogs: `DISCOGS_TOKEN`
   - Diving: `DIVING_NDBC_STATION`, `DIVING_LAT`, `DIVING_LON`
   - Parcel: `PARCEL_API_KEY`
+  - UptimeRobot: `UPTIMEROBOT_API_KEY`
   - YNAB: `YNAB_API_KEY` (required), `YNAB_BUDGET_ID` (optional — auto-detected for single-budget accounts)
 - CI runs the `integration` job on `main` pushes only; it is advisory
   (`continue-on-error: true`) and not required by the branch ruleset
@@ -362,7 +365,7 @@ come from GitHub secrets env vars directly.
   `integration` environment (Settings → Environments), restricted to the `main`
   branch; this scopes them tighter than repo secrets and prevents any PR branch
   from accessing them even if a workflow runs there:
-  - Secrets: `VESTABOARD_VIRTUAL_API_KEY`, `CALENDAR_URL`, `CALENDAR_CALDAV_URL`, `CALENDAR_USERNAME`, `CALENDAR_PASSWORD`, `CALENDAR_CARDDAV_URL`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `TMDB_API_READ_ACCESS_TOKEN`, `DISCOGS_TOKEN`, `PARCEL_API_KEY`, `YNAB_API_KEY`, `YNAB_BUDGET_ID`
+  - Secrets: `VESTABOARD_VIRTUAL_API_KEY`, `CALENDAR_URL`, `CALENDAR_CALDAV_URL`, `CALENDAR_USERNAME`, `CALENDAR_PASSWORD`, `CALENDAR_CARDDAV_URL`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `TMDB_API_READ_ACCESS_TOKEN`, `DISCOGS_TOKEN`, `PARCEL_API_KEY`, `UPTIMEROBOT_API_KEY`, `YNAB_API_KEY`, `YNAB_BUDGET_ID`
   - Variables: `TRAKT_CLIENT_ID` (non-sensitive); `DIVING_NDBC_STATION`, `DIVING_LAT`, `DIVING_LON` (public NOAA station and coordinates)
 - If any integration test is skipped, the pytest session exits with code 5
   (NO_TESTS_COLLECTED), making the advisory job visibly fail rather than silently pass

@@ -1,0 +1,25 @@
+{
+  "templates": {
+    "status": {
+      "schedule": {
+        "cron": "*/5 * * * *",
+        "hold": 300,
+        "timeout": 120,
+        "refresh_interval": 60
+      },
+      "priority": 8,
+      "private": true,
+      "truncation": "ellipsis",
+      "integration": "uptimerobot",
+      "templates": [
+        {
+          "format": [
+            "[R] OUTAGE",
+            "{monitor}",
+            "{detail}"
+          ]
+        }
+      ]
+    }
+  }
+}

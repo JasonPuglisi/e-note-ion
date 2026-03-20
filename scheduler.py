@@ -83,6 +83,7 @@ _KNOWN_INTEGRATIONS: frozenset[str] = frozenset(
     'scheduler',
     'trakt',
     'unraid',
+    'uptimerobot',
     'weather',
     'ynab',
   }
