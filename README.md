@@ -129,7 +129,7 @@ Key `[scheduler]` settings:
 | Key | Default | Description |
 |---|---|---|
 | `model` | `"note"` | Display model: `"note"` (3×15) or `"flagship"` (6×22) |
-| `public` | `false` | When `true`, skip templates marked `private = true` (for shared/guest-visible spaces). Can be toggled at runtime via `POST /webhook/scheduler` with `{"action": "set_public", "value": true/false}` |
+| `public` | `false` | When `true`, skip templates marked `private = true` (for shared/guest-visible spaces). Can be toggled at runtime via `POST /webhook/scheduler` with `{"action": "public"}` or `{"action": "private"}` |
 | `content_enabled` | _(absent)_ | Content filter for cron-scheduled templates in both `user/` and `contrib/`: absent = all user loads, no contrib; `["*"]` = all user + all contrib; `["bart", "my_quotes"]` = only matching stems from either directory. **Webhook-only integrations (`plex`, `message`, `notion`) are unaffected — their webhooks fire regardless of this setting.** |
 | `timezone` | system TZ | IANA timezone for cron job scheduling (e.g. `"America/Los_Angeles"`) |
 | `min_hold` | `60` | Minimum seconds any message stays on display before a high-priority (≥8) queued message can interrupt it. Set to `0` to disable (not recommended for physical displays). |

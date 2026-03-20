@@ -12,7 +12,7 @@ import quiet
 
 logger = logging.getLogger(__name__)
 
-_VALID_ACTIONS = frozenset({'quiet', 'wake', 'set_public'})
+_VALID_ACTIONS = frozenset({'quiet', 'wake', 'public', 'private'})
 
 
 def handle_webhook(
@@ -23,9 +23,10 @@ def handle_webhook(
   """Handle a scheduler control webhook.
 
   Payload:
-    {"action": "quiet"}                    — enable quiet mode
-    {"action": "wake"}                     — disable quiet mode
-    {"action": "set_public", "value": …}   — set public mode (bool)
+    {"action": "quiet"}    — enable quiet mode
+    {"action": "wake"}     — disable quiet mode
+    {"action": "public"}   — enable public mode (hide private content)
+    {"action": "private"}  — disable public mode (show all content)
 
   Returns None (no display message to enqueue).
   """
@@ -37,10 +38,9 @@ def handle_webhook(
     quiet.activate()
   elif action == 'wake':
     quiet.deactivate()
-  elif action == 'set_public':
-    value = payload.get('value')
-    if not isinstance(value, bool):
-      raise ValueError(f'set_public requires a boolean "value" field, got {value!r}')
-    public.set_public(value)
+  elif action == 'public':
+    public.set_public(True)
+  elif action == 'private':
+    public.set_public(False)
 
   return None

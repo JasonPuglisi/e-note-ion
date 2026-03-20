@@ -43,12 +43,12 @@ During quiet mode:
 
 ### Public mode
 
-1. **Set public** (`{"action": "set_public", "value": true}`): enables public
-   mode. The worker starts skipping any queued message whose template has
-   `private = true`. Already-displaying messages are not interrupted — the
-   filter applies at the next dequeue.
-2. **Set private** (`{"action": "set_public", "value": false}`): disables
-   public mode. All templates resume displaying normally.
+1. **Public** (`{"action": "public"}`): enables public mode. The worker starts
+   skipping any queued message whose template has `private = true`.
+   Already-displaying messages are not interrupted — the filter applies at the
+   next dequeue.
+2. **Private** (`{"action": "private"}`): disables public mode. All templates
+   resume displaying normally.
 
 The initial state is read from `[scheduler].public` in `config.toml` (or the
 `--public` CLI flag). Runtime changes via webhook override the config value
@@ -95,20 +95,18 @@ Copy this secret into your iOS Shortcuts (see below).
 ```
 
 ```json
-{"action": "set_public", "value": true}
+{"action": "public"}
 ```
 
 ```json
-{"action": "set_public", "value": false}
+{"action": "private"}
 ```
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `action` | string | Yes | `"quiet"`, `"wake"`, or `"set_public"` |
-| `value` | boolean | For `set_public` | `true` for public mode, `false` for private mode |
+| `action` | string | Yes | `"quiet"`, `"wake"`, `"public"`, or `"private"` |
 
-Invalid or missing `action` returns a 500 error. `set_public` without a
-boolean `value` also returns a 500 error.
+Invalid or missing `action` returns a 500 error.
 
 ## iOS Shortcuts setup
 
@@ -169,17 +167,16 @@ A pre-built template is available at
 
 A pre-built template is available at
 `content/contrib/shortcuts/Vestaboard Public.shortcut`. Same structure as
-Quiet, but the JSON body has two keys:
+Quiet, but with a different action value:
 - Name it "Vestaboard Public"
-- Body: **JSON** > add key `action` (Type: Text) > value `set_public`;
-  add key `value` (Type: Boolean) > value `true`
+- Body: **JSON** > add key `action` (Type: Text) > value `public`
 
 #### Vestaboard Private
 
 A pre-built template is available at
 `content/contrib/shortcuts/Vestaboard Private.shortcut`. Same as Public, but:
 - Name it "Vestaboard Private"
-- Change the `value` Boolean to `false`
+- Change the `action` value in the JSON body to `private`
 
 ### Step 2: Create the automations
 
