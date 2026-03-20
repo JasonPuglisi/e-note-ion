@@ -12,8 +12,8 @@
       "templates": [
         {
           "format": [
-            "{city}",
             "{condition}",
+            "{city}",
             "{temp} H:{high} L:{low}"
           ]
         }
