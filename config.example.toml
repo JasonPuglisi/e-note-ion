@@ -221,6 +221,19 @@ api_key = "your-ynab-personal-access-token"
 # timeout = 3600
 # priority = 3
 
+[uptimerobot]
+# Service outage alerts — polls every 5 minutes, displays only during outages.
+# Free plan supports up to 50 monitors at 10 req/min.
+# Get your API key from https://dashboard.uptimerobot.com/integrations
+api_key = "your-uptimerobot-api-key"
+
+# [uptimerobot.schedules.status]
+# cron = "*/5 * * * *"
+# hold = 300
+# timeout = 120
+# priority = 8
+# refresh_interval = 60  # update elapsed downtime every 60s during hold (min 30)
+
 [unraid]
 # Unraid server status — array capacity and uptime. Requires Unraid 7.2+ and
 # an API key from Settings → Management Access → API Keys.
