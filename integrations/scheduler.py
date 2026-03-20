@@ -1,17 +1,18 @@
 # integrations/scheduler.py
 #
-# Webhook handler for scheduler control actions (quiet mode).
+# Webhook handler for scheduler control actions (quiet mode, public mode).
 # Unlike other integrations, this module does not produce display content —
-# it modifies scheduler behaviour via the quiet module.
+# it modifies scheduler behaviour via the quiet and public modules.
 
 import logging
 from typing import Any
 
+import public
 import quiet
 
 logger = logging.getLogger(__name__)
 
-_VALID_ACTIONS = frozenset({'quiet', 'wake'})
+_VALID_ACTIONS = frozenset({'quiet', 'wake', 'public', 'private'})
 
 
 def handle_webhook(
@@ -22,8 +23,10 @@ def handle_webhook(
   """Handle a scheduler control webhook.
 
   Payload:
-    {"action": "quiet"}  — enable quiet mode
-    {"action": "wake"}   — disable quiet mode
+    {"action": "quiet"}    — enable quiet mode
+    {"action": "wake"}     — disable quiet mode
+    {"action": "public"}   — enable public mode (hide private content)
+    {"action": "private"}  — disable public mode (show all content)
 
   Returns None (no display message to enqueue).
   """
@@ -35,5 +38,9 @@ def handle_webhook(
     quiet.activate()
   elif action == 'wake':
     quiet.deactivate()
+  elif action == 'public':
+    public.set_public(True)
+  elif action == 'private':
+    public.set_public(False)
 
   return None

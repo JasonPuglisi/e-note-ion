@@ -39,6 +39,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 import config as _config_mod
 import integrations.vestaboard as vestaboard
+import public as _public_mod
 import quiet as _quiet_mod
 from exceptions import IntegrationDataUnavailableError
 
@@ -409,6 +410,10 @@ def worker() -> None:
 
     message = pop_valid_message()
     if message is None:
+      continue
+
+    if _public_mod.is_public() and message.data.get('private'):
+      logger.debug('Skipping %s — private content hidden in public mode', message.name)
       continue
 
     scheduled = datetime.fromtimestamp(time.time() - (time.monotonic() - message.scheduled_at))
@@ -915,7 +920,6 @@ def _validate_template(name: str, template: dict[str, Any]) -> None:
 def _load_file(
   scheduler: BackgroundScheduler,
   content_file: Path,
-  public_mode: bool,
 ) -> None:
   # Parse and validate the file before touching the scheduler so that a bad
   # file leaves existing jobs untouched.
@@ -929,20 +933,20 @@ def _load_file(
   webhook_only_jobs: list[tuple[str, int, dict[str, Any], dict[str, Any]]] = []
   disabled_jobs: list[str] = []
   for template_name, template in content['templates'].items():
-    if public_mode and template.get('private', False):
-      continue
     _validate_template(f'{stem}.{template_name}', template)
-    # Check disabled/private overrides before building the job.
+    # Check disabled overrides before building the job.
     override = _config_mod.get_schedule_override(f'{content_file.stem}.{template_name}')
     if 'disabled' in override:
       coerced = _coerce_bool(override['disabled'], f'disabled override for {stem}.{template_name}')
       if coerced is True:
         disabled_jobs.append(template_name)
         continue
-    if public_mode and 'private' in override:
+    # Resolve effective private flag: config override takes precedence over JSON.
+    private = template.get('private', False)
+    if 'private' in override:
       coerced = _coerce_bool(override['private'], f'private override for {stem}.{template_name}')
-      if coerced is True:
-        continue
+      if coerced is not None:
+        private = coerced
     priority = template['priority']
     truncation = template.get('truncation', 'hard')
     data: dict[str, Any] = {
@@ -950,6 +954,8 @@ def _load_file(
       'variables': content.get('variables', {}),
       'truncation': truncation,
     }
+    if private:
+      data['private'] = True
     if 'integration' in template:
       integration_name = template['integration']
       try:
@@ -1057,7 +1063,6 @@ def _load_file(
 
 def load_content(
   scheduler: BackgroundScheduler,
-  public_mode: bool = False,
   content_enabled: set[str] | None = None,
 ) -> None:
   # Reads JSON files from content/user/ and content/contrib/.
@@ -1083,7 +1088,7 @@ def load_content(
       if _enabled(f.stem):
         user_stems.add(f.stem)
         try:
-          _load_file(scheduler, f, public_mode)
+          _load_file(scheduler, f)
         except Exception as e:  # noqa: BLE001
           logger.warning('failed to load %s: %s', f, e)
 
@@ -1093,7 +1098,7 @@ def load_content(
       if _enabled(f.stem):
         contrib_stems.add(f.stem)
         try:
-          _load_file(scheduler, f, public_mode)
+          _load_file(scheduler, f)
         except Exception as e:  # noqa: BLE001
           logger.warning('failed to load %s: %s', f, e)
 
@@ -1175,6 +1180,7 @@ def main() -> None:
   _validate_startup(args.config)
   _config_mod.load_config(args.config)
   _quiet_mod.init()
+  _public_mod.init()
 
   log_level_str = _config_mod.get_optional('scheduler', 'log_level', 'INFO').upper()
   level = getattr(logging, log_level_str, None)
@@ -1187,7 +1193,6 @@ def main() -> None:
   if model == 'flagship':
     vestaboard.model = vestaboard.VestaboardModel.FLAGSHIP
 
-  public_mode = _config_mod.get_public_mode()
   content_enabled = _config_mod.get_content_enabled()
 
   board_desc = 'Flagship (6×22)' if model == 'flagship' else 'Note (3×15)'
@@ -1200,7 +1205,7 @@ def main() -> None:
     extras.append(f'content: {", ".join(sorted(content_enabled))}')
   else:
     extras.append('no content loaded')
-  if public_mode:
+  if _public_mod.is_public():
     extras.append('public mode')
   if _quiet_mod.is_active():
     extras.append('quiet mode')
@@ -1216,7 +1221,7 @@ def main() -> None:
     misfire_grace_time=300,
     timezone=_config_mod.get_timezone(),
   )
-  load_content(scheduler, public_mode=public_mode, content_enabled=content_enabled)
+  load_content(scheduler, content_enabled=content_enabled)
   scheduler.start()
   logger.info('Scheduler started — %d job(s) registered', len(scheduler.get_jobs()))
 

@@ -1,17 +1,21 @@
 # scheduler
 
-Software-side quiet mode for the Vestaboard display. Control — webhook-only,
-no display content.
+Webhook-only scheduler control for the Vestaboard display. Supports two
+runtime toggles — quiet mode and public mode — both persisted to `config.toml`
+so they survive restarts (including Docker container recreates).
 
-When active, the worker renders content normally but stores the result as
-virtual state instead of sending it to the board. On wake, the virtual state
-is sent immediately so the board shows contextually relevant content without
-waiting for the next cron cycle. Idle refresh continues during quiet mode,
-keeping the virtual state current (e.g. real-time BART departures update in
-the background).
+**Quiet mode:** When active, the worker renders content normally but stores the
+result as virtual state instead of sending it to the board. On wake, the
+virtual state is sent immediately so the board shows contextually relevant
+content without waiting for the next cron cycle. Idle refresh continues during
+quiet mode, keeping the virtual state current (e.g. real-time BART departures
+update in the background).
 
-State is persisted to `config.toml` so quiet mode survives restarts (including
-Docker container recreates) without needing an additional volume mount.
+**Public mode:** When active, the worker skips templates marked `private = true`,
+hiding personal content when the display is in a guest-visible space. Templates
+are always loaded and scheduled regardless of public mode — the filter applies
+at display time, so toggling public mode takes effect immediately without
+restarting.
 
 ## Schedule
 
@@ -19,6 +23,8 @@ Docker container recreates) without needing an additional volume mount.
 `None` — it modifies scheduler behaviour, not the display queue.
 
 ## How it works
+
+### Quiet mode
 
 1. **Quiet** (`{"action": "quiet"}`): sets `quiet.active = true` in
    `config.toml`. The worker starts routing rendered content to virtual state
@@ -35,15 +41,31 @@ During quiet mode:
   render speed, keeping only the latest virtual state
 - No API calls are made to the Vestaboard
 
+### Public mode
+
+1. **Public** (`{"action": "public"}`): enables public mode. The worker starts
+   skipping any queued message whose template has `private = true`.
+   Already-displaying messages are not interrupted — the filter applies at the
+   next dequeue.
+2. **Private** (`{"action": "private"}`): disables public mode. All templates
+   resume displaying normally.
+
+The initial state is read from `[scheduler].public` in `config.toml` (or the
+`--public` CLI flag). Runtime changes via webhook override the config value
+and persist it for future restarts.
+
 ## Configuration
 
-No config keys required — quiet mode is controlled entirely via webhook. The
-persisted state is stored automatically:
+Both modes are controlled via webhook. Persisted state is stored automatically:
 
 ```toml
 # Written by quiet.activate() / quiet.deactivate() — do not edit manually.
 [scheduler.quiet]
 active = false
+
+# Written by public.set_public() — can also be set manually before startup.
+[scheduler]
+public = false
 ```
 
 ## Webhook setup
@@ -72,24 +94,33 @@ Copy this secret into your iOS Shortcuts (see below).
 {"action": "wake"}
 ```
 
+```json
+{"action": "public"}
+```
+
+```json
+{"action": "private"}
+```
+
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `action` | string | Yes | `"quiet"` to enable quiet mode, `"wake"` to disable |
+| `action` | string | Yes | `"quiet"`, `"wake"`, `"public"`, or `"private"` |
 
-Invalid or missing `action` returns a 400 error.
+Invalid or missing `action` returns a 500 error.
 
 ## iOS Shortcuts setup
 
-Quiet mode is designed to be triggered by iOS Shortcuts Personal Automations
-tied to your sleep schedule. The setup uses two reusable Shortcuts called by
-multiple automation triggers.
+Quiet mode and public mode are designed to be triggered by iOS Shortcuts
+Personal Automations. Both use the same `POST /webhook/scheduler` endpoint
+and the same auto-generated credential. The setup uses reusable Shortcuts
+called by multiple automation triggers.
 
 ### Prerequisites
 
 - Webhook listener enabled in `config.toml` (with a route to your device —
   Cloudflare Tunnel, LAN, etc.)
 - The auto-generated scheduler webhook secret from the log
-- iOS 18+ (Bedtime/Waking Up triggers)
+- iOS 18+ (Bedtime/Waking Up triggers; Arrive/Leave triggers)
 
 ### Step 1: Create the Shortcuts
 
@@ -132,6 +163,21 @@ A pre-built template is available at
 - Name it "Vestaboard Wake"
 - Change the `action` value in the JSON body to `wake`
 
+#### Vestaboard Public
+
+A pre-built template is available at
+`content/contrib/shortcuts/Vestaboard Public.shortcut`. Same structure as
+Quiet, but with a different action value:
+- Name it "Vestaboard Public"
+- Body: **JSON** > add key `action` (Type: Text) > value `public`
+
+#### Vestaboard Private
+
+A pre-built template is available at
+`content/contrib/shortcuts/Vestaboard Private.shortcut`. Same as Public, but:
+- Name it "Vestaboard Private"
+- Change the `action` value in the JSON body to `private`
+
 ### Step 2: Create the automations
 
 Create Personal Automations that call the Shortcuts above. Each automation
@@ -162,6 +208,22 @@ quiet, create two additional automations using **Focus** triggers:
 Same pattern — just a single Run Shortcut action. The Wi-Fi gate in the
 Shortcut prevents the webhook from firing when you are away from home.
 
+### Arrive and Leave (public mode)
+
+Public mode can be toggled automatically based on whether you are home using
+iOS Shortcuts **Arrive** and **Leave** Personal Automation triggers (under
+Travel Triggers). They use geofencing, run automatically without confirmation
+on iOS 17+, and fire the same `POST /webhook/scheduler` endpoint.
+
+1. **Leave home** > Run Shortcut "Vestaboard Public" (hide private content
+   when away — guests may be visiting)
+2. **Arrive home** > Run Shortcut "Vestaboard Private" (restore private
+   content when home)
+
+The Wi-Fi gate in the Shortcut provides a secondary check. Note: Arrive/Leave
+triggers have a minimum geofence radius of ~100 m and can be delayed in
+low-power mode.
+
 ### Summary of automations
 
 | Trigger | Shortcut | Purpose |
@@ -170,9 +232,11 @@ Shortcut prevents the webhook from firing when you are away from home.
 | Waking Up | Vestaboard Wake | Morning wake |
 | DND turns on | Vestaboard Quiet | Nap quiet |
 | DND turns off | Vestaboard Wake | Nap wake |
+| Leave home | Vestaboard Public | Hide private content |
+| Arrive home | Vestaboard Private | Restore private content |
 
-All four automations should have **Notify When Run** deselected so they
-run silently.
+All automations should have **Notify When Run** deselected so they run
+silently.
 
 ## Interaction with hardware quiet hours
 

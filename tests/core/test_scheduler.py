@@ -189,7 +189,7 @@ def test_load_file_prints_registration(
 ) -> None:
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   out = caplog.text
   assert 'test.json' in out
   assert 'tmpl' in out
@@ -218,7 +218,7 @@ def test_load_file_log_cron_padding_outside_quotes(
   }
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(content))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   out = caplog.text
   # Quotes must close immediately after the cron value — no trailing spaces inside
   assert 'cron="0 8 * * *"' in out
@@ -246,7 +246,7 @@ def test_load_file_log_hold_timeout_suffix_before_padding(
   }
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(content))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   out = caplog.text
   # 's' must immediately follow the number — no space between number and 's'
   assert 'hold=180s' in out
@@ -270,7 +270,7 @@ def test_load_file_log_widths_from_effective_values(
   )
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))  # JSON cron is '0 8 * * *' (same length)
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   out = caplog.text
   # Override cron is '* * * * *'; must appear without extra padding inside quotes
   assert 'cron="* * * * *"' in out
@@ -279,7 +279,7 @@ def test_load_file_log_widths_from_effective_values(
 def test_load_file_registers_job(sched: BackgroundScheduler, tmp_path: Path) -> None:
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   assert len(sched.get_jobs()) == 1
 
 
@@ -287,28 +287,32 @@ def test_load_file_invalid_priority_raises(sched: BackgroundScheduler, tmp_path:
   f = tmp_path / 'bad.json'
   f.write_text(json.dumps(_make_content(priority=99)))
   with pytest.raises(ValueError, match='priority'):
-    _mod._load_file(sched, f, False)
+    _mod._load_file(sched, f)
 
 
 def test_load_file_invalid_truncation_raises(sched: BackgroundScheduler, tmp_path: Path) -> None:
   f = tmp_path / 'bad.json'
   f.write_text(json.dumps(_make_content(truncation='bogus')))
   with pytest.raises(ValueError, match='truncation'):
-    _mod._load_file(sched, f, False)
+    _mod._load_file(sched, f)
 
 
-def test_load_file_public_mode_skips_private(sched: BackgroundScheduler, tmp_path: Path) -> None:
+def test_load_file_private_template_sets_data_flag(sched: BackgroundScheduler, tmp_path: Path) -> None:
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content(private=True)))
-  _mod._load_file(sched, f, public_mode=True)
-  assert len(sched.get_jobs()) == 0
+  _mod._load_file(sched, f)
+  jobs = sched.get_jobs()
+  assert len(jobs) == 1
+  assert jobs[0].args[1].get('private') is True
 
 
-def test_load_file_public_mode_keeps_non_private(sched: BackgroundScheduler, tmp_path: Path) -> None:
+def test_load_file_non_private_template_no_data_flag(sched: BackgroundScheduler, tmp_path: Path) -> None:
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content(private=False)))
-  _mod._load_file(sched, f, public_mode=True)
-  assert len(sched.get_jobs()) == 1
+  _mod._load_file(sched, f)
+  jobs = sched.get_jobs()
+  assert len(jobs) == 1
+  assert 'private' not in jobs[0].args[1]
 
 
 # --- enqueue ---
@@ -469,7 +473,7 @@ def test_load_file_applies_schedule_override(
   )
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   jobs = sched.get_jobs()
   assert len(jobs) == 1
   # job.args: [priority, data, hold, timeout, job_id]
@@ -489,7 +493,7 @@ def test_load_file_applies_priority_override(
   )
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content(priority=5)))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   # job.args: [priority, data, hold, timeout, job_id]
   assert sched.get_jobs()[0].args[0] == 9  # priority overridden from 5 to 9
 
@@ -509,7 +513,7 @@ def test_load_file_ignores_invalid_type_priority_override(
   )
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content(priority=5)))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   assert sched.get_jobs()[0].args[0] == 5  # original priority preserved
   assert 'WARNING' in caplog.text
 
@@ -529,7 +533,7 @@ def test_load_file_ignores_out_of_range_priority_override(
   )
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content(priority=5)))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   assert sched.get_jobs()[0].args[0] == 5  # original priority preserved
   assert 'WARNING' in caplog.text
 
@@ -546,7 +550,7 @@ def test_load_file_ignores_unknown_override_keys(
   )
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))
-  _mod._load_file(sched, f, False)  # must not raise on unknown key
+  _mod._load_file(sched, f)  # must not raise on unknown key
   assert sched.get_jobs()[0].args[2] == 90  # hold applied
 
 
@@ -558,7 +562,7 @@ def test_load_file_skips_disabled_template(
   monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'disabled': True}}}})
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   assert len(sched.get_jobs()) == 0
 
 
@@ -570,7 +574,7 @@ def test_load_file_disabled_false_does_not_skip(
   monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'disabled': False}}}})
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   assert len(sched.get_jobs()) == 1
 
 
@@ -585,7 +589,7 @@ def test_load_file_disabled_string_true_coerces(
   monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'disabled': 'true'}}}})
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   assert len(sched.get_jobs()) == 0
   assert 'WARNING' in caplog.text
 
@@ -601,7 +605,7 @@ def test_load_file_disabled_invalid_type_ignored(
   monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'disabled': 1}}}})
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   assert len(sched.get_jobs()) == 1
   assert 'WARNING' in caplog.text
 
@@ -630,12 +634,12 @@ def test_load_file_skips_disabled_webhook_only_template(
   monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'webhook_tmpl': {'disabled': True}}}})
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(content))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   assert len(sched.get_jobs()) == 1
   assert sched.get_jobs()[0].id.endswith('cron_tmpl')
 
 
-def test_load_file_private_override_hides_in_public_mode(
+def test_load_file_private_override_sets_data_flag(
   sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
   import config as _cfg
@@ -643,28 +647,33 @@ def test_load_file_private_override_hides_in_public_mode(
   monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'private': True}}}})
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))  # template has no 'private' field in JSON
-  _mod._load_file(sched, f, public_mode=True)
-  assert len(sched.get_jobs()) == 0
+  _mod._load_file(sched, f)
+  jobs = sched.get_jobs()
+  assert len(jobs) == 1
+  assert jobs[0].args[1].get('private') is True
 
 
-def test_load_file_private_override_visible_in_normal_mode(
+def test_load_file_private_override_false_clears_json_flag(
   sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
   import config as _cfg
 
-  monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'private': True}}}})
-  f = tmp_path / 'test.json'
-  f.write_text(json.dumps(_make_content()))
-  _mod._load_file(sched, f, public_mode=False)
-  assert len(sched.get_jobs()) == 1
-
-
-def test_load_file_private_json_field_hides_in_public_mode(sched: BackgroundScheduler, tmp_path: Path) -> None:
-  # Validates the renamed 'private' JSON field works (was 'public').
+  monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'private': False}}}})
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content(private=True)))
-  _mod._load_file(sched, f, public_mode=True)
-  assert len(sched.get_jobs()) == 0
+  _mod._load_file(sched, f)
+  jobs = sched.get_jobs()
+  assert len(jobs) == 1
+  assert 'private' not in jobs[0].args[1]
+
+
+def test_load_file_private_json_field_sets_data_flag(sched: BackgroundScheduler, tmp_path: Path) -> None:
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_content(private=True)))
+  _mod._load_file(sched, f)
+  jobs = sched.get_jobs()
+  assert len(jobs) == 1
+  assert jobs[0].args[1].get('private') is True
 
 
 # --- worker ---
@@ -684,6 +693,33 @@ def _make_worker_msg(*, scheduled_at: float, timeout: int) -> Any:
     hold=60,
     timeout=timeout,
   )
+
+
+def test_worker_skips_private_message_in_public_mode() -> None:
+  msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  msg.data['private'] = True
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch('public.is_public', return_value=True),
+    patch('integrations.vestaboard.set_state') as mock_set,
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+  mock_set.assert_not_called()
+
+
+def test_worker_shows_private_message_in_normal_mode() -> None:
+  msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  msg.data['private'] = True
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch('public.is_public', return_value=False),
+    patch('integrations.vestaboard.set_state'),
+    patch('time.sleep'),
+    patch.object(_mod, '_hold_interrupt'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
 
 
 def test_worker_board_locked_requeues_within_timeout() -> None:
@@ -898,12 +934,12 @@ def test_worker_refires_interrupt_when_same_tag_message_queued_during_set_state(
   )
 
 
-# --- _load_file (public key missing) ---
+# --- _load_file (private key missing) ---
 
 
-def test_load_file_private_key_missing_included_in_public_mode(sched: BackgroundScheduler, tmp_path: Path) -> None:
-  # A template with no 'private' key should default to included (False) in
-  # public mode rather than raising a KeyError.
+def test_load_file_private_key_missing_no_data_flag(sched: BackgroundScheduler, tmp_path: Path) -> None:
+  # A template with no 'private' key should default to not private
+  # rather than raising a KeyError.
   content: dict[str, Any] = {
     'templates': {
       'tmpl': {
@@ -916,8 +952,10 @@ def test_load_file_private_key_missing_included_in_public_mode(sched: Background
   }
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(content))
-  _mod._load_file(sched, f, public_mode=True)
-  assert len(sched.get_jobs()) == 1
+  _mod._load_file(sched, f)
+  jobs = sched.get_jobs()
+  assert len(jobs) == 1
+  assert 'private' not in jobs[0].args[1]
 
 
 # --- _validate_template ---
@@ -1569,7 +1607,7 @@ def _make_content_with_refresh(refresh_interval: int) -> dict[str, Any]:
 def test_load_file_passes_refresh_interval_in_data(sched: BackgroundScheduler, tmp_path: Path) -> None:
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content_with_refresh(60)))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   jobs = sched.get_jobs()
   assert len(jobs) == 1
   assert jobs[0].args[1].get('refresh_interval') == 60
@@ -1578,7 +1616,7 @@ def test_load_file_passes_refresh_interval_in_data(sched: BackgroundScheduler, t
 def test_load_file_refresh_interval_absent_not_in_data(sched: BackgroundScheduler, tmp_path: Path) -> None:
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   jobs = sched.get_jobs()
   assert 'refresh_interval' not in jobs[0].args[1]
 
@@ -1595,7 +1633,7 @@ def test_load_file_applies_refresh_interval_override(
   )
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content_with_refresh(60)))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   assert sched.get_jobs()[0].args[1].get('refresh_interval') == 90
 
 
@@ -1614,7 +1652,7 @@ def test_load_file_ignores_invalid_refresh_interval_override(
   )
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content_with_refresh(60)))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   # Override is below minimum — original value should be preserved
   assert sched.get_jobs()[0].args[1].get('refresh_interval') == 60
   assert 'WARNING' in caplog.text
@@ -1979,7 +2017,7 @@ def _make_webhook_only_content() -> dict[str, Any]:
 def test_load_file_webhook_only_template_not_scheduled(sched: BackgroundScheduler, tmp_path: Path) -> None:
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_webhook_only_content()))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   assert len(sched.get_jobs()) == 0
 
 
@@ -1988,7 +2026,7 @@ def test_load_file_webhook_only_logged_in_startup_table(
 ) -> None:
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_webhook_only_content()))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   out = caplog.text
   assert 'webhook=true' in out
   assert 'now_playing' in out
@@ -2106,7 +2144,7 @@ def test_load_file_warns_and_skips_unknown_integration(
   }
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(content))
-  _mod._load_file(sched, f, False)
+  _mod._load_file(sched, f)
   assert len(sched.get_jobs()) == 0
   output = caplog.text
   assert 'skipping template' in output

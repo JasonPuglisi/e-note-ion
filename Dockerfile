@@ -20,7 +20,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 # Copy source, config example, and bundled contrib content.
-COPY scheduler.py config.py exceptions.py quiet.py config.example.toml ./
+COPY scheduler.py config.py exceptions.py public.py quiet.py config.example.toml ./
 COPY integrations/ ./integrations/
 COPY content/contrib/ ./content/contrib/
 

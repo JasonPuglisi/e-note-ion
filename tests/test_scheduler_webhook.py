@@ -19,6 +19,20 @@ def test_handle_webhook_wake() -> None:
   assert result is None
 
 
+def test_handle_webhook_public() -> None:
+  with patch('public.set_public') as mock:
+    result = _mod.handle_webhook({'action': 'public'})
+  mock.assert_called_once_with(True)
+  assert result is None
+
+
+def test_handle_webhook_private() -> None:
+  with patch('public.set_public') as mock:
+    result = _mod.handle_webhook({'action': 'private'})
+  mock.assert_called_once_with(False)
+  assert result is None
+
+
 def test_handle_webhook_invalid_action() -> None:
   with pytest.raises(ValueError, match='Invalid scheduler action'):
     _mod.handle_webhook({'action': 'sleep'})
