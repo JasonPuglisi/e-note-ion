@@ -177,6 +177,29 @@ _ESC_BRACE_OPEN = '\x00'  # replacement for {{ (escaped literal {)
 _ESC_BRACE_CLOSE = '\x01'  # replacement for }} (escaped literal })
 
 
+# Unicode punctuation that iOS/macOS auto-substitute but Vestaboard can't
+# display. Mapped to their ASCII equivalents via str.translate().
+_UNICODE_PUNCT_TABLE = str.maketrans(
+  {
+    '\u2018': "'",  # ' left single quotation mark
+    '\u2019': "'",  # ' right single quotation mark
+    '\u201a': "'",  # ‚ single low-9 quotation mark
+    '\u201b': "'",  # ‛ single high-reversed-9 quotation mark
+    '\u2032': "'",  # ′ prime
+    '\u201c': '"',  # " left double quotation mark
+    '\u201d': '"',  # " right double quotation mark
+    '\u201e': '"',  # „ double low-9 quotation mark
+    '\u201f': '"',  # ‟ double high-reversed-9 quotation mark
+    '\u2033': '"',  # ″ double prime
+    '\u2012': '-',  # ‒ figure dash
+    '\u2013': '-',  # – en dash
+    '\u2014': '-',  # — em dash
+    '\u2015': '-',  # ― horizontal bar
+    '\u2026': '...',  # … horizontal ellipsis
+  }
+)
+
+
 def _next_token(text: str, i: int) -> tuple[str, int]:
   """Return (raw_token, chars_consumed) for the source token starting at i.
 
@@ -296,6 +319,7 @@ def _strip_unsupported(text: str) -> str:
   Multiple spaces produced by stripping are collapsed to one, and
   leading/trailing whitespace is removed.
   """
+  text = text.translate(_UNICODE_PUNCT_TABLE)
   tokens: list[str] = []
   i = 0
   while i < len(text):

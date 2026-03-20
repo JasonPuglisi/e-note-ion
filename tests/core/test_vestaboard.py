@@ -286,6 +286,38 @@ def test_strip_unsupported_preserves_ascii() -> None:
   assert result == 'ANIMAL CROSSING: NEW HORIZONS'
 
 
+def test_strip_unsupported_normalizes_smart_single_quotes() -> None:
+  # iOS/macOS auto-replace ' with \u2018/\u2019 smart quotes.
+  result = vb._strip_unsupported('\u2018HELLO\u2019')  # noqa: SLF001
+  assert result == "'HELLO'"
+
+
+def test_strip_unsupported_normalizes_smart_double_quotes() -> None:
+  result = vb._strip_unsupported('\u201cWORLD\u201d')  # noqa: SLF001
+  assert result == '"WORLD"'
+
+
+def test_strip_unsupported_normalizes_em_dash() -> None:
+  result = vb._strip_unsupported('A\u2014B')  # noqa: SLF001
+  assert result == 'A-B'
+
+
+def test_strip_unsupported_normalizes_en_dash() -> None:
+  result = vb._strip_unsupported('3\u20135')  # noqa: SLF001
+  assert result == '3-5'
+
+
+def test_strip_unsupported_normalizes_ellipsis() -> None:
+  result = vb._strip_unsupported('WAIT\u2026')  # noqa: SLF001
+  assert result == 'WAIT...'
+
+
+def test_strip_unsupported_normalizes_mixed_unicode_punct() -> None:
+  # Combined: smart quotes + em dash + ellipsis in one string.
+  result = vb._strip_unsupported('\u201cHI\u201d \u2014 BYE\u2026')  # noqa: SLF001
+  assert result == '"HI" - BYE...'
+
+
 def test_wrap_lines_strips_unsupported_before_wrap() -> None:
   # Japanese prefix + English suffix: unsupported chars stripped, English visible.
   lines = ['あつまれ どうぶつの森 = ANIMAL CROSSING']
