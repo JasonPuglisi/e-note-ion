@@ -1313,6 +1313,24 @@ _PROGRESS_WITH_NEXT = {
     'season': 3,
     'number': 1,
     'title': 'Box Cutter',
+    'first_aired': '2000-01-01T00:00:00.000Z',
+  }
+}
+
+_PROGRESS_WITH_UNAIRED = {
+  'next_episode': {
+    'season': 4,
+    'number': 1,
+    'title': 'Future Episode',
+    'first_aired': '2099-12-31T00:00:00.000Z',
+  }
+}
+
+_PROGRESS_WITH_NO_AIR_DATE = {
+  'next_episode': {
+    'season': 5,
+    'number': 1,
+    'title': 'TBA',
   }
 }
 
@@ -1449,4 +1467,43 @@ def test_next_up_cache_expired_raises_unavailable(config_with_tokens: Path, monk
 
   with patch('integrations.trakt.fetch_with_retry', side_effect=requests.ConnectionError()):
     with pytest.raises(IntegrationDataUnavailableError):
+      trakt.get_variables_next_up()
+
+
+def test_get_variables_next_up_skips_unaired_episode(config_with_tokens: Path) -> None:
+  """Unaired next episode is skipped; falls through to the next show."""
+  watched = _mock_watched_ok(_WATCHED_SHOWS_RESPONSE)
+  progress_unaired = _mock_progress_ok(_PROGRESS_WITH_UNAIRED)
+  progress_aired = _mock_progress_ok(_PROGRESS_WITH_NEXT)
+
+  with patch('integrations.trakt.fetch_with_retry', side_effect=[watched, progress_unaired, progress_aired]):
+    result = trakt.get_variables_next_up()
+
+  assert result['show_name'] == [['THE WIRE']]
+  assert result['episode_ref'] == [['S3E1']]
+
+
+def test_get_variables_next_up_skips_no_air_date(config_with_tokens: Path) -> None:
+  """Episode with no first_aired is treated as unaired and skipped."""
+  watched = _mock_watched_ok(_WATCHED_SHOWS_RESPONSE)
+  progress_no_date = _mock_progress_ok(_PROGRESS_WITH_NO_AIR_DATE)
+  progress_aired = _mock_progress_ok(_PROGRESS_WITH_NEXT)
+
+  with patch('integrations.trakt.fetch_with_retry', side_effect=[watched, progress_no_date, progress_aired]):
+    result = trakt.get_variables_next_up()
+
+  assert result['show_name'] == [['THE WIRE']]
+
+
+def test_get_variables_next_up_all_unaired_raises_unavailable(config_with_tokens: Path) -> None:
+  """When all shows have unaired next episodes, raises unavailable."""
+  shows = [
+    {'show': {'title': f'Show {i}', 'ids': {'trakt': i}}, 'last_watched_at': '2099-01-01T00:00:00.000Z'}
+    for i in range(5)
+  ]
+  watched = _mock_watched_ok(shows)
+  progress_unaired = _mock_progress_ok(_PROGRESS_WITH_UNAIRED)
+
+  with patch('integrations.trakt.fetch_with_retry', side_effect=[watched] + [progress_unaired] * 5):
+    with pytest.raises(IntegrationDataUnavailableError, match='No next episode'):
       trakt.get_variables_next_up()
