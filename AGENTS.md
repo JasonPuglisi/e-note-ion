@@ -268,6 +268,11 @@ parameter (for senders like Plex that cannot set custom headers). All
 `handle_webhook` implementations must accept `credential_name: str | None = None`
 as a keyword argument.
 
+Webhook integrations respect the `private` flag from their JSON template
+definition and `config.toml` overrides automatically — the scheduler resolves
+the effective value during content loading and applies it in the worker. No
+integration-level code is needed to propagate the flag.
+
 When adding a new webhook-capable integration, also add its name to
 `_KNOWN_INTEGRATIONS` in `scheduler.py`. If the integration should auto-generate
 a credential on first startup, also add it to `_WEBHOOK_AUTOGEN` in `scheduler.py`.
