@@ -74,7 +74,7 @@ def test_carrier_color(carrier_code: str, expected: str) -> None:
 
 
 def test_detail_out_for_delivery() -> None:
-  assert pc._detail_line(4, '2026-03-18') == 'OUT FOR DELIVERY'
+  assert pc._detail_line(4, '2026-03-18') == 'DELIVERING'
 
 
 def test_detail_today(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -219,7 +219,7 @@ def test_get_variables_out_for_delivery(monkeypatch: pytest.MonkeyPatch) -> None
 
   assert result['status_line'] == [['[B] ON THE WAY']]
   assert result['description'] == [['AMAZON ORDER']]
-  assert result['detail'] == [['OUT FOR DELIVERY']]
+  assert result['detail'] == [['DELIVERING']]
   pc._cache = None
 
 

@@ -62,7 +62,7 @@ def _carrier_color(carrier_code: str) -> str:
 def _detail_line(status_code: int, date_expected: str | None) -> str:
   """Build the detail line (row 3) from status and expected date."""
   if status_code == _OUT_FOR_DELIVERY:
-    return 'OUT FOR DELIVERY'
+    return 'DELIVERING'
   if not date_expected:
     return ''
   try:

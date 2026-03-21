@@ -598,7 +598,7 @@ def get_variables_next_up() -> dict[str, list[list[str]]]:
 
   for entry in shows:
     trakt_id = entry['show']['ids']['trakt']
-    progress_url = f'{_TRAKT_API_BASE}/shows/{trakt_id}/progress/watched'
+    progress_url = f'{_TRAKT_API_BASE}/shows/{trakt_id}/progress/watched?extended=full'
     try:
       r2 = fetch_with_retry('GET', progress_url, headers=_request_headers(token, client_id), timeout=10)
       if r2.status_code == 401:
@@ -617,6 +617,19 @@ def get_variables_next_up() -> dict[str, list[list[str]]]:
 
     ep = r2.json().get('next_episode')
     if ep is not None:
+      # Skip episodes that haven't aired yet — the user can't watch them.
+      first_aired = ep.get('first_aired')
+      if not first_aired:
+        logger.debug('Trakt: next-up episode for %s has no air date — skipping', entry['show']['title'])
+        continue
+      aired_dt = datetime.fromisoformat(first_aired.replace('Z', '+00:00'))
+      if aired_dt > datetime.now(timezone.utc):
+        logger.debug(
+          'Trakt: next-up episode for %s airs %s — skipping (not yet aired)',
+          entry['show']['title'],
+          first_aired,
+        )
+        continue
       show_name, season, number, ep_title = _canonicalize_episode(entry['show'], ep)
       episode_ref = _media.format_episode_ref(season, number)
       episode_title = _media.strip_leading_article_if_needed(ep_title.upper(), _vb.model.cols, f'{episode_ref} ')
