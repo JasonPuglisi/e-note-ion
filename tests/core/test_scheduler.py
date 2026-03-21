@@ -676,6 +676,52 @@ def test_load_file_private_json_field_sets_data_flag(sched: BackgroundScheduler,
   assert jobs[0].args[1].get('private') is True
 
 
+def _make_webhook_private_content(*, private: bool = True) -> dict[str, Any]:
+  template: dict[str, Any] = {
+    'webhook': True,
+    'schedule': {'hold': 60, 'timeout': 30},
+    'priority': 8,
+    'integration': 'plex',
+    'templates': [{'format': ['TEST']}],
+  }
+  if private:
+    template['private'] = True
+  return {'templates': {'now_playing': template}}
+
+
+def test_load_file_webhook_private_populates_dict(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  monkeypatch.setattr(_mod, '_webhook_private', {})
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_webhook_private_content(private=True)))
+  _mod._load_file(sched, f)
+  assert _mod._webhook_private.get('plex') is True
+
+
+def test_load_file_webhook_non_private_not_in_dict(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  monkeypatch.setattr(_mod, '_webhook_private', {})
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_webhook_private_content(private=False)))
+  _mod._load_file(sched, f)
+  assert not _mod._webhook_private.get('plex')
+
+
+def test_load_file_webhook_private_override_false(
+  sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  import config as _cfg
+
+  monkeypatch.setattr(_mod, '_webhook_private', {})
+  monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'now_playing': {'private': False}}}})
+  f = tmp_path / 'test.json'
+  f.write_text(json.dumps(_make_webhook_private_content(private=True)))
+  _mod._load_file(sched, f)
+  assert not _mod._webhook_private.get('plex')
+
+
 # --- worker ---
 
 
@@ -711,6 +757,37 @@ def test_worker_skips_private_message_in_public_mode() -> None:
 def test_worker_shows_private_message_in_normal_mode() -> None:
   msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
   msg.data['private'] = True
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch('public.is_public', return_value=False),
+    patch('integrations.vestaboard.set_state'),
+    patch('time.sleep'),
+    patch.object(_mod, '_hold_interrupt'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+
+
+def test_worker_skips_webhook_private_message_in_public_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Webhook messages from private integrations are skipped in public mode."""
+  monkeypatch.setattr(_mod, '_webhook_private', {'plex': True})
+  msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  msg.name = 'webhook.plex'
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch('public.is_public', return_value=True),
+    patch('integrations.vestaboard.set_state') as mock_set,
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+  mock_set.assert_not_called()
+
+
+def test_worker_shows_webhook_private_message_in_normal_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Webhook messages from private integrations are shown when public mode is off."""
+  monkeypatch.setattr(_mod, '_webhook_private', {'plex': True})
+  msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  msg.name = 'webhook.plex'
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
     patch('public.is_public', return_value=False),

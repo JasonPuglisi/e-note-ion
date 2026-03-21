@@ -93,6 +93,11 @@ _KNOWN_INTEGRATIONS: frozenset[str] = frozenset(
 # Cache of loaded integration modules, keyed by name.
 _integrations: dict[str, Any] = {}
 
+# Resolved private flags for webhook-capable integrations, populated by
+# _load_file.  The webhook handler checks this to set data['private'] so
+# individual integrations don't need to propagate the flag themselves.
+_webhook_private: dict[str, bool] = {}
+
 
 def _get_integration(name: str) -> Any:
   if name not in _KNOWN_INTEGRATIONS:
@@ -412,7 +417,10 @@ def worker() -> None:
     if message is None:
       continue
 
-    if _public_mod.is_public() and message.data.get('private'):
+    is_private = message.data.get('private')
+    if not is_private and message.name.startswith('webhook.'):
+      is_private = _webhook_private.get(message.name.removeprefix('webhook.'), False)
+    if _public_mod.is_public() and is_private:
       logger.debug('Skipping %s — private content hidden in public mode', message.name)
       continue
 
@@ -968,6 +976,8 @@ def _load_file(
       data['integration_fn'] = template['integration_fn']
     schedule = template['schedule']
     is_webhook = bool(template.get('webhook', False))
+    if is_webhook and 'integration' in template:
+      _webhook_private[template['integration']] = _webhook_private.get(template['integration'], False) or private
     has_cron = isinstance(schedule.get('cron'), str) and bool(schedule['cron'].strip())
     if is_webhook and not has_cron:
       webhook_only_jobs.append((f'{stem}.{template_name}', priority, data, schedule))
