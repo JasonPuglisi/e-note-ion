@@ -23,6 +23,9 @@ _INTEGRATION_VARS: list[tuple[str, str]] = [
   ('UPTIMEROBOT_API_KEY', 'UptimeRobot integration'),
   ('YNAB_API_KEY', 'YNAB integration'),
   ('YNAB_BUDGET_ID', 'YNAB integration (optional — auto-detected for single-budget accounts)'),
+  ('GOOGLE_CLIENT_ID', 'YouTube integration (Google OAuth)'),
+  ('GOOGLE_CLIENT_SECRET', 'YouTube integration (Google OAuth)'),
+  ('GOOGLE_REFRESH_TOKEN', 'YouTube integration (Google OAuth)'),
 ]
 
 _skipped = 0

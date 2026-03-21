@@ -359,10 +359,22 @@ def test_get_token_refresh_failure_raises_unavailable_not_http_error(
 # --- _handle_api_401 ---
 
 
-def test_handle_api_401_refreshes_and_returns_new_token(
+def test_handle_api_401_skips_refresh_when_token_not_expired(
   config_with_tokens: Path,
 ) -> None:
-  """_handle_api_401 calls _refresh_token and returns the updated access token."""
+  """_handle_api_401 treats the 401 as transient when expires_at is far in the future."""
+  with patch.object(trakt, '_refresh_token') as mock_refresh:
+    with pytest.raises(IntegrationDataUnavailableError, match='transient 401'):
+      trakt._handle_api_401()
+
+  mock_refresh.assert_not_called()
+
+
+def test_handle_api_401_refreshes_when_token_near_expiry(
+  config_with_tokens: Path,
+) -> None:
+  """_handle_api_401 refreshes when expires_at is within the grace window."""
+  _cfg._config['trakt']['expires_at'] = int(time.time()) + 600  # 10 min — within 1h grace
 
   def fake_refresh() -> None:
     _cfg._config['trakt']['access_token'] = 'refreshed-token'
@@ -377,6 +389,7 @@ def test_handle_api_401_refresh_failure_clears_tokens_and_triggers_reauth(
   config_with_tokens: Path,
 ) -> None:
   """_handle_api_401 clears tokens and starts re-auth when refresh fails."""
+  _cfg._config['trakt']['expires_at'] = int(time.time()) + 600  # near-expiry to trigger refresh path
   mock_resp = MagicMock()
   mock_resp.status_code = 400
   mock_resp.reason = 'Bad Request'
@@ -391,7 +404,9 @@ def test_handle_api_401_refresh_failure_clears_tokens_and_triggers_reauth(
 
 
 def test_get_variables_calendar_401_retries_with_refreshed_token(config_with_tokens: Path) -> None:
-  """A 401 from the calendar endpoint triggers a token refresh and retries."""
+  """A 401 from the calendar endpoint triggers a token refresh and retries when near expiry."""
+  _cfg._config['trakt']['expires_at'] = int(time.time()) + 600  # near-expiry
+
   unauth = MagicMock()
   unauth.status_code = 401
 
@@ -411,7 +426,9 @@ def test_get_variables_calendar_401_retries_with_refreshed_token(config_with_tok
 
 
 def test_get_variables_watching_401_retries_with_refreshed_token(config_with_tokens: Path) -> None:
-  """A 401 from the watching endpoint triggers a token refresh and retries."""
+  """A 401 from the watching endpoint triggers a token refresh and retries when near expiry."""
+  _cfg._config['trakt']['expires_at'] = int(time.time()) + 600  # near-expiry
+
   unauth = MagicMock()
   unauth.status_code = 401
 
@@ -435,7 +452,9 @@ def test_get_variables_watching_401_retries_with_refreshed_token(config_with_tok
 
 
 def test_get_variables_next_up_401_retries_with_refreshed_token(config_with_tokens: Path) -> None:
-  """A 401 from the watched/shows endpoint triggers a token refresh and retries."""
+  """A 401 from the watched/shows endpoint triggers a token refresh and retries when near expiry."""
+  _cfg._config['trakt']['expires_at'] = int(time.time()) + 600  # near-expiry
+
   unauth = MagicMock()
   unauth.status_code = 401
 

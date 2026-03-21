@@ -1,0 +1,24 @@
+{
+  "templates": {
+    "live": {
+      "schedule": {
+        "cron": "45 12,20 * * *",
+        "hold": 300,
+        "timeout": 3600
+      },
+      "priority": 4,
+      "private": true,
+      "truncation": "ellipsis",
+      "integration": "youtube",
+      "templates": [
+        {
+          "format": [
+            "[R] STREAMING",
+            "{channel}",
+            "{title}"
+          ]
+        }
+      ]
+    }
+  }
+}

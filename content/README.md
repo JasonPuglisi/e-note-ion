@@ -161,6 +161,7 @@ appropriate priority range and informs scheduling decisions:
 | `qbittorrent.status` | Hobbies | 3 |
 | `unraid.status` | Hobbies | 3 |
 | `ynab.net_worth` | Hobbies | 3 |
+| `youtube.live` | Entertainment | 4 |
 | `morning_night.good_morning`, `morning_night.good_morning_september`, `morning_night.good_night` | Ambient | 4 |
 
 When adding a new template, identify its category first — that gives you the
@@ -260,6 +261,7 @@ new integrations in overnight windows unless there's a specific reason
 | `21:00` daily | `morning_night.good_night` | Ambient | 4 | 300 s | 3600 s | Moon phase visual; queues behind weather |
 | `*/5` 07–09 Mon–Fri | `bart.departures` | Logistics | 8 | 290 s | 60 s | Refresh 60 s; dominates weekday mornings |
 | `*/3` 07–23 daily | `trakt.watching` | Entertainment | 7 | 180 s | 120 s | Refresh 30 s; no-op when not watching |
+| `:45` at 12/20 | `youtube.live` | Entertainment | 4 | 300 s | 3600 s | Private; no-op when nothing live |
 | webhook only | `plex` (3 templates) | Entertainment | 8 | 14400 / 60 s | 30 s | Private; indefinite semantics (14400 s = 4 h safety ceiling); interrupts on state change |
 | webhook only | `message.notification` | Social | 8 | 120 s | 600 s | Queues normally; shows at next hold break |
 | webhook only | `notion.notification` | Social | 7 | 120 s | 120 s | |
@@ -413,3 +415,4 @@ guidelines above.
 | [`uptimerobot.json`](contrib/uptimerobot.md) | Service outage alerts from UptimeRobot (API polling) |
 | [`weather.json`](contrib/weather.md) | Current weather conditions via Open-Meteo |
 | [`ynab.json`](contrib/ynab.md) | Net worth tracker from YNAB (You Need A Budget) |
+| [`youtube.json`](contrib/youtube.md) | Live streams from YouTube subscriptions |

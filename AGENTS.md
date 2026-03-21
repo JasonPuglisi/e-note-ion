@@ -74,6 +74,7 @@ integrations/morning.py     # Morning weather visual grid (optional; falls back 
 integrations/calendar.py    # Today's calendar events (ICS feeds + iCloud CalDAV)
 integrations/bart.py        # BART real-time departures integration
 integrations/discogs.py     # Daily vinyl suggestion from Discogs collection
+integrations/google.py      # Shared Google OAuth 2.0 device code flow (used by youtube)
 integrations/trakt.py       # Trakt.tv calendar and now-playing (OAuth device flow)
 integrations/diving.py      # Scuba diving conditions and days-since-last-dive (webhook)
 integrations/plex.py        # Plex Media Server now-playing via webhook
@@ -88,6 +89,7 @@ integrations/tmdb.py        # TMDb metadata lookups (used by plex, trakt)
 integrations/unraid.py      # Unraid server status (GraphQL API, local network)
 integrations/uptimerobot.py # UptimeRobot service outage alerts (REST API, free tier)
 integrations/ynab.py        # YNAB net worth tracker (REST API, personal access token)
+integrations/youtube.py     # YouTube live streams from subscriptions (RSS + Data API v3)
 content/
   README.md                 # Content author reference: JSON format, priority, schedule coordination
   DESIGN.md                 # Visual/design conventions: layout, color, tone, character set
@@ -110,6 +112,7 @@ content/
     unraid.json / .md       # Unraid server status
     uptimerobot.json / .md  # UptimeRobot service outage alerts (API polling)
     ynab.json / .md         # YNAB net worth tracker
+    youtube.json / .md      # YouTube live streams from subscriptions
   user/                     # Personal content (always loaded, git-ignored)
 docs/
   webhook-reverse-proxy.md  # Webhook TLS setup guide (Cloudflare Tunnel, reverse proxy)
@@ -365,14 +368,15 @@ come from GitHub secrets env vars directly.
   - Parcel: `PARCEL_API_KEY`
   - UptimeRobot: `UPTIMEROBOT_API_KEY`
   - YNAB: `YNAB_API_KEY` (required), `YNAB_BUDGET_ID` (optional — auto-detected for single-budget accounts)
+  - YouTube: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`
 - CI runs the `integration` job on `main` pushes only; it is advisory
   (`continue-on-error: true`) and not required by the branch ruleset
 - GitHub secrets/vars needed — store as **environment secrets** (or vars) on the
   `integration` environment (Settings → Environments), restricted to the `main`
   branch; this scopes them tighter than repo secrets and prevents any PR branch
   from accessing them even if a workflow runs there:
-  - Secrets: `VESTABOARD_VIRTUAL_API_KEY`, `CALENDAR_URL`, `CALENDAR_CALDAV_URL`, `CALENDAR_USERNAME`, `CALENDAR_PASSWORD`, `CALENDAR_CARDDAV_URL`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `TMDB_API_READ_ACCESS_TOKEN`, `DISCOGS_TOKEN`, `PARCEL_API_KEY`, `UPTIMEROBOT_API_KEY`, `YNAB_API_KEY`, `YNAB_BUDGET_ID`
-  - Variables: `TRAKT_CLIENT_ID` (non-sensitive); `DIVING_NDBC_STATION`, `DIVING_LAT`, `DIVING_LON` (public NOAA station and coordinates)
+  - Secrets: `VESTABOARD_VIRTUAL_API_KEY`, `CALENDAR_URL`, `CALENDAR_CALDAV_URL`, `CALENDAR_USERNAME`, `CALENDAR_PASSWORD`, `CALENDAR_CARDDAV_URL`, `BART_API_KEY`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, `TMDB_API_READ_ACCESS_TOKEN`, `DISCOGS_TOKEN`, `PARCEL_API_KEY`, `UPTIMEROBOT_API_KEY`, `YNAB_API_KEY`, `YNAB_BUDGET_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`
+  - Variables: `TRAKT_CLIENT_ID` (non-sensitive); `DIVING_NDBC_STATION`, `DIVING_LAT`, `DIVING_LON` (public NOAA station and coordinates); `GOOGLE_CLIENT_ID` (non-sensitive)
 - If any integration test is skipped, the pytest session exits with code 5
   (NO_TESTS_COLLECTED), making the advisory job visibly fail rather than silently pass
 - When adding a new integration, also add `tests/integrations/test_<name>_integration.py`,
@@ -403,6 +407,7 @@ prevention here — not just a one-off fix. See #65 for extended notes.
    ```
 9. **Integration test hygiene** — advisory CI job passing on `main`; GitHub environment secrets/vars match the lists above and in `ci.yml`; new integrations have `test_<name>_integration.py` and env vars in `tests/integrations/conftest.py`
    - **`TRAKT_ACCESS_TOKEN` expires every ~90 days** — if the Trakt integration tests start failing with an auth error, copy the current `access_token` from `config.toml` (kept fresh by the prod refresh flow) into the `integration` environment secret
+   - **`GOOGLE_REFRESH_TOKEN`**: In Production mode (recommended), refresh tokens do not expire. In Testing mode, they expire after 7 days (Google-imposed constraint). The YouTube integration test obtains a fresh access token via refresh at runtime.
 10. **Issue hygiene**:
     - Every open issue has at least one label and a milestone; no untriaged issues
     - Blocking relationships explicit ("Blocked by #X" in body)
