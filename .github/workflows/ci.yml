@@ -116,3 +116,6 @@ jobs:
           UPTIMEROBOT_API_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
           YNAB_API_KEY: ${{ secrets.YNAB_API_KEY }}
           YNAB_BUDGET_ID: ${{ secrets.YNAB_BUDGET_ID }}
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}

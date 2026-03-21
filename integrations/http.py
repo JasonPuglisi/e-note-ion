@@ -41,20 +41,24 @@ def fetch_with_retry(
   *,
   retries: int = 3,
   backoff: float = 1.0,
+  retry_on: frozenset[int] = frozenset(),
   **kwargs: Any,
 ) -> requests.Response:
   """Send an HTTP request, retrying on transient failures.
 
   Retries on 5xx HTTP responses and network-level errors (Timeout,
   ConnectionError). Does not retry on 4xx — those are client errors that
-  retrying will not resolve. Raises on the final attempt like requests would.
+  retrying will not resolve — unless the status code appears in *retry_on*.
+  Raises on the final attempt like requests would.
 
   Args:
-    method:  HTTP method string ('GET', 'POST', etc.).
-    url:     Request URL.
-    retries: Maximum number of attempts (default 3 — one initial + two retries).
-    backoff: Base delay in seconds; actual delay is backoff * 2**attempt
-             (0s before attempt 0, 1s before attempt 1, 2s before attempt 2).
+    method:   HTTP method string ('GET', 'POST', etc.).
+    url:      Request URL.
+    retries:  Maximum number of attempts (default 3 — one initial + two retries).
+    backoff:  Base delay in seconds; actual delay is backoff * 2**attempt
+              (0s before attempt 0, 1s before attempt 1, 2s before attempt 2).
+    retry_on: Extra status codes to treat as retryable (e.g. YouTube RSS uses
+              404 as a rate-limit signal).
     **kwargs: Passed through to requests.request (e.g. params, headers, timeout).
   """
   last_exc: Exception | None = None
@@ -66,7 +70,7 @@ def fetch_with_retry(
       time.sleep(delay)
     try:
       r = requests.request(method, url, **kwargs)
-      if r.status_code >= 500:
+      if r.status_code >= 500 or r.status_code in retry_on:
         last_exc = requests.HTTPError(f'HTTP {r.status_code} {r.reason}', response=r)
         continue
       return r

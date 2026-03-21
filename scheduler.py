@@ -87,6 +87,7 @@ _KNOWN_INTEGRATIONS: frozenset[str] = frozenset(
     'uptimerobot',
     'weather',
     'ynab',
+    'youtube',
   }
 )
 

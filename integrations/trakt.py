@@ -56,6 +56,13 @@ _watching_lock = threading.Lock()
 _calendar_cache: CacheEntry | None = None
 _CALENDAR_CACHE_TTL = 3600  # 1 hour
 
+# Grace window for 401-triggered refreshes. If expires_at is more than this
+# far in the future, the token hasn't genuinely expired — the 401 is a
+# transient API glitch and re-refreshing just rotates tokens unnecessarily.
+# _get_token() already proactively refreshes at 24 hours before expiry, so
+# any 401 with a non-expired token is almost certainly transient.
+_401_EXPIRY_GRACE = 3600  # 1 hour — allows for mild clock skew
+
 # Cache for next-up data (last show in progress from watch history).
 _next_up_cache: CacheEntry | None = None
 _NEXT_UP_CACHE_TTL = 3600  # 1 hour
@@ -171,14 +178,34 @@ def _request_headers(access_token: str, client_id: str) -> dict[str, str]:
 def _handle_api_401() -> str:
   """Called when a Trakt API request returns 401.
 
-  Attempts a token refresh. If the refresh succeeds, returns the new access
-  token so the caller can retry the request. If the refresh fails (e.g. token
-  revoked), clears stored tokens, starts re-auth, and raises
-  IntegrationDataUnavailableError so the worker skips this cycle gracefully.
+  Checks whether the stored token has genuinely expired before refreshing.
+  _get_token() already proactively refreshes 24 hours before expiry, so a 401
+  with a still-valid token is almost certainly a transient API glitch. Only
+  refresh if expires_at is within _401_EXPIRY_GRACE seconds of now (allowing
+  for mild clock skew).
+
+  Returns the new access token on successful refresh so the caller can retry.
+  Raises IntegrationDataUnavailableError if the 401 is transient (no refresh
+  needed) or if the refresh fails.
   """
   import config as _config_mod
 
-  logger.warning('Trakt: received 401 — attempting token refresh')
+  expires_at_str = _config_mod.get_optional('trakt', 'expires_at')
+  if expires_at_str:
+    try:
+      expires_at = int(expires_at_str)
+    except ValueError:
+      pass  # malformed — fall through to refresh
+    else:
+      secs_remaining = expires_at - time.time()
+      if secs_remaining > _401_EXPIRY_GRACE:
+        logger.warning(
+          'Trakt: received 401 but token expires in %.0fs — treating as transient (skipping refresh)',
+          secs_remaining,
+        )
+        raise IntegrationDataUnavailableError('Trakt: transient 401 — token still valid, skipping refresh')
+
+  logger.warning('Trakt: received 401 with expired/near-expiry token — attempting refresh')
   try:
     _refresh_token()
   except requests.HTTPError as e:

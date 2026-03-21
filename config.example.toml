@@ -262,6 +262,26 @@ api_key = "your-unraid-api-key"
 # https://www.themoviedb.org/settings/api (under "API Read Access Token").
 # api_read_access_token = "your-tmdb-api-read-access-token"
 
+[google]
+# Shared Google OAuth credentials — used by all Google API integrations (YouTube, etc.).
+# Create a Google Cloud project, enable the APIs you need, then create an OAuth 2.0
+# client ID of type "TVs and Limited Input devices" in the Credentials page.
+# For personal use, the app can stay in "Testing" mode (no verification needed).
+client_id = "your-google-oauth-client-id"
+client_secret = "your-google-oauth-client-secret"
+
+# Written by the auth flow — do not edit manually.
+# Start the container, check logs for auth instructions, then approve in a browser.
+# access_token = "..."
+# refresh_token = "..."
+# expires_at = 1234567890
+
+# [youtube.schedules.live]
+# cron = "45 12,20 * * *"
+# hold = 300
+# timeout = 3600
+# priority = 4
+
 [trakt]
 # OAuth credentials — create an application at https://trakt.tv/oauth/applications/new
 # Set Redirect URI to: urn:ietf:wg:oauth:2.0:oob
