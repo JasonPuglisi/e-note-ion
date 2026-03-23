@@ -116,20 +116,6 @@ def test_wrap_color_invalid() -> None:
     calendar._wrap_color('purple')
 
 
-def test_nearest_color_tag_red() -> None:
-  # Apple red #FF2D30FF → nearest is R
-  assert calendar._nearest_color_tag('#FF2D30FF') == '[R]'
-
-
-def test_nearest_color_tag_blue() -> None:
-  assert calendar._nearest_color_tag('#007AFF') == '[B]'
-
-
-def test_nearest_color_tag_strips_alpha() -> None:
-  # With and without alpha should resolve to the same color
-  assert calendar._nearest_color_tag('#52C755FF') == calendar._nearest_color_tag('#52C755')
-
-
 def test_ics_calendar_color_parsed() -> None:
   cal = Calendar()
   cal.add('X-APPLE-CALENDAR-COLOR', '#007AFFFF')
@@ -408,27 +394,6 @@ def test_get_variables_raises_cold_start_failure(ical_config_ics: None) -> None:
   with patch('integrations.calendar.fetch_with_retry', side_effect=req.ConnectionError('down')):
     with pytest.raises(IntegrationDataUnavailableError, match='fetch failed'):
       calendar._fetch_ics_bytes('https://example.com/cal.ics')
-
-
-# ── CalDAV color ───────────────────────────────────────────────────────────────
-
-
-def test_nearest_color_tag_apple_red() -> None:
-  """Apple's default red #FF2D55FF maps to [R]."""
-  assert calendar._nearest_color_tag('#FF2D55FF') == '[R]'
-
-
-def test_nearest_color_tag_apple_green() -> None:
-  """Apple's default green #34C759FF maps to [G]."""
-  assert calendar._nearest_color_tag('#34C759FF') == '[G]'
-
-
-def test_nearest_color_tag_white() -> None:
-  assert calendar._nearest_color_tag('#FFFFFFFF') == '[W]'
-
-
-def test_nearest_color_tag_black() -> None:
-  assert calendar._nearest_color_tag('#000000FF') == '[K]'
 
 
 # ── Both modes simultaneously ──────────────────────────────────────────────────

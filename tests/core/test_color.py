@@ -160,6 +160,38 @@ def test_dominant_color_tag_warm_neutral_maps_to_achromatic() -> None:
   assert tag not in ('[O]', '[Y]')
 
 
+# --- hex_to_color_tag ---
+
+
+def test_hex_to_color_tag_red() -> None:
+  assert color_mod.hex_to_color_tag('#FF2D30FF') == '[R]'
+
+
+def test_hex_to_color_tag_blue() -> None:
+  assert color_mod.hex_to_color_tag('#007AFF') == '[B]'
+
+
+def test_hex_to_color_tag_green() -> None:
+  assert color_mod.hex_to_color_tag('#34C759FF') == '[G]'
+
+
+def test_hex_to_color_tag_white() -> None:
+  assert color_mod.hex_to_color_tag('#FFFFFFFF') == '[W]'
+
+
+def test_hex_to_color_tag_black() -> None:
+  assert color_mod.hex_to_color_tag('#000000FF') == '[K]'
+
+
+def test_hex_to_color_tag_strips_alpha() -> None:
+  assert color_mod.hex_to_color_tag('#52C755FF') == color_mod.hex_to_color_tag('#52C755')
+
+
+def test_hex_to_color_tag_apple_red() -> None:
+  """Apple's default red #FF2D55FF maps to [R]."""
+  assert color_mod.hex_to_color_tag('#FF2D55FF') == '[R]'
+
+
 # --- fetch_cover_color ---
 
 
