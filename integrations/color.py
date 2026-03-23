@@ -1,9 +1,13 @@
 # integrations/color.py
 #
-# Shared utility: derive the dominant color from image bytes and map it to the
-# nearest Vestaboard color square tag.
+# Shared color utilities: map colors to the nearest Vestaboard color square tag.
 #
-# Used by: integrations/discogs.py (album art), and future music integrations.
+# - hex_to_color_tag(): map a hex color string (#RRGGBB / #RRGGBBAA) to a tag
+# - dominant_color_tag(): derive the dominant color from image bytes
+# - fetch_cover_color(): fetch an image URL and return its dominant color tag
+#
+# Used by: integrations/calendar.py (ICS/CalDAV calendar colors),
+#          integrations/discogs.py (album art).
 #
 # Color extraction approach:
 #   1. Decode the image with Pillow, convert to RGB, and resize to at most
@@ -199,6 +203,43 @@ def _kmeans_dominant(pixels: list[tuple[float, float, float]]) -> tuple[float, f
   return centroids[largest]
 
 
+def _oklab_to_tag(L: float, a: float, b: float) -> str:
+  """Classify an Oklab color as the nearest Vestaboard color tag.
+
+  Computes OKLCH chroma from the (a, b) components. Achromatic colors
+  (chroma < _CHROMA_THRESHOLD) map to [W] or [K] by lightness; chromatic
+  colors map to the nearest _CHROMATIC_PALETTE entry by circular hue distance.
+  """
+  chroma = math.sqrt(a**2 + b**2)
+
+  if chroma < _CHROMA_THRESHOLD:
+    tag = '[W]' if L >= _WHITE_L_THRESHOLD else '[K]'
+    logger.debug('color: Oklab L=%.3f C=%.3f → achromatic %s', L, chroma, tag)
+  else:
+    hue = math.degrees(math.atan2(b, a)) % 360
+    tag = min(
+      _CHROMATIC_PALETTE,
+      key=lambda entry: min(abs(entry[0] - hue), 360 - abs(entry[0] - hue)),
+    )[1]
+    logger.debug('color: Oklab L=%.3f C=%.3f hue=%.1f° → %s', L, chroma, hue, tag)
+
+  return tag
+
+
+def hex_to_color_tag(hex_color: str) -> str:
+  """Return the nearest Vestaboard color tag for a hex color string.
+
+  Accepts ``#RRGGBB`` or ``#RRGGBBAA`` (Apple's format — alpha is ignored).
+  Converts to Oklab and classifies via OKLCH hue/chroma/lightness.
+  """
+  hex_color = hex_color.strip().lstrip('#')
+  r = int(hex_color[0:2], 16)
+  g = int(hex_color[2:4], 16)
+  b = int(hex_color[4:6], 16)
+  L, a, b_val = _rgb_to_oklab(r, g, b)
+  return _oklab_to_tag(L, a, b_val)
+
+
 def dominant_color_tag(image_bytes: bytes, *, fallback: str = '[Y]') -> str:
   """Return the Vestaboard color tag for the dominant color in the image.
 
@@ -244,23 +285,7 @@ def dominant_color_tag(image_bytes: bytes, *, fallback: str = '[Y]') -> str:
   # Find dominant color via k-means in Oklab, scored by population × chroma.
   L, a, b_val = _kmeans_dominant(oklab_pixels)
 
-  # Compute OKLCH chroma to decide chromatic vs achromatic.
-  chroma = math.sqrt(a**2 + b_val**2)
-
-  if chroma < _CHROMA_THRESHOLD:
-    # Achromatic: choose [W] or [K] by Oklab lightness.
-    tag = '[W]' if L >= _WHITE_L_THRESHOLD else '[K]'
-    logger.debug('color: Oklab L=%.3f C=%.3f → achromatic %s', L, chroma, tag)
-  else:
-    # Chromatic: compute OKLCH hue angle and find nearest palette entry.
-    hue = math.degrees(math.atan2(b_val, a)) % 360
-    tag = min(
-      _CHROMATIC_PALETTE,
-      key=lambda entry: min(abs(entry[0] - hue), 360 - abs(entry[0] - hue)),
-    )[1]
-    logger.debug('color: Oklab L=%.3f C=%.3f hue=%.1f° → %s', L, chroma, hue, tag)
-
-  return tag
+  return _oklab_to_tag(L, a, b_val)
 
 
 def fetch_cover_color(url: str, *, fallback: str = '[Y]') -> str:

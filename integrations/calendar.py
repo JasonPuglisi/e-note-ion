@@ -37,7 +37,6 @@
 # raises IntegrationDataUnavailableError immediately if carddav_url is absent.
 
 import logging
-import math
 import time
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -50,24 +49,12 @@ from icalendar import Calendar
 from icalendar.cal import Component
 
 from exceptions import IntegrationDataUnavailableError
+from integrations.color import hex_to_color_tag
 from integrations.http import fetch_with_retry
 
 logger = logging.getLogger(__name__)
 
-# Approximate sRGB values for each Vestaboard color letter. Used for
-# nearest-color matching when reading hex color values from ICS/CalDAV data.
-_COLOR_RGB: dict[str, tuple[int, int, int]] = {
-  'R': (255, 59, 48),
-  'O': (255, 149, 0),
-  'Y': (255, 204, 0),
-  'G': (52, 199, 89),
-  'B': (0, 122, 255),
-  'V': (175, 82, 222),
-  'W': (255, 255, 255),
-  'K': (0, 0, 0),
-}
-
-_VALID_COLORS = frozenset(_COLOR_RGB)
+_VALID_COLORS = frozenset('ROYGBVWK')
 
 # Per-URL ICS bytes cache: url → (raw_bytes, monotonic_fetch_time).
 _ics_cache: dict[str, tuple[bytes, float]] = {}
@@ -106,27 +93,6 @@ def _wrap_color(letter: str) -> str:
   if upper not in _VALID_COLORS:
     raise ValueError(f'Invalid calendar color {letter!r} — valid options: R, O, Y, G, B, V, W, K')
   return f'[{upper}]'
-
-
-def _nearest_color_tag(hex_color: str) -> str:
-  """Return the nearest Vestaboard color tag for a hex color string.
-
-  Accepts #RRGGBB or #RRGGBBAA (Apple's format). Alpha channel is ignored.
-  Finds the closest color by Euclidean distance in RGB space.
-  """
-  hex_color = hex_color.strip().lstrip('#')
-  r = int(hex_color[0:2], 16)
-  g = int(hex_color[2:4], 16)
-  b = int(hex_color[4:6], 16)
-
-  best_letter = 'W'
-  best_dist = float('inf')
-  for letter, (cr, cg, cb) in _COLOR_RGB.items():
-    dist = math.sqrt((r - cr) ** 2 + (g - cg) ** 2 + (b - cb) ** 2)
-    if dist < best_dist:
-      best_dist = dist
-      best_letter = letter
-  return f'[{best_letter}]'
 
 
 # ── Timezone ───────────────────────────────────────────────────────────────────
@@ -186,7 +152,7 @@ def _ics_calendar_color(cal: Calendar) -> str | None:
   if not raw:
     return None
   try:
-    return _nearest_color_tag(str(raw))
+    return hex_to_color_tag(str(raw))
   except ValueError, IndexError:
     return None
 
@@ -371,7 +337,7 @@ def _get_caldav_calendars(
       props = cal.get_properties([caldav_ical.CalendarColor()])
       raw_color = props.get('{http://apple.com/ns/ical/}calendar-color') if props else None
       if raw_color:
-        color_tag = _nearest_color_tag(str(raw_color))
+        color_tag = hex_to_color_tag(str(raw_color))
     except Exception:  # noqa: BLE001  # nosec B110 — color is optional; CalDAV property fetch may fail on non-Apple servers
       pass
 
