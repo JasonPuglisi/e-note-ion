@@ -2028,6 +2028,37 @@ def test_do_hold_non_indefinite_unchanged() -> None:
   assert time.monotonic() - start >= 1.9
 
 
+def test_do_hold_quiet_to_wake_sends_virtual_state() -> None:
+  """When quiet mode deactivates during a hold, virtual state is sent to
+  the board immediately without breaking the hold."""
+  import quiet as quiet_mod
+
+  grid = [[8, 5, 12, 12, 15] + [0] * 10] * 3
+  quiet_mod._active = True
+  quiet_mod._virtual_state = grid
+  message = _make_message(priority=5, hold=3)
+  _mod._hold_interrupt.clear()
+
+  # Deactivate quiet after 1s so the hold detects the transition mid-hold
+  t = threading.Timer(1.0, lambda: setattr(quiet_mod, '_active', False))
+  t.start()
+  try:
+    with patch('integrations.vestaboard.set_state_raw') as mock_raw:
+      start = time.monotonic()
+      _mod._do_hold(message, min_hold=0)
+      elapsed = time.monotonic() - start
+    # Hold ran to completion (not broken by wake)
+    assert elapsed >= 2.5, f'Expected full hold, got {elapsed:.2f}s'
+    # Virtual state was sent to the board during the hold
+    mock_raw.assert_called_once_with(grid)
+    # Virtual state was consumed
+    assert quiet_mod.get_virtual_state() is None
+  finally:
+    t.cancel()
+    quiet_mod._active = False
+    quiet_mod._virtual_state = None
+
+
 # --- enqueue: indefinite ---
 
 
@@ -2243,6 +2274,7 @@ def test_worker_quiet_mode_stores_virtual_state() -> None:
     with (
       patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
       patch('integrations.vestaboard.set_state') as mock_set_state,
+      patch.object(_mod, '_do_hold'),
     ):
       with pytest.raises(KeyboardInterrupt):
         _mod.worker()
@@ -2255,23 +2287,27 @@ def test_worker_quiet_mode_stores_virtual_state() -> None:
     quiet_mod._virtual_state = None
 
 
-def test_worker_quiet_mode_skips_hold() -> None:
-  """During quiet mode, worker should not hold — it processes messages
-  immediately and moves to the next one."""
+def test_worker_quiet_mode_holds_like_wake() -> None:
+  """During quiet mode, worker still runs _do_hold so priority protection
+  prevents lower-priority messages from overwriting virtual state."""
   import quiet as quiet_mod
 
-  msg1 = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
-  msg1.name = 'first'
-  msg2 = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
-  msg2.name = 'second'
-  msg2.seq = 1
+  msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  hold_called: list[bool] = []
+
+  def _fake_do_hold(m: Any, min_hold: Any, **kw: Any) -> None:
+    hold_called.append(True)
+
   quiet_mod._active = True
   quiet_mod._virtual_state = None
   try:
-    with patch.object(_mod, 'pop_valid_message', side_effect=[msg1, msg2, KeyboardInterrupt()]):
+    with (
+      patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+      patch.object(_mod, '_do_hold', side_effect=_fake_do_hold),
+    ):
       with pytest.raises(KeyboardInterrupt):
         _mod.worker()
-    # Both messages processed without hold — virtual state is from the second
+    assert hold_called, '_do_hold must be called in quiet mode'
     assert quiet_mod.get_virtual_state() is not None
   finally:
     quiet_mod._active = False
