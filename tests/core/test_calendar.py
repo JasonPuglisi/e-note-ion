@@ -25,10 +25,10 @@ def reset_caches() -> Generator[None, None, None]:
 @pytest.fixture()
 def ical_config_ics(monkeypatch: pytest.MonkeyPatch) -> None:
   """Patch config with a minimal ICS-mode ical section."""
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'calendar': {'urls': ['https://example.com/cal.ics']}, 'scheduler': {}},
   )
@@ -37,10 +37,10 @@ def ical_config_ics(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture()
 def ical_config_ics_two_urls(monkeypatch: pytest.MonkeyPatch) -> None:
   """Patch config with two ICS URLs, each with a color."""
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'calendar': {
@@ -176,9 +176,9 @@ def test_get_variables_all_day_no_time_prefix(ical_config_ics: None) -> None:
 
 
 def test_get_variables_apple_color_auto_detected(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'calendar': {'urls': ['https://example.com/cal.ics']}, 'scheduler': {}})
+  monkeypatch.setattr(_config_mod, '_config', {'calendar': {'urls': ['https://example.com/cal.ics']}, 'scheduler': {}})
   ics = _make_ics_with_cal_color([_future_event('WORK MEETING')], '#007AFFFF')  # blue
   with patch('integrations.calendar._fetch_ics_bytes', return_value=ics):
     with patch('integrations.calendar._display_tz', return_value=_UTC):
@@ -189,10 +189,10 @@ def test_get_variables_apple_color_auto_detected(monkeypatch: pytest.MonkeyPatch
 
 
 def test_get_variables_configured_color_used(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'calendar': {'urls': ['https://example.com/cal.ics'], 'colors': ['V']}, 'scheduler': {}},
   )
@@ -207,10 +207,10 @@ def test_get_variables_configured_color_used(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_get_variables_configured_color_overrides_apple(monkeypatch: pytest.MonkeyPatch) -> None:
   """User-configured color takes precedence over auto-detected X-APPLE-CALENDAR-COLOR."""
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'calendar': {'urls': ['https://example.com/cal.ics'], 'colors': ['G']}, 'scheduler': {}},
   )
@@ -290,10 +290,10 @@ def test_get_variables_timed_before_allday(ical_config_ics: None) -> None:
 
 def test_get_variables_url_order_tiebreaker(monkeypatch: pytest.MonkeyPatch) -> None:
   """When two events have the same start time, the event from URL 0 comes first."""
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'calendar': {'urls': ['https://example.com/a.ics', 'https://example.com/b.ics']}, 'scheduler': {}},
   )
@@ -316,10 +316,10 @@ def test_get_variables_url_order_tiebreaker(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_get_variables_multiple_urls_merged(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'calendar': {'urls': ['https://example.com/a.ics', 'https://example.com/b.ics']}, 'scheduler': {}},
   )
@@ -343,10 +343,10 @@ def test_get_variables_multiple_urls_merged(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_get_variables_one_url_fails_gracefully(monkeypatch: pytest.MonkeyPatch) -> None:
   """If one URL fails with no cache, it is skipped; events from the other URL still show."""
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'calendar': {'urls': ['https://example.com/fail.ics', 'https://example.com/ok.ics']}, 'scheduler': {}},
   )
@@ -403,10 +403,10 @@ def test_get_variables_both_modes_merged(monkeypatch: pytest.MonkeyPatch) -> Non
   """Events from ICS and CalDAV are merged into a single sorted list."""
   from unittest.mock import MagicMock
 
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'calendar': {
@@ -445,10 +445,10 @@ def test_get_variables_both_modes_merged(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_get_variables_caldav_absent_does_not_block_ics(monkeypatch: pytest.MonkeyPatch) -> None:
   """If CalDAV returns no calendars, ICS events still appear."""
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'calendar': {
@@ -507,9 +507,9 @@ def _patch_birthdays(
   config: dict | None = None,
 ) -> None:
   """Patch config, birthday cache, and now for birthday unit tests."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', config or _BDAY_CONFIG)
+  monkeypatch.setattr(_config_mod, '_config', config or _BDAY_CONFIG)
   monkeypatch.setattr(calendar, '_birthday_cache', (contacts, time.monotonic()))
   monkeypatch.setattr(calendar, '_carddav_addressbook_url', 'https://fake/ab/')
   monkeypatch.setattr(calendar, '_display_tz', lambda: _UTC)
@@ -573,9 +573,9 @@ def test_birthday_no_results_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_birthday_no_carddav_url_raises(monkeypatch: pytest.MonkeyPatch) -> None:
   """Missing carddav_url raises IntegrationDataUnavailableError immediately."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'calendar': {}, 'scheduler': {}})
+  monkeypatch.setattr(_config_mod, '_config', {'calendar': {}, 'scheduler': {}})
   with pytest.raises(IntegrationDataUnavailableError, match='carddav_url'):
     calendar.get_variables_birthdays()
 
@@ -584,9 +584,9 @@ def test_birthday_cache_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
   """Stale cache (> 24h) triggers a real HTTP fetch; fresh cache does not."""
   from unittest.mock import MagicMock
 
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _BDAY_CONFIG)
+  monkeypatch.setattr(_config_mod, '_config', _BDAY_CONFIG)
   monkeypatch.setattr(calendar, '_carddav_addressbook_url', 'https://fake/ab/')
   monkeypatch.setattr(calendar, '_display_tz', lambda: _UTC)
   monkeypatch.setattr(calendar, '_get_now', lambda tz: _FIXED_NOW)
@@ -665,9 +665,9 @@ def _patch_self_birthday(
   """
   from unittest.mock import MagicMock
 
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', config or _BDAY_CONFIG)
+  monkeypatch.setattr(_config_mod, '_config', config or _BDAY_CONFIG)
   monkeypatch.setattr(calendar, '_carddav_addressbook_url', 'https://fake/ab/')
   monkeypatch.setattr(calendar, '_carddav_home_url', 'https://fake/home/')
   monkeypatch.setattr(calendar, '_display_tz', lambda: _UTC)
@@ -712,9 +712,9 @@ def test_self_birthday_not_today(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_self_birthday_no_carddav_raises(monkeypatch: pytest.MonkeyPatch) -> None:
   """Missing carddav_url → raises immediately."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'calendar': {}, 'scheduler': {}})
+  monkeypatch.setattr(_config_mod, '_config', {'calendar': {}, 'scheduler': {}})
   with pytest.raises(IntegrationDataUnavailableError, match='carddav_url'):
     calendar.get_variables_self_birthday()
 
@@ -729,9 +729,9 @@ def test_self_birthday_no_bday_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_self_birthday_cache_hit(monkeypatch: pytest.MonkeyPatch) -> None:
   """Cached self contact is returned without any HTTP request."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _BDAY_CONFIG)
+  monkeypatch.setattr(_config_mod, '_config', _BDAY_CONFIG)
   monkeypatch.setattr(calendar, '_display_tz', lambda: _UTC)
   monkeypatch.setattr(calendar, '_get_now', lambda tz: _FIXED_NOW)
   monkeypatch.setattr(

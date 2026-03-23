@@ -9,7 +9,7 @@ The morning integration has no env vars of its own; it reuses [weather] config.
 
 import pytest
 
-import config as _cfg
+import config as _config_mod
 import integrations.morning as morning
 import integrations.weather as weather
 
@@ -32,7 +32,7 @@ def _count_visual_width(row: str) -> int:
 @pytest.mark.integration
 def test_get_variables_live(monkeypatch: pytest.MonkeyPatch) -> None:
   """get_variables() returns a valid 7-wide visual using live Open-Meteo data."""
-  monkeypatch.setattr(_cfg, '_config', {'weather': {'city': 'San Francisco', 'units': 'imperial'}})
+  monkeypatch.setattr(_config_mod, '_config', {'weather': {'city': 'San Francisco', 'units': 'imperial'}})
   weather._geocode_cache = None
   weather._forecast_cache = None
 

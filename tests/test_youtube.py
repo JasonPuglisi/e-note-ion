@@ -19,10 +19,10 @@ def _mock_response(data: Any, status_code: int = 200) -> MagicMock:
 
 @pytest.fixture(autouse=True)
 def _mock_config(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'google': {
@@ -345,10 +345,10 @@ def test_get_variables_no_live_streams_raises() -> None:
 
 
 def test_get_variables_no_subscriptions_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'google': {

@@ -99,9 +99,9 @@ def test_login_bad_credentials() -> None:
 
 
 def test_get_variables_normal(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   qbt._cache = None
 
   session_mock = MagicMock()
@@ -122,9 +122,9 @@ def test_get_variables_normal(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_variables_no_seeders(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   qbt._cache = None
 
   session_mock = MagicMock()
@@ -142,9 +142,9 @@ def test_get_variables_no_seeders(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_variables_login_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   qbt._cache = None
 
   session_mock = MagicMock()
@@ -163,9 +163,9 @@ def test_get_variables_login_failure(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_cache_hit_avoids_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
 
   cached_value: dict = {
     'header': [['[B] TORRENTS']],
@@ -183,9 +183,9 @@ def test_cache_hit_avoids_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_stale_cache_served_on_login_error(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
 
   stale_value: dict = {
     'header': [['[B] TORRENTS']],
@@ -211,11 +211,11 @@ def test_stale_cache_served_on_login_error(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_verify_tls_false_passes_verify(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   cfg = _patched_config()
   cfg['qbittorrent']['verify_tls'] = False
-  monkeypatch.setattr(_cfg, '_config', cfg)
+  monkeypatch.setattr(_config_mod, '_config', cfg)
   qbt._cache = None
 
   session_mock = MagicMock()
@@ -235,9 +235,9 @@ def test_verify_tls_false_passes_verify(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_verify_tls_default_true(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   qbt._cache = None
 
   session_mock = MagicMock()

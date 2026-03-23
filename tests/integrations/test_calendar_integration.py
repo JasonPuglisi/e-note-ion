@@ -15,7 +15,7 @@ from typing import Generator
 
 import pytest
 
-import config as _cfg
+import config as _config_mod
 import integrations.calendar as calendar
 from exceptions import IntegrationDataUnavailableError
 
@@ -37,7 +37,7 @@ def reset_caches() -> Generator[None, None, None]:
 @pytest.mark.require_env('CALENDAR_URL')
 def test_ics_mode_real_feed(require_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
   """get_variables() returns valid events or raises cleanly from a real .ics feed."""
-  monkeypatch.setattr(_cfg, '_config', {'calendar': {'urls': [os.environ['CALENDAR_URL']]}, 'scheduler': {}})
+  monkeypatch.setattr(_config_mod, '_config', {'calendar': {'urls': [os.environ['CALENDAR_URL']]}, 'scheduler': {}})
 
   try:
     result = calendar.get_variables()
@@ -56,7 +56,7 @@ def test_ics_mode_real_feed(require_env: None, monkeypatch: pytest.MonkeyPatch) 
 def test_caldav_mode_real_icloud(require_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
   """get_variables() connects to a real CalDAV server and returns valid events or raises cleanly."""
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'calendar': {
@@ -84,7 +84,7 @@ def test_caldav_mode_real_icloud(require_env: None, monkeypatch: pytest.MonkeyPa
 def test_birthdays_mode_real_icloud(require_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
   """get_variables_birthdays() connects to real iCloud Contacts and returns valid results."""
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'calendar': {

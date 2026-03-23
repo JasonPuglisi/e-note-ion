@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import config as _cfg
+import config as _config_mod
 from integrations.calendar import _resolve_display_name
 
 # ── _resolve_display_name ──────────────────────────────────────────────────────
@@ -133,7 +133,7 @@ def test_get_variables_birthdays_today_format(
 ) -> None:
   import integrations.calendar as cal
 
-  monkeypatch.setattr(_cfg, '_config', {'calendar': {'carddav_url': 'x', 'username': 'u', 'password': 'p'}})
+  monkeypatch.setattr(_config_mod, '_config', {'calendar': {'carddav_url': 'x', 'username': 'u', 'password': 'p'}})
   today = date.today()
   mock_fetch.return_value = [('JAY', today.month, today.day)]
 
@@ -155,7 +155,7 @@ def test_get_variables_birthdays_future_format(
 ) -> None:
   import integrations.calendar as cal
 
-  monkeypatch.setattr(_cfg, '_config', {'calendar': {'carddav_url': 'x', 'username': 'u', 'password': 'p'}})
+  monkeypatch.setattr(_config_mod, '_config', {'calendar': {'carddav_url': 'x', 'username': 'u', 'password': 'p'}})
   # Use a fixed "today" of 2026-03-14 (Saturday) and a birthday 2 days later (Monday).
   fixed_today = date(2026, 3, 14)
   mock_fetch.return_value = [('JANE S', 3, 16)]  # March 16 = Monday
@@ -178,7 +178,7 @@ def test_get_variables_birthdays_sorted_by_days_ahead(
 ) -> None:
   import integrations.calendar as cal
 
-  monkeypatch.setattr(_cfg, '_config', {'calendar': {'carddav_url': 'x', 'username': 'u', 'password': 'p'}})
+  monkeypatch.setattr(_config_mod, '_config', {'calendar': {'carddav_url': 'x', 'username': 'u', 'password': 'p'}})
   fixed_today = date(2026, 3, 14)
   # Two contacts: one in 3 days, one in 1 day.
   mock_fetch.return_value = [('FAR A', 3, 17), ('NEAR B', 3, 15)]
@@ -203,7 +203,7 @@ def test_get_variables_self_birthday_uses_display_name(
   import integrations.calendar as cal
 
   today = date.today()
-  monkeypatch.setattr(_cfg, '_config', {'calendar': {'carddav_url': 'x', 'username': 'u', 'password': 'p'}})
+  monkeypatch.setattr(_config_mod, '_config', {'calendar': {'carddav_url': 'x', 'username': 'u', 'password': 'p'}})
   mock_self.return_value = ('JAY', today.month, today.day)
 
   with patch.object(cal, '_get_now', return_value=MagicMock(date=lambda: today)):

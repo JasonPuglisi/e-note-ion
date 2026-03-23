@@ -199,9 +199,9 @@ def test_sort_key_null_dates_last() -> None:
 
 
 def test_get_variables_out_for_delivery(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   pc._cache = None
 
   resp = _api_response(
@@ -224,9 +224,9 @@ def test_get_variables_out_for_delivery(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_get_variables_no_active_deliveries(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   pc._cache = None
 
   resp = _api_response([_delivery(status_code=0)])  # completed
@@ -238,9 +238,9 @@ def test_get_variables_no_active_deliveries(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_get_variables_empty_response(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   pc._cache = None
 
   resp = _api_response([])
@@ -252,9 +252,9 @@ def test_get_variables_empty_response(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_variables_selects_soonest(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   pc._cache = None
 
   resp = _api_response(
@@ -272,9 +272,9 @@ def test_get_variables_selects_soonest(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_variables_no_description_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   pc._cache = None
 
   resp = _api_response([_delivery(description='')])
@@ -291,9 +291,9 @@ def test_get_variables_no_description_fallback(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_cache_hit_avoids_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
 
   cached_value: dict = {
     'status_line': [['[B] ON THE WAY']],
@@ -313,9 +313,9 @@ def test_cache_hit_avoids_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_stale_cache_served_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
   import requests as _requests
 
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
 
   stale_value: dict = {
     'status_line': [['[O] ON THE WAY']],
@@ -341,9 +341,9 @@ def test_stale_cache_served_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_no_cache_on_error_raises(monkeypatch: pytest.MonkeyPatch) -> None:
   import requests as _requests
 
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   pc._cache = None
 
   with patch(

@@ -20,6 +20,10 @@
 # is in a shared or guest-visible space.
 # public = true
 
+# Quiet mode: render content to virtual state instead of sending to the board.
+# Written by the scheduler webhook — can also be set manually before startup.
+# quiet = true
+
 # Content filter. When absent, all user content loads and no contrib content
 # loads. When set, the filter applies to both user and contrib directories:
 #   ["*"]              — all user + all contrib

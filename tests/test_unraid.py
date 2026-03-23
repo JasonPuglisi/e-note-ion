@@ -112,9 +112,9 @@ def test_fmt_uptime(seconds: int, expected: str) -> None:
 
 
 def test_get_variables_normal(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   unraid._cache = None
 
   data = _normal_data(uptime_secs=3 * 30 * 24 * 3600 + 2 * 24 * 3600 + 8 * 3600)
@@ -130,9 +130,9 @@ def test_get_variables_normal(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_variables_array_stopped(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   unraid._cache = None
 
   data = _normal_data(state='STOPPED')
@@ -144,9 +144,9 @@ def test_get_variables_array_stopped(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_variables_array_degraded(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   unraid._cache = None
 
   data = _normal_data(state='DEGRADED')
@@ -158,9 +158,9 @@ def test_get_variables_array_degraded(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_variables_graphql_error(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   unraid._cache = None
 
   resp = _graphql_response(errors=[{'message': 'not authorized'}])
@@ -172,9 +172,9 @@ def test_get_variables_graphql_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_variables_network_error(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   unraid._cache = None
 
   with patch(
@@ -193,9 +193,9 @@ def test_get_variables_network_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_cache_hit_avoids_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
 
   cached_value: dict = {
     'header': [['[O] UNRAID']],
@@ -213,9 +213,9 @@ def test_cache_hit_avoids_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_stale_cache_served_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
 
   stale_value: dict = {
     'header': [['[O] UNRAID']],
@@ -241,11 +241,11 @@ def test_stale_cache_served_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_verify_tls_false_passes_verify(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   cfg = _patched_config()
   cfg['unraid']['verify_tls'] = False
-  monkeypatch.setattr(_cfg, '_config', cfg)
+  monkeypatch.setattr(_config_mod, '_config', cfg)
   unraid._cache = None
 
   data = _normal_data()
@@ -257,9 +257,9 @@ def test_verify_tls_false_passes_verify(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_verify_tls_default_true(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   unraid._cache = None
 
   data = _normal_data()
@@ -277,9 +277,9 @@ def test_verify_tls_default_true(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_uptime_iso_timestamp(monkeypatch: pytest.MonkeyPatch) -> None:
   """The API returns a boot timestamp, not seconds — verify parsing works."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   unraid._cache = None
 
   data = _normal_data(uptime_secs=3600)
@@ -294,9 +294,9 @@ def test_uptime_iso_timestamp(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_uptime_unparseable_returns_empty(monkeypatch: pytest.MonkeyPatch) -> None:
   """Unparseable uptime value should produce an empty line, not crash."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   unraid._cache = None
 
   data = {

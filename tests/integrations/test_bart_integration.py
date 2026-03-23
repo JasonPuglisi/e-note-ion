@@ -10,7 +10,7 @@ import os
 
 import pytest
 
-import config as _cfg
+import config as _config_mod
 import integrations.bart as bart
 import integrations.vestaboard as vb
 
@@ -20,7 +20,7 @@ import integrations.vestaboard as vb
 def test_get_variables_real_api(require_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
   """get_variables() returns a valid variables dict from the live BART API."""
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'bart': {

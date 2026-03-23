@@ -418,6 +418,35 @@ def delete_config_section(section: str) -> None:
   d.pop(parts[-1], None)
 
 
+def migrate_quiet_config() -> None:
+  """Migrate old [scheduler.quiet] section to flat [scheduler].quiet key.
+
+  Detects the old ``[scheduler.quiet]`` subsection with an ``active`` key,
+  rewrites it as ``quiet = true/false`` under ``[scheduler]``, and removes the
+  old section. Logs a deprecation warning when migration occurs.
+
+  No-op if the old section does not exist (fresh install or already migrated).
+  This migration shim is removed in 2.0 (#483).
+  """
+  import logging
+
+  quiet_section = _config.get('scheduler', {}).get('quiet')
+  if not isinstance(quiet_section, dict):
+    return  # already flat key or absent
+
+  value = bool(quiet_section.get('active', False))
+  delete_config_section('scheduler.quiet')
+  write_config_section('scheduler', {'quiet': value})
+
+  logger = logging.getLogger(__name__)
+  logger.warning(
+    'Migrated [scheduler.quiet] active = %s → [scheduler] quiet = %s '
+    '— the old format is deprecated and will be removed in 2.0',
+    str(value).lower(),
+    str(value).lower(),
+  )
+
+
 def migrate_message_credentials() -> int:
   """Migrate old-style flat message credentials to the nested namespace.
 

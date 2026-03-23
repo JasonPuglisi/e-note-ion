@@ -125,9 +125,9 @@ def test_fmt_pct(delta: int, start: int, expected: str) -> None:
 
 
 def test_get_variables_positive_delta(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   ynab._cache = None
   ynab._resolved_budget_id = None
 
@@ -146,9 +146,9 @@ def test_get_variables_positive_delta(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_variables_negative_delta(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   ynab._cache = None
   ynab._resolved_budget_id = None
 
@@ -165,9 +165,9 @@ def test_get_variables_negative_delta(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_variables_zero_start_of_month(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   ynab._cache = None
   ynab._resolved_budget_id = None
 
@@ -185,9 +185,9 @@ def test_get_variables_zero_start_of_month(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_get_variables_negative_net_worth(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   ynab._cache = None
   ynab._resolved_budget_id = None
 
@@ -204,9 +204,9 @@ def test_get_variables_negative_net_worth(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_get_variables_filters_closed_deleted(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   ynab._cache = None
   ynab._resolved_budget_id = None
 
@@ -227,9 +227,9 @@ def test_get_variables_filters_closed_deleted(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_get_variables_large_numbers(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   ynab._cache = None
   ynab._resolved_budget_id = None
 
@@ -250,9 +250,9 @@ def test_get_variables_large_numbers(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_api_error_no_cache(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   ynab._cache = None
   ynab._resolved_budget_id = None
 
@@ -268,9 +268,9 @@ def test_api_error_no_cache(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_api_error_serves_stale_cache(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
 
   stale_value: dict = {
     'header': [['[G] NET WORTH']],
@@ -293,9 +293,9 @@ def test_api_error_serves_stale_cache(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_txn_error_serves_stale_cache(monkeypatch: pytest.MonkeyPatch) -> None:
   """Transaction fetch fails after accounts succeed — stale cache returned."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
 
   stale_value: dict = {
     'header': [['[G] NET WORTH']],
@@ -330,9 +330,9 @@ def test_txn_error_serves_stale_cache(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_cache_hit_avoids_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
 
   cached_value: dict = {
     'header': [['[G] NET WORTH']],
@@ -356,9 +356,9 @@ def test_cache_hit_avoids_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_auto_detect_single_budget(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config(include_budget_id=False))
+  monkeypatch.setattr(_config_mod, '_config', _patched_config(include_budget_id=False))
   ynab._cache = None
   ynab._resolved_budget_id = None
 
@@ -377,9 +377,9 @@ def test_auto_detect_single_budget(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_auto_detect_multiple_budgets_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config(include_budget_id=False))
+  monkeypatch.setattr(_config_mod, '_config', _patched_config(include_budget_id=False))
   ynab._cache = None
   ynab._resolved_budget_id = None
 
@@ -399,9 +399,9 @@ def test_auto_detect_multiple_budgets_errors(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_auto_detect_no_budgets_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config(include_budget_id=False))
+  monkeypatch.setattr(_config_mod, '_config', _patched_config(include_budget_id=False))
   ynab._cache = None
   ynab._resolved_budget_id = None
 
@@ -417,9 +417,9 @@ def test_auto_detect_no_budgets_errors(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_auto_detect_cached_on_second_call(monkeypatch: pytest.MonkeyPatch) -> None:
   """Second call should reuse the resolved budget ID, not hit /budgets again."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config(include_budget_id=False))
+  monkeypatch.setattr(_config_mod, '_config', _patched_config(include_budget_id=False))
   ynab._cache = None
   ynab._resolved_budget_id = None
 
@@ -447,9 +447,9 @@ def test_auto_detect_cached_on_second_call(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_auto_detect_skips_deleted_budgets(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config(include_budget_id=False))
+  monkeypatch.setattr(_config_mod, '_config', _patched_config(include_budget_id=False))
   ynab._cache = None
   ynab._resolved_budget_id = None
 

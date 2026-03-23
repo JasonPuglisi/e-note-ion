@@ -301,9 +301,9 @@ def _patched_config(station_id: str = '46042', units: str = 'imperial') -> dict:
 
 def test_cache_hit_avoids_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
 
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
 
   cached_value: dict = {'header': [['[G] WATER 55F']], 'swell': [['SWELL 1.5FT 14S']], 'wind': [['WIND 10KT W']]}
   dc._cache = dc.CacheEntry(cached_value)  # type: ignore[attr-defined]
@@ -317,9 +317,9 @@ def test_cache_hit_avoids_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_cache_miss_fetches(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   dc._cache = None
 
   mock_resp = MagicMock()
@@ -338,9 +338,9 @@ def test_cache_miss_fetches(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_expired_cache_fetches_fresh(monkeypatch: pytest.MonkeyPatch) -> None:
   import time
 
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
 
   stale_value: dict = {'header': [['[G] WATER 55F']], 'swell': [['SWELL 1.5FT 14S']], 'wind': [['WIND 10KT W']]}
   dc._cache = dc.CacheEntry(stale_value)  # type: ignore[attr-defined]
@@ -363,9 +363,9 @@ def test_stale_cache_served_on_fetch_failure(monkeypatch: pytest.MonkeyPatch) ->
 
   import requests as _requests
 
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
 
   stale_value: dict = {'header': [['[Y] WATER 55F']], 'swell': [['SWELL 1.5FT 14S']], 'wind': [['WIND 10KT W']]}
   dc._cache = dc.CacheEntry(stale_value)  # type: ignore[attr-defined]
@@ -384,9 +384,9 @@ def test_stale_cache_served_on_fetch_failure(monkeypatch: pytest.MonkeyPatch) ->
 def test_no_cache_on_fetch_failure_raises(monkeypatch: pytest.MonkeyPatch) -> None:
   import requests as _requests
 
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   dc._cache = None
 
   with patch(
@@ -403,10 +403,10 @@ def test_no_cache_on_fetch_failure_raises(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_get_variables_uses_openmeteo_when_no_station(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'diving': {'latitude': '36.6', 'longitude': '-121.9', 'units': 'imperial'}},
   )
@@ -423,9 +423,9 @@ def test_get_variables_uses_openmeteo_when_no_station(monkeypatch: pytest.Monkey
 
 
 def test_get_variables_imperial_units(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config(units='imperial'))
+  monkeypatch.setattr(_config_mod, '_config', _patched_config(units='imperial'))
   dc._cache = None
 
   mock_resp = MagicMock()
@@ -444,9 +444,9 @@ def test_get_variables_imperial_units(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_variables_metric_units(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config(units='metric'))
+  monkeypatch.setattr(_config_mod, '_config', _patched_config(units='metric'))
   dc._cache = None
 
   mock_resp = MagicMock()
@@ -463,9 +463,9 @@ def test_get_variables_metric_units(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_variables_missing_data_shows_placeholder(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _patched_config())
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
   dc._cache = None
 
   mock_resp = MagicMock()
@@ -482,10 +482,10 @@ def test_get_variables_missing_data_shows_placeholder(monkeypatch: pytest.Monkey
 
 
 def test_get_variables_wind_always_in_knots(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   for units in ('imperial', 'metric'):
-    monkeypatch.setattr(_cfg, '_config', _patched_config(units=units))
+    monkeypatch.setattr(_config_mod, '_config', _patched_config(units=units))
     dc._cache = None
 
     mock_resp = MagicMock()
@@ -500,9 +500,9 @@ def test_get_variables_wind_always_in_knots(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_get_variables_missing_lat_lon_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'diving': {}})
+  monkeypatch.setattr(_config_mod, '_config', {'diving': {}})
   dc._cache = None
 
   with pytest.raises(IntegrationDataUnavailableError, match='ndbc_station_id or latitude/longitude'):
@@ -522,17 +522,17 @@ def _last_dive_config(last_dived_on: str | None) -> dict:
 
 
 def test_get_variables_last_dive_no_key(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _last_dive_config(None))
+  monkeypatch.setattr(_config_mod, '_config', _last_dive_config(None))
   with pytest.raises(IntegrationDataUnavailableError, match='last_dived_on not set'):
     dc.get_variables_last_dive()
 
 
 def test_get_variables_last_dive_bad_format(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _last_dive_config('not-a-date'))
+  monkeypatch.setattr(_config_mod, '_config', _last_dive_config('not-a-date'))
   with pytest.raises(IntegrationDataUnavailableError, match='not a valid YYYY-MM-DD date'):
     dc.get_variables_last_dive()
 
@@ -541,9 +541,9 @@ def test_get_variables_last_dive_today(monkeypatch: pytest.MonkeyPatch) -> None:
   from datetime import date
   from unittest.mock import patch
 
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _last_dive_config('2026-03-12'))
+  monkeypatch.setattr(_config_mod, '_config', _last_dive_config('2026-03-12'))
   with patch('integrations.diving.datetime') as mock_dt:
     mock_dt.now.return_value.date.return_value = date(2026, 3, 12)
     result = dc.get_variables_last_dive()
@@ -554,9 +554,9 @@ def test_get_variables_last_dive_1_day(monkeypatch: pytest.MonkeyPatch) -> None:
   from datetime import date
   from unittest.mock import patch
 
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _last_dive_config('2026-03-11'))
+  monkeypatch.setattr(_config_mod, '_config', _last_dive_config('2026-03-11'))
   with patch('integrations.diving.datetime') as mock_dt:
     mock_dt.now.return_value.date.return_value = date(2026, 3, 12)
     result = dc.get_variables_last_dive()
@@ -567,9 +567,9 @@ def test_get_variables_last_dive_n_days(monkeypatch: pytest.MonkeyPatch) -> None
   from datetime import date
   from unittest.mock import patch
 
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _last_dive_config('2026-02-26'))
+  monkeypatch.setattr(_config_mod, '_config', _last_dive_config('2026-02-26'))
   with patch('integrations.diving.datetime') as mock_dt:
     mock_dt.now.return_value.date.return_value = date(2026, 3, 12)
     result = dc.get_variables_last_dive()
@@ -580,9 +580,9 @@ def test_get_variables_last_dive_future_clamped(monkeypatch: pytest.MonkeyPatch)
   from datetime import date
   from unittest.mock import patch
 
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', _last_dive_config('2026-03-13'))
+  monkeypatch.setattr(_config_mod, '_config', _last_dive_config('2026-03-13'))
   with patch('integrations.diving.datetime') as mock_dt:
     mock_dt.now.return_value.date.return_value = date(2026, 3, 12)
     result = dc.get_variables_last_dive()

@@ -7,7 +7,7 @@ No API key required. Open-Meteo is free for non-commercial use.
 
 import pytest
 
-import config as _cfg
+import config as _config_mod
 import integrations.vestaboard as vb
 import integrations.weather as weather
 
@@ -16,7 +16,7 @@ import integrations.weather as weather
 def test_get_variables_returns_expected_keys(monkeypatch: pytest.MonkeyPatch) -> None:
   """get_variables() returns a valid variables dict from the live Open-Meteo API."""
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'weather': {'city': 'San Francisco', 'units': 'imperial'}},
   )

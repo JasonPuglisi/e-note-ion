@@ -261,10 +261,10 @@ def get_variables() -> dict[str, list[list[str]]]:
   """
   global _cache
 
-  import config as _cfg
+  import config as _config_mod
 
-  station_id = _cfg.get_optional('diving', 'ndbc_station_id')
-  units = _cfg.get_optional('diving', 'units') or 'imperial'
+  station_id = _config_mod.get_optional('diving', 'ndbc_station_id')
+  units = _config_mod.get_optional('diving', 'units') or 'imperial'
 
   if _cache is not None and _cache.is_valid(_CACHE_TTL):
     logger.debug('Dive conditions: cache hit')
@@ -275,8 +275,8 @@ def get_variables() -> dict[str, list[list[str]]]:
       data = _fetch_ndbc(station_id)
     else:
       try:
-        lat = float(_cfg.get('diving', 'latitude'))
-        lon = float(_cfg.get('diving', 'longitude'))
+        lat = float(_config_mod.get('diving', 'latitude'))
+        lon = float(_config_mod.get('diving', 'longitude'))
       except ValueError, KeyError:
         raise IntegrationDataUnavailableError(
           'Dive conditions: set ndbc_station_id or latitude/longitude in config.toml'
@@ -322,9 +322,9 @@ def get_variables_last_dive() -> dict[str, list[list[str]]]:
 
   Returns key: days_ago — 'TODAY', '1 DAY AGO', or 'N DAYS AGO'.
   """
-  import config as _cfg
+  import config as _config_mod
 
-  raw = _cfg.get_optional('diving', 'last_dived_on')
+  raw = _config_mod.get_optional('diving', 'last_dived_on')
   if not raw:
     raise IntegrationDataUnavailableError('Dive conditions: last_dived_on not set — send a webhook to record a dive')
 
@@ -353,7 +353,7 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
   [diving] last_dived_on. Returns None — display is driven by the
   daily cron template, not the webhook itself.
   """
-  import config as _cfg
+  import config as _config_mod
 
   dived_on = payload.get('dived_on')
   if not dived_on or not isinstance(dived_on, str):
@@ -366,6 +366,6 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
     logger.warning('Dive conditions webhook: invalid dived_on %r — expected YYYY-MM-DD', dived_on)
     return None
 
-  _cfg.write_config_section('diving', {'last_dived_on': dived_on})
+  _config_mod.write_config_section('diving', {'last_dived_on': dived_on})
   logger.info('Dive conditions: recorded last dive date %s (credential=%r)', dived_on, credential_name)
   return None

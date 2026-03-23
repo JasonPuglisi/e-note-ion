@@ -104,9 +104,9 @@ def _display_tz() -> Any:
   Reads [scheduler].timezone from config. Returns None to use system local
   timezone, matching the behaviour of config.get_timezone().
   """
-  import config as _cfg
+  import config as _config_mod
 
-  return _cfg.get_timezone()
+  return _config_mod.get_timezone()
 
 
 def _get_now(tz: Any) -> datetime:
@@ -763,9 +763,9 @@ def get_variables() -> dict[str, list[list[str]]]:
   Collects from ICS URLs and/or CalDAV if configured (both may be active).
   Raises IntegrationDataUnavailableError if no events are available.
   """
-  import config as _cfg
+  import config as _config_mod
 
-  cal_cfg: dict[str, Any] = _cfg._config.get('calendar', {})
+  cal_cfg: dict[str, Any] = _config_mod._config.get('calendar', {})
   if not cal_cfg:
     raise IntegrationDataUnavailableError('calendar: no [calendar] section in config.toml')
 
@@ -807,9 +807,9 @@ def get_variables_birthdays() -> dict[str, list[list[str]]]:
   Raises IntegrationDataUnavailableError if not configured or no birthdays
   fall within the lookahead window.
   """
-  import config as _cfg
+  import config as _config_mod
 
-  cal_cfg: dict[str, Any] = _cfg._config.get('calendar', {})
+  cal_cfg: dict[str, Any] = _config_mod._config.get('calendar', {})
   carddav_url = cal_cfg.get('carddav_url', '')
   username = cal_cfg.get('username', '')
   password = cal_cfg.get('password', '')
@@ -864,9 +864,9 @@ def get_variables_self_birthday() -> dict[str, list[list[str]]]:
   CalendarServer extension). Raises IntegrationDataUnavailableError when
   not configured, me-card unavailable, or today is not the owner's birthday.
   """
-  import config as _cfg
+  import config as _config_mod
 
-  cal_cfg: dict[str, Any] = _cfg._config.get('calendar', {})
+  cal_cfg: dict[str, Any] = _config_mod._config.get('calendar', {})
   carddav_url = cal_cfg.get('carddav_url', '')
   username = cal_cfg.get('username', '')
   password = cal_cfg.get('password', '')

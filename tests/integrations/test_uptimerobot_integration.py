@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-import config as _cfg
+import config as _config_mod
 import integrations.uptimerobot as uptimerobot
 
 
@@ -17,7 +17,7 @@ def test_get_variables(require_env: None, monkeypatch: pytest.MonkeyPatch) -> No
   """
   from exceptions import IntegrationDataUnavailableError
 
-  monkeypatch.setattr(_cfg, '_config', {'uptimerobot': {'api_key': os.environ['UPTIMEROBOT_API_KEY']}})
+  monkeypatch.setattr(_config_mod, '_config', {'uptimerobot': {'api_key': os.environ['UPTIMEROBOT_API_KEY']}})
   uptimerobot._cache = None
   uptimerobot._first_seen_down.clear()
 

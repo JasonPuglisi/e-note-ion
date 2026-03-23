@@ -22,10 +22,10 @@ def reset_caches() -> Generator[None, None, None]:
 @pytest.fixture()
 def bart_config(monkeypatch: pytest.MonkeyPatch) -> None:
   """Patch config to provide BART settings without a real config file."""
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'bart': {'api_key': 'test-bart-key', 'station': 'MLPT', 'line1_dest': 'DALY'}},
   )
@@ -82,27 +82,27 @@ def test_format_minutes_non_numeric_passthrough() -> None:
 
 
 def test_get_variables_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   def _raise(section: str, key: str) -> str:
     if section == 'bart' and key == 'api_key':
       raise ValueError('Missing required config key [bart].api_key in config.toml')
     return 'value'
 
-  monkeypatch.setattr(_cfg, 'get', _raise)
+  monkeypatch.setattr(_config_mod, 'get', _raise)
   with pytest.raises(ValueError, match='api_key'):
     bart.get_variables()
 
 
 def test_get_variables_missing_station(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   def _raise(section: str, key: str) -> str:
     if section == 'bart' and key == 'station':
       raise ValueError('Missing required config key [bart].station in config.toml')
     return 'value'
 
-  monkeypatch.setattr(_cfg, 'get', _raise)
+  monkeypatch.setattr(_config_mod, 'get', _raise)
   with pytest.raises(ValueError, match='station'):
     bart.get_variables()
 

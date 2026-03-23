@@ -14,7 +14,7 @@ import os
 
 import pytest
 
-import config as _cfg
+import config as _config_mod
 import integrations.diving as dc
 
 
@@ -23,7 +23,7 @@ import integrations.diving as dc
 def test_ndbc_get_variables(require_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
   """get_variables() returns valid variables from the live NDBC API."""
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'diving': {
@@ -63,7 +63,7 @@ def test_ndbc_get_variables(require_env: None, monkeypatch: pytest.MonkeyPatch) 
 def test_openmeteo_fallback_get_variables(require_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
   """get_variables() returns valid variables from the live Open-Meteo APIs."""
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'diving': {

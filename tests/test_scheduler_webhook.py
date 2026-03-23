@@ -6,16 +6,16 @@ import integrations.scheduler as _mod
 
 
 def test_handle_webhook_quiet() -> None:
-  with patch('quiet.activate') as mock:
+  with patch('quiet.set_quiet') as mock:
     result = _mod.handle_webhook({'action': 'quiet'})
-  mock.assert_called_once()
+  mock.assert_called_once_with(True)
   assert result is None
 
 
 def test_handle_webhook_wake() -> None:
-  with patch('quiet.deactivate') as mock:
+  with patch('quiet.set_quiet') as mock:
     result = _mod.handle_webhook({'action': 'wake'})
-  mock.assert_called_once()
+  mock.assert_called_once_with(False)
   assert result is None
 
 
@@ -45,6 +45,6 @@ def test_handle_webhook_missing_action() -> None:
 
 def test_handle_webhook_accepts_credential_name() -> None:
   """credential_name kwarg is accepted (even though unused)."""
-  with patch('quiet.activate'):
+  with patch('quiet.set_quiet'):
     result = _mod.handle_webhook({'action': 'quiet'}, credential_name='scheduler')
   assert result is None

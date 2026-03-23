@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-import config as _cfg
+import config as _config_mod
 import integrations.trakt as trakt
 import integrations.vestaboard as vb
 from exceptions import IntegrationDataUnavailableError
@@ -37,7 +37,7 @@ def config_with_tokens(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     f'expires_at = {int(time.time()) + 200000}\n'  # well above 24h threshold
   )
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'trakt': {
@@ -58,7 +58,7 @@ def config_without_tokens(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Pa
   """Return a tmp config.toml without trakt tokens."""
   cfg_file = tmp_path / 'config.toml'
   cfg_file.write_text('[trakt]\nclient_id = "test-id"\nclient_secret = "test-secret"\n')
-  monkeypatch.setattr(_cfg, '_config', {'trakt': {'client_id': 'test-id', 'client_secret': 'test-secret'}})
+  monkeypatch.setattr(_config_mod, '_config', {'trakt': {'client_id': 'test-id', 'client_secret': 'test-secret'}})
   monkeypatch.chdir(tmp_path)
   return cfg_file
 
@@ -91,7 +91,7 @@ def test_preflight_refreshes_near_expiry_token_at_startup(tmp_path: Path, monkey
     f'expires_at = {int(time.time()) + 3600}\n'  # 1 hour — inside 24h window
   )
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'trakt': {
@@ -123,7 +123,7 @@ def test_preflight_no_refresh_when_token_far_from_expiry(tmp_path: Path, monkeyp
     f'expires_at = {int(time.time()) + 200000}\n'  # well outside 24h
   )
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'trakt': {
@@ -157,7 +157,7 @@ def test_preflight_refresh_failure_clears_tokens_and_triggers_reauth(
     f'expires_at = {int(time.time()) + 3600}\n'
   )
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'trakt': {
@@ -180,8 +180,8 @@ def test_preflight_refresh_failure_clears_tokens_and_triggers_reauth(
       trakt.preflight()
 
   mock_auth.assert_called_once()
-  assert _cfg._config['trakt']['access_token'] == ''
-  assert _cfg._config['trakt']['refresh_token'] == ''
+  assert _config_mod._config['trakt']['access_token'] == ''
+  assert _config_mod._config['trakt']['refresh_token'] == ''
 
 
 def test_get_token_returns_access_token(config_with_tokens: Path) -> None:
@@ -212,7 +212,7 @@ def test_token_refresh_called_when_near_expiry(tmp_path: Path, monkeypatch: pyte
     f'expires_at = {int(time.time()) + 100}\n'  # within 24-hour threshold
   )
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'trakt': {
@@ -227,7 +227,7 @@ def test_token_refresh_called_when_near_expiry(tmp_path: Path, monkeypatch: pyte
   monkeypatch.chdir(tmp_path)
 
   def fake_refresh() -> None:
-    _cfg._config['trakt']['access_token'] = 'new-access'
+    _config_mod._config['trakt']['access_token'] = 'new-access'
 
   with patch.object(trakt, '_refresh_token', side_effect=fake_refresh) as mock_refresh:
     token = trakt._get_token()
@@ -249,7 +249,7 @@ def test_get_token_refresh_called_within_24h_window(tmp_path: Path, monkeypatch:
     f'expires_at = {expires}\n'
   )
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'trakt': {
@@ -283,7 +283,7 @@ def test_get_token_refresh_failure_clears_tokens_and_triggers_reauth(
     f'expires_at = {int(time.time()) + 100}\n'
   )
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'trakt': {
@@ -307,8 +307,8 @@ def test_get_token_refresh_failure_clears_tokens_and_triggers_reauth(
         trakt._get_token()
 
   mock_auth.assert_called_once()
-  assert _cfg._config['trakt']['access_token'] == ''
-  assert _cfg._config['trakt']['refresh_token'] == ''
+  assert _config_mod._config['trakt']['access_token'] == ''
+  assert _config_mod._config['trakt']['refresh_token'] == ''
 
 
 def test_get_token_refresh_failure_raises_unavailable_not_http_error(
@@ -325,7 +325,7 @@ def test_get_token_refresh_failure_raises_unavailable_not_http_error(
     f'expires_at = {int(time.time()) + 100}\n'
   )
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'trakt': {
@@ -374,10 +374,10 @@ def test_handle_api_401_refreshes_when_token_near_expiry(
   config_with_tokens: Path,
 ) -> None:
   """_handle_api_401 refreshes when expires_at is within the grace window."""
-  _cfg._config['trakt']['expires_at'] = int(time.time()) + 600  # 10 min — within 1h grace
+  _config_mod._config['trakt']['expires_at'] = int(time.time()) + 600  # 10 min — within 1h grace
 
   def fake_refresh() -> None:
-    _cfg._config['trakt']['access_token'] = 'refreshed-token'
+    _config_mod._config['trakt']['access_token'] = 'refreshed-token'
 
   with patch.object(trakt, '_refresh_token', side_effect=fake_refresh):
     token = trakt._handle_api_401()
@@ -389,7 +389,7 @@ def test_handle_api_401_refresh_failure_clears_tokens_and_triggers_reauth(
   config_with_tokens: Path,
 ) -> None:
   """_handle_api_401 clears tokens and starts re-auth when refresh fails."""
-  _cfg._config['trakt']['expires_at'] = int(time.time()) + 600  # near-expiry to trigger refresh path
+  _config_mod._config['trakt']['expires_at'] = int(time.time()) + 600  # near-expiry to trigger refresh path
   mock_resp = MagicMock()
   mock_resp.status_code = 400
   mock_resp.reason = 'Bad Request'
@@ -400,12 +400,12 @@ def test_handle_api_401_refresh_failure_clears_tokens_and_triggers_reauth(
         trakt._handle_api_401()
 
   mock_auth.assert_called_once()
-  assert _cfg._config['trakt']['access_token'] == ''
+  assert _config_mod._config['trakt']['access_token'] == ''
 
 
 def test_get_variables_calendar_401_retries_with_refreshed_token(config_with_tokens: Path) -> None:
   """A 401 from the calendar endpoint triggers a token refresh and retries when near expiry."""
-  _cfg._config['trakt']['expires_at'] = int(time.time()) + 600  # near-expiry
+  _config_mod._config['trakt']['expires_at'] = int(time.time()) + 600  # near-expiry
 
   unauth = MagicMock()
   unauth.status_code = 401
@@ -416,7 +416,7 @@ def test_get_variables_calendar_401_retries_with_refreshed_token(config_with_tok
   ok.json.return_value = _CALENDAR_RESPONSE
 
   def fake_refresh() -> None:
-    _cfg._config['trakt']['access_token'] = 'new-token'
+    _config_mod._config['trakt']['access_token'] = 'new-token'
 
   with patch.object(trakt, '_refresh_token', side_effect=fake_refresh):
     with patch('integrations.trakt.fetch_with_retry', side_effect=[unauth, ok]):
@@ -427,7 +427,7 @@ def test_get_variables_calendar_401_retries_with_refreshed_token(config_with_tok
 
 def test_get_variables_watching_401_retries_with_refreshed_token(config_with_tokens: Path) -> None:
   """A 401 from the watching endpoint triggers a token refresh and retries when near expiry."""
-  _cfg._config['trakt']['expires_at'] = int(time.time()) + 600  # near-expiry
+  _config_mod._config['trakt']['expires_at'] = int(time.time()) + 600  # near-expiry
 
   unauth = MagicMock()
   unauth.status_code = 401
@@ -442,7 +442,7 @@ def test_get_variables_watching_401_retries_with_refreshed_token(config_with_tok
   }
 
   def fake_refresh() -> None:
-    _cfg._config['trakt']['access_token'] = 'new-token'
+    _config_mod._config['trakt']['access_token'] = 'new-token'
 
   with patch.object(trakt, '_refresh_token', side_effect=fake_refresh):
     with patch('integrations.trakt.fetch_with_retry', side_effect=[unauth, ok]):
@@ -453,7 +453,7 @@ def test_get_variables_watching_401_retries_with_refreshed_token(config_with_tok
 
 def test_get_variables_next_up_401_retries_with_refreshed_token(config_with_tokens: Path) -> None:
   """A 401 from the watched/shows endpoint triggers a token refresh and retries when near expiry."""
-  _cfg._config['trakt']['expires_at'] = int(time.time()) + 600  # near-expiry
+  _config_mod._config['trakt']['expires_at'] = int(time.time()) + 600  # near-expiry
 
   unauth = MagicMock()
   unauth.status_code = 401
@@ -462,7 +462,7 @@ def test_get_variables_next_up_401_retries_with_refreshed_token(config_with_toke
   progress = _mock_progress_ok(_PROGRESS_WITH_NEXT)
 
   def fake_refresh() -> None:
-    _cfg._config['trakt']['access_token'] = 'new-token'
+    _config_mod._config['trakt']['access_token'] = 'new-token'
 
   with patch.object(trakt, '_refresh_token', side_effect=fake_refresh):
     with patch('integrations.trakt.fetch_with_retry', side_effect=[unauth, watched, progress]):
@@ -487,9 +487,9 @@ def test_store_tokens_writes_to_config(config_without_tokens: Path, monkeypatch:
 def test_write_tokens_errors_on_missing_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   monkeypatch.chdir(tmp_path)
   # No config.toml in tmp_path
-  monkeypatch.setattr(_cfg, '_config', {'trakt': {}})
+  monkeypatch.setattr(_config_mod, '_config', {'trakt': {}})
   with pytest.raises(FileNotFoundError):
-    _cfg.write_section_values('trakt', {'access_token': 'x'})
+    _config_mod.write_section_values('trakt', {'access_token': 'x'})
 
 
 # --- token refresh HTTP ---
@@ -507,8 +507,8 @@ def test_token_refresh_updates_config(config_with_tokens: Path, monkeypatch: pyt
   with patch('requests.post', return_value=mock_response):
     trakt._refresh_token()
 
-  assert _cfg._config['trakt']['access_token'] == 'refreshed-access'
-  assert _cfg._config['trakt']['refresh_token'] == 'refreshed-refresh'
+  assert _config_mod._config['trakt']['access_token'] == 'refreshed-access'
+  assert _config_mod._config['trakt']['refresh_token'] == 'refreshed-refresh'
 
 
 def test_token_refresh_http_error_raised(config_with_tokens: Path) -> None:
@@ -615,9 +615,9 @@ def test_auth_thread_logs_error_on_denied(config_without_tokens: Path, caplog: p
 
 def test_canonicalize_episode_no_tmdb_uses_trakt_data(monkeypatch: pytest.MonkeyPatch) -> None:
   """Without TMDb configured, returns Trakt native title and episode numbers."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {})  # no [tmdb] section
+  monkeypatch.setattr(_config_mod, '_config', {})  # no [tmdb] section
 
   show_data = {'title': 'Attack on Titan', 'ids': {'tmdb': 1429}}
   ep_data = {'season': 1, 'number': 45, 'title': 'Above and Below', 'ids': {'tvdb': 8765432}}
@@ -632,9 +632,9 @@ def test_canonicalize_episode_no_tmdb_uses_trakt_data(monkeypatch: pytest.Monkey
 
 def test_canonicalize_episode_with_tmdb_uses_canonical_data(monkeypatch: pytest.MonkeyPatch) -> None:
   """With TMDb configured, returns canonical title and re-numbered episode."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
 
   show_data = {'title': 'Attack on Titan', 'ids': {'tmdb': 1429}}
   ep_data = {'season': 1, 'number': 45, 'title': 'Wrong Title', 'ids': {'tvdb': 8765432}}
@@ -656,9 +656,9 @@ def test_canonicalize_episode_with_tmdb_uses_canonical_data(monkeypatch: pytest.
 
 def test_canonicalize_episode_tmdb_show_lookup_fails_uses_trakt_title(monkeypatch: pytest.MonkeyPatch) -> None:
   """When TMDb show lookup returns None, falls back to Trakt title."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
 
   show_data = {'title': 'My Show', 'ids': {'tmdb': 9999}}
   ep_data = {'season': 2, 'number': 5, 'title': 'Pilot', 'ids': {}}
@@ -673,9 +673,9 @@ def test_canonicalize_episode_tmdb_show_lookup_fails_uses_trakt_title(monkeypatc
 
 def test_canonicalize_episode_missing_ids_skips_tmdb(monkeypatch: pytest.MonkeyPatch) -> None:
   """When show/episode have no ids dict, TMDb lookups are skipped gracefully."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
 
   show_data = {'title': 'Great Show'}
   ep_data = {'season': 2, 'number': 5, 'title': 'The One With The Test'}
@@ -695,9 +695,9 @@ def test_canonicalize_episode_missing_ids_skips_tmdb(monkeypatch: pytest.MonkeyP
 
 def test_canonicalize_episode_show_id_mismatch_uses_trakt_se(monkeypatch: pytest.MonkeyPatch) -> None:
   """When resolved show_id doesn't match, falls back to Trakt S/E."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
 
   show_data = {'title': 'My Anime', 'ids': {'tmdb': 1111}}
   ep_data = {'season': 1, 'number': 5, 'title': 'Episode Five', 'ids': {'tvdb': 5555555}}
@@ -717,9 +717,9 @@ def test_canonicalize_episode_show_id_mismatch_uses_trakt_se(monkeypatch: pytest
 
 def test_canonicalize_episode_missing_tmdb_show_id_skips_episode_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
   """When show has no tmdb ID, episode resolution via TVDb is skipped."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
 
   show_data = {'title': 'No TMDb Show', 'ids': {'trakt': 42}}
   ep_data = {'season': 2, 'number': 3, 'title': 'An Episode', 'ids': {'tvdb': 7777777}}
@@ -734,9 +734,9 @@ def test_canonicalize_episode_missing_tmdb_show_id_skips_episode_resolution(monk
 
 def test_canonicalize_episode_uses_episode_group_position(monkeypatch: pytest.MonkeyPatch) -> None:
   """Episode group position overrides base TMDb S/E when available."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
 
   show_data = {'title': 'Frieren', 'ids': {'tmdb': 209867}}
   ep_data = {'season': 1, 'number': 36, 'title': 'A Magnificent End', 'ids': {'tvdb': 11447771}}
@@ -756,9 +756,9 @@ def test_canonicalize_episode_uses_episode_group_position(monkeypatch: pytest.Mo
 
 def test_canonicalize_episode_falls_back_to_tmdb_base_when_group_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
   """When episode group returns None, uses base TMDb S/E."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
 
   show_data = {'title': 'Some Show', 'ids': {'tmdb': 5555}}
   ep_data = {'season': 1, 'number': 10, 'title': 'Ep Ten', 'ids': {'tvdb': 1234567}}
@@ -776,9 +776,9 @@ def test_canonicalize_episode_falls_back_to_tmdb_base_when_group_unavailable(mon
 
 def test_canonicalize_episode_tmdb_empty_ep_title_keeps_trakt_title(monkeypatch: pytest.MonkeyPatch) -> None:
   """When TMDb returns an empty episode title, the Trakt title is kept."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
 
   show_data = {'title': 'Frieren', 'ids': {'tmdb': 209867}}
   ep_data = {'season': 2, 'number': 9, 'title': 'Episode 9', 'ids': {'tvdb': 11447772}}
@@ -797,9 +797,9 @@ def test_canonicalize_episode_tmdb_empty_ep_title_keeps_trakt_title(monkeypatch:
 
 def test_canonicalize_episode_uses_imdb_fallback_when_no_tvdb_id(monkeypatch: pytest.MonkeyPatch) -> None:
   """When tvdb_ep_id is absent, imdb is tried as a fallback for S/E and title."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
 
   show_data = {'title': 'Jujutsu Kaisen', 'ids': {'tmdb': 95479}}
   ep_data = {'season': 3, 'number': 4, 'title': 'Episode 4', 'ids': {'imdb': 'tt39370459'}}
@@ -826,9 +826,9 @@ def test_canonicalize_episode_imdb_fallback_show_id_mismatch_keeps_trakt_se(
   monkeypatch: pytest.MonkeyPatch,
 ) -> None:
   """When imdb fallback resolves a different show, Trakt S/E and title are kept."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
 
   show_data = {'title': 'My Anime', 'ids': {'tmdb': 1111}}
   ep_data = {'season': 2, 'number': 3, 'title': 'Real Title', 'ids': {'imdb': 'tt99999999'}}
@@ -852,9 +852,9 @@ def test_canonicalize_episode_imdb_fallback_show_id_mismatch_keeps_trakt_se(
 
 
 def test_canonicalize_movie_no_tmdb_uses_trakt_title(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {})
+  monkeypatch.setattr(_config_mod, '_config', {})
 
   result = trakt._canonicalize_movie({'title': 'Inception', 'ids': {'tmdb': 27205}})  # noqa: SLF001
 
@@ -862,9 +862,9 @@ def test_canonicalize_movie_no_tmdb_uses_trakt_title(monkeypatch: pytest.MonkeyP
 
 
 def test_canonicalize_movie_with_tmdb_uses_canonical_title(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
 
   with patch('integrations.tmdb.get_movie_title', return_value='Inception') as mock_movie:
     result = trakt._canonicalize_movie({'title': 'inception', 'ids': {'tmdb': 27205}})  # noqa: SLF001
