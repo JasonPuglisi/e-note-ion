@@ -570,3 +570,11 @@ template output, consult and follow both content docs:
 - All `requests` calls must include `timeout=`
 - Suppress bandit findings with `# nosec BXXX` (include rule ID); never
   suppress blindly
+- Integration modules must import `config` inside functions (not at module
+  level) using the alias `import config as _config_mod` — consistent with
+  `_public_mod` / `_quiet_mod` in `scheduler.py`. This keeps integrations
+  importable in tests without a loaded config file.
+- Runtime state modules (`public.py`, `quiet.py`) follow a symmetric API:
+  `set_<name>(bool)` / `is_<name>()` with state persisted as a flat key under
+  `[scheduler]` in `config.toml`. New runtime state modules should follow the
+  same pattern.
