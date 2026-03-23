@@ -11,7 +11,7 @@ from typing import Generator
 
 import pytest
 
-import config as _cfg
+import config as _config_mod
 import integrations.discogs as discogs
 
 
@@ -28,7 +28,7 @@ def reset_caches() -> Generator[None, None, None]:
 @pytest.mark.require_env('DISCOGS_TOKEN')
 def test_get_variables_returns_artist_and_album(require_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
   """get_variables() returns a valid variables dict from the live Discogs API."""
-  monkeypatch.setattr(_cfg, '_config', {'discogs': {'token': os.environ['DISCOGS_TOKEN']}})
+  monkeypatch.setattr(_config_mod, '_config', {'discogs': {'token': os.environ['DISCOGS_TOKEN']}})
 
   result = discogs.get_variables()
 

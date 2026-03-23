@@ -20,7 +20,7 @@ import time
 import pytest
 import requests
 
-import config as _cfg
+import config as _config_mod
 import integrations.google as google
 import integrations.youtube as youtube
 from exceptions import IntegrationDataUnavailableError
@@ -48,7 +48,7 @@ def _patch_config(monkeypatch: pytest.MonkeyPatch) -> None:
   """Inject real API credentials from env into the in-memory config."""
   access_token = _obtain_access_token()
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'google': {
@@ -60,7 +60,7 @@ def _patch_config(monkeypatch: pytest.MonkeyPatch) -> None:
       }
     },
   )
-  monkeypatch.setattr(_cfg, 'write_section_values', lambda section, values: None)
+  monkeypatch.setattr(_config_mod, 'write_section_values', lambda section, values: None)
 
 
 @pytest.mark.integration

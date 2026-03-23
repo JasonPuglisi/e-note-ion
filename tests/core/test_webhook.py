@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import config as _cfg  # noqa: E402
+import config as _config_mod  # noqa: E402
 import scheduler as _mod  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -121,7 +121,7 @@ def reset_hold_interrupt() -> Generator[None, None, None]:
 def test_webhook_server_not_started_when_no_section(
   monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-  monkeypatch.setattr(_cfg, '_config', {})
+  monkeypatch.setattr(_config_mod, '_config', {})
   mock_sched = MagicMock()
   mock_sched.get_jobs.return_value = []
   with patch.object(_mod, '_start_webhook_server') as mock_start:
@@ -142,7 +142,7 @@ def test_webhook_server_not_started_when_no_section(
 def test_webhook_server_started_when_section_present(
   monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-  monkeypatch.setattr(_cfg, '_config', {'webhook': {'port': '8080'}})
+  monkeypatch.setattr(_config_mod, '_config', {'webhook': {'port': '8080'}})
   mock_sched = MagicMock()
   mock_sched.get_jobs.return_value = []
   with patch.object(_mod, '_start_webhook_server') as mock_start:
@@ -169,7 +169,7 @@ def test_valid_secret_returns_200() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = None  # discard — just testing auth
 
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       server, port = _start_test_server()
       try:
@@ -214,7 +214,7 @@ def test_query_param_secret_accepted() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = None
 
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       server, port = _start_test_server()
       try:
@@ -255,7 +255,7 @@ def test_header_takes_precedence_over_query_param() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = None
 
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       server, port = _start_test_server()
       try:
@@ -284,7 +284,7 @@ def test_header_takes_precedence_over_query_param() -> None:
 
 
 def test_unknown_integration_returns_404() -> None:
-  with patch.dict(_cfg._config, _cred_config('notareal')):
+  with patch.dict(_config_mod._config, _cred_config('notareal')):
     server, port = _start_test_server()
     try:
       status, _ = _post(port, '/webhook/notareal')
@@ -318,7 +318,7 @@ def test_non_post_method_returns_501() -> None:
 def test_integration_without_handle_webhook_returns_404() -> None:
   mock_mod = MagicMock(spec=[])  # no handle_webhook attribute
 
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       server, port = _start_test_server()
       try:
@@ -338,7 +338,7 @@ def test_handle_webhook_none_returns_200_no_enqueue() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = None
 
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       with patch.object(_mod, 'enqueue') as mock_enqueue:
         server, port = _start_test_server()
@@ -362,7 +362,7 @@ def test_handle_webhook_result_enqueues_message() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = wm
 
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       with patch.object(_mod, 'enqueue') as mock_enqueue:
         server, port = _start_test_server()
@@ -394,7 +394,7 @@ def test_enqueue_uses_default_name_when_blank() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = wm
 
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       with patch.object(_mod, 'enqueue') as mock_enqueue:
         server, port = _start_test_server()
@@ -423,7 +423,7 @@ def test_interrupt_false_does_not_set_event() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = wm
 
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       with patch.object(_mod, 'enqueue'):
         server, port = _start_test_server()
@@ -446,7 +446,7 @@ def test_interrupt_true_sets_hold_interrupt_event() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = wm
 
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       with patch.object(_mod, 'enqueue'):
         server, port = _start_test_server()
@@ -469,7 +469,7 @@ def test_interrupt_only_sets_hold_interrupt_without_enqueue() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = wm
 
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       with patch.object(_mod, 'enqueue') as mock_enqueue:
         server, port = _start_test_server()
@@ -501,7 +501,7 @@ def test_interrupt_blocked_when_current_hold_is_high_priority() -> None:
     _mod._current_hold_priority = 8  # active high-priority hold
     _mod._current_hold_supersede_tag = 'plex'  # different source
 
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       with patch.object(_mod, 'enqueue'):
         server, port = _start_test_server()
@@ -534,7 +534,7 @@ def test_interrupt_bypasses_threshold_when_same_supersede_tag() -> None:
     _mod._current_hold_priority = 8  # active high-priority hold — same source
     _mod._current_hold_supersede_tag = 'plex'
 
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       with patch.object(_mod, 'enqueue'):
         server, port = _start_test_server()
@@ -563,7 +563,7 @@ def test_interrupt_blocked_for_different_tag_high_priority_hold() -> None:
     _mod._current_hold_priority = 8  # active high-priority hold — different source
     _mod._current_hold_supersede_tag = 'plex'
 
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       with patch.object(_mod, 'enqueue'):
         server, port = _start_test_server()
@@ -590,7 +590,7 @@ def test_interrupt_allowed_when_current_hold_is_low_priority() -> None:
   with _mod._current_hold_lock:
     _mod._current_hold_priority = 7  # active low-priority hold
 
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       with patch.object(_mod, 'enqueue'):
         server, port = _start_test_server()
@@ -617,7 +617,7 @@ def test_interrupt_only_blocked_when_current_hold_is_high_priority() -> None:
   with _mod._current_hold_lock:
     _mod._current_hold_priority = 8  # active high-priority hold
 
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       with patch.object(_mod, 'enqueue') as mock_enqueue:
         server, port = _start_test_server()
@@ -647,7 +647,7 @@ def test_interrupt_only_allowed_when_current_hold_is_low_priority() -> None:
   with _mod._current_hold_lock:
     _mod._current_hold_priority = 7  # active low-priority hold
 
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       with patch.object(_mod, 'enqueue') as mock_enqueue:
         server, port = _start_test_server()
@@ -674,7 +674,7 @@ def test_webhook_normal_indefinite_enqueues_with_indefinite_flag() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = wm
 
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       with patch.object(_mod, 'enqueue') as mock_enqueue:
         server, port = _start_test_server()
@@ -696,7 +696,7 @@ def test_webhook_normal_indefinite_enqueues_with_indefinite_flag() -> None:
 
 
 def test_malformed_json_returns_400() -> None:
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     server, port = _start_test_server()
     try:
       conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
@@ -721,7 +721,7 @@ def test_handle_webhook_exception_returns_500_server_survives() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.side_effect = RuntimeError('boom')
 
-  with patch.dict(_cfg._config, _cred_config('bart')):
+  with patch.dict(_config_mod._config, _cred_config('bart')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       server, port = _start_test_server()
       try:
@@ -745,7 +745,7 @@ def test_credential_autogenerated_when_absent(
   config_file = tmp_path / 'config.toml'
   config_file.write_text('[webhook]\nport = 8080\n')
   monkeypatch.chdir(tmp_path)
-  monkeypatch.setattr(_cfg, '_config', {'webhook': {'port': '8080'}})
+  monkeypatch.setattr(_config_mod, '_config', {'webhook': {'port': '8080'}})
 
   with patch('scheduler.HTTPServer') as mock_http:
     mock_http.return_value = MagicMock()
@@ -753,7 +753,7 @@ def test_credential_autogenerated_when_absent(
       _mod._start_webhook_server()
 
   assert 'auto-generated' in caplog.text.lower()
-  creds = _cfg._config.get('webhook', {}).get('credentials', {})
+  creds = _config_mod._config.get('webhook', {}).get('credentials', {})
   assert creds  # at least one credential was created
 
 
@@ -767,7 +767,7 @@ def test_existing_credential_not_regenerated(
   )
   monkeypatch.chdir(tmp_path)
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'webhook': {
@@ -784,7 +784,7 @@ def test_existing_credential_not_regenerated(
 
   # plex should not be regenerated.
   assert "auto-generated for 'plex'" not in caplog.text
-  assert _cfg._config['webhook']['credentials']['plex']['secret_hash'] == existing_hash
+  assert _config_mod._config['webhook']['credentials']['plex']['secret_hash'] == existing_hash
 
 
 def test_message_admin_autogenerated_even_when_friends_present(
@@ -795,7 +795,7 @@ def test_message_admin_autogenerated_even_when_friends_present(
   config_file.write_text('[webhook]\nport = 8080\n')
   monkeypatch.chdir(tmp_path)
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'webhook': {
@@ -817,7 +817,7 @@ def test_message_admin_autogenerated_even_when_friends_present(
       _mod._start_webhook_server()
 
   assert "auto-generated for 'message'" in caplog.text
-  assert 'admin' in _cfg.get_credentials('message')
+  assert 'admin' in _config_mod.get_credentials('message')
 
 
 def test_old_flat_message_credentials_auto_migrated_on_startup(
@@ -832,7 +832,7 @@ def test_old_flat_message_credentials_auto_migrated_on_startup(
   )
   monkeypatch.chdir(tmp_path)
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'webhook': {
@@ -869,7 +869,7 @@ def test_multipart_payload_field_is_parsed_as_json() -> None:
   mock_mod = MagicMock()
   mock_mod.handle_webhook.return_value = None
 
-  with patch.dict(_cfg._config, _cred_config('plex')):
+  with patch.dict(_config_mod._config, _cred_config('plex')):
     with patch.object(_mod, '_get_integration', return_value=mock_mod):
       server, port = _start_test_server()
       try:
@@ -885,7 +885,7 @@ def test_multipart_payload_field_is_parsed_as_json() -> None:
 def test_multipart_missing_payload_field_returns_400() -> None:
   body = f'--{_BOUNDARY}\r\nContent-Disposition: form-data; name="other"\r\n\r\nvalue\r\n--{_BOUNDARY}--\r\n'.encode()
 
-  with patch.dict(_cfg._config, _cred_config('plex')):
+  with patch.dict(_config_mod._config, _cred_config('plex')):
     server, port = _start_test_server()
     try:
       conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
@@ -906,7 +906,7 @@ def test_multipart_missing_payload_field_returns_400() -> None:
 
 
 def test_multipart_invalid_json_in_payload_returns_400() -> None:
-  with patch.dict(_cfg._config, _cred_config('plex')):
+  with patch.dict(_config_mod._config, _cred_config('plex')):
     server, port = _start_test_server()
     try:
       status, _ = _post_multipart(port, '/webhook/plex', 'not json{')

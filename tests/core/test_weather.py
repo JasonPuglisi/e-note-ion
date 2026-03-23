@@ -22,10 +22,10 @@ def reset_caches() -> Generator[None, None, None]:
 @pytest.fixture()
 def weather_config_imperial(monkeypatch: pytest.MonkeyPatch) -> None:
   """Patch config with imperial weather settings."""
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'weather': {'city': 'san francisco', 'units': 'imperial'}},
   )
@@ -34,10 +34,10 @@ def weather_config_imperial(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture()
 def weather_config_metric(monkeypatch: pytest.MonkeyPatch) -> None:
   """Patch config with metric weather settings."""
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'weather': {'city': 'London', 'units': 'metric'}},
   )
@@ -46,10 +46,10 @@ def weather_config_metric(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture()
 def weather_config_no_units(monkeypatch: pytest.MonkeyPatch) -> None:
   """Patch config with no units key (should default to imperial)."""
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'weather': {'city': 'Chicago'}},
   )
@@ -196,9 +196,9 @@ def test_geocoding_cached_after_first_call(weather_config_imperial: None) -> Non
 
 def test_geocoding_uses_count2_with_country_code(monkeypatch: pytest.MonkeyPatch) -> None:
   """count=2 must be sent when a country code is present (Open-Meteo count=1+countryCode bug)."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'weather': {'city': 'Santa Clara, CA'}})
+  monkeypatch.setattr(_config_mod, '_config', {'weather': {'city': 'Santa Clara, CA'}})
   with patch('integrations.weather.fetch_with_retry', side_effect=[_mock_geocode(), _mock_forecast()]) as mock_fetch:
     weather.get_variables()
   geocode_call = mock_fetch.call_args_list[0]
@@ -216,9 +216,9 @@ def test_geocoding_uses_count1_without_country_code(weather_config_imperial: Non
 
 
 def test_geocoding_not_found_raises_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'weather': {'city': 'Notaplace12345'}})
+  monkeypatch.setattr(_config_mod, '_config', {'weather': {'city': 'Notaplace12345'}})
   mock = MagicMock()
   mock.raise_for_status.return_value = None
   mock.json.return_value = {'results': []}
@@ -228,9 +228,9 @@ def test_geocoding_not_found_raises_unavailable(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_geocoding_http_error_raises_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'weather': {'city': 'San Francisco'}})
+  monkeypatch.setattr(_config_mod, '_config', {'weather': {'city': 'San Francisco'}})
   err_resp = MagicMock()
   err_resp.status_code = 500
   err_resp.reason = 'Internal Server Error'
@@ -260,9 +260,9 @@ def test_forecast_http_error_raises_unavailable(weather_config_imperial: None) -
 
 
 def test_geocoding_timeout_raises_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'weather': {'city': 'San Francisco'}})
+  monkeypatch.setattr(_config_mod, '_config', {'weather': {'city': 'San Francisco'}})
   with patch('integrations.weather.fetch_with_retry', side_effect=requests.Timeout()):
     with pytest.raises(IntegrationDataUnavailableError):
       weather.get_variables()

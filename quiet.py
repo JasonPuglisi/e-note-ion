@@ -5,7 +5,7 @@
 # instead of sending it to the board. On wake, the virtual state is sent
 # immediately so the board shows contextually relevant content.
 #
-# State is persisted to [scheduler.quiet] in config.toml so quiet mode
+# State is persisted to [scheduler].quiet in config.toml so quiet mode
 # survives restarts (including Docker container recreates).
 #
 # Thread-safe: all state is behind a single lock.
@@ -21,9 +21,8 @@ _lock = threading.Lock()
 _active: bool = False
 _virtual_state: list[list[int]] | None = None
 
-# Set by activate() and deactivate() so the worker can detect transitions
-# without polling. The worker should wait on this event (with a timeout) in
-# its main loop.
+# Set by set_quiet() so the worker can detect transitions without polling.
+# The worker should wait on this event (with a timeout) in its main loop.
 _changed = threading.Event()
 
 
@@ -34,42 +33,29 @@ def init() -> None:
   """
   global _active
   with _lock:
-    _active = _config_mod.get_optional_bool('scheduler.quiet', 'active', default=False)
+    _active = _config_mod.get_optional_bool('scheduler', 'quiet', default=False)
     if _active:
       logger.info('Quiet mode restored from config (board is quiet)')
 
 
-def activate() -> None:
-  """Enable quiet mode and persist to config.toml."""
-  global _active
-  with _lock:
-    if _active:
-      logger.debug('Quiet mode already active')
-      return
-    _active = True
-    _config_mod.write_config_section('scheduler.quiet', {'active': True})
-    logger.info('Quiet mode activated')
-    _changed.set()
+def set_quiet(value: bool) -> None:
+  """Set quiet mode and persist to config.toml.
 
-
-def deactivate() -> None:
-  """Disable quiet mode and persist to config.toml.
-
-  Virtual state is preserved for the worker to retrieve via
-  pop_virtual_state() and send to the board.
+  When transitioning to inactive, virtual state is preserved for the worker
+  to retrieve via pop_virtual_state() and send to the board.
   """
   global _active
   with _lock:
-    if not _active:
-      logger.debug('Quiet mode already inactive')
+    if _active == value:
+      logger.debug('Quiet mode already %s', 'active' if value else 'inactive')
       return
-    _active = False
-    _config_mod.write_config_section('scheduler.quiet', {'active': False})
-    logger.info('Quiet mode deactivated')
+    _active = value
+    _config_mod.write_config_section('scheduler', {'quiet': value})
+    logger.info('Quiet mode %s', 'activated' if value else 'deactivated')
     _changed.set()
 
 
-def is_active() -> bool:
+def is_quiet() -> bool:
   """Return whether quiet mode is currently active."""
   with _lock:
     return _active

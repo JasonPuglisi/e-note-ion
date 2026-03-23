@@ -39,9 +39,9 @@ def _monitor(
 
 @pytest.fixture(autouse=True)
 def _mock_config(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'uptimerobot': {'api_key': 'test-key'}})
+  monkeypatch.setattr(_config_mod, '_config', {'uptimerobot': {'api_key': 'test-key'}})
   yield
 
 

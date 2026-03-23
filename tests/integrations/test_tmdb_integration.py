@@ -10,14 +10,14 @@ import os
 
 import pytest
 
-import config as _cfg
+import config as _config_mod
 import integrations.tmdb as tmdb
 
 
 def _patch_config(monkeypatch: pytest.MonkeyPatch) -> None:
   """Inject real API credentials from env into the in-memory config."""
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'tmdb': {'api_read_access_token': os.environ['TMDB_API_READ_ACCESS_TOKEN']}},
   )

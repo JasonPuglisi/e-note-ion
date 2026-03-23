@@ -261,10 +261,10 @@ def test_load_file_log_widths_from_effective_values(
 ) -> None:
   # When a cron override is shorter than the JSON value, column widths must be
   # computed from the effective (post-override) value, not the original (bug #150).
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'test': {'schedules': {'tmpl': {'cron': '* * * * *'}}}},
   )
@@ -463,11 +463,11 @@ def test_load_content_user_loaded_when_star(
 def test_load_file_applies_schedule_override(
   sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   # Override hold and timeout for the template in this file.
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'test': {'schedules': {'tmpl': {'hold': 120, 'timeout': 30}}}},
   )
@@ -484,10 +484,10 @@ def test_load_file_applies_schedule_override(
 def test_load_file_applies_priority_override(
   sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'test': {'schedules': {'tmpl': {'priority': 9}}}},
   )
@@ -504,10 +504,10 @@ def test_load_file_ignores_invalid_type_priority_override(
   monkeypatch: pytest.MonkeyPatch,
   caplog: pytest.LogCaptureFixture,
 ) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'test': {'schedules': {'tmpl': {'priority': 'high'}}}},
   )
@@ -524,10 +524,10 @@ def test_load_file_ignores_out_of_range_priority_override(
   monkeypatch: pytest.MonkeyPatch,
   caplog: pytest.LogCaptureFixture,
 ) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'test': {'schedules': {'tmpl': {'priority': 11}}}},
   )
@@ -541,10 +541,10 @@ def test_load_file_ignores_out_of_range_priority_override(
 def test_load_file_ignores_unknown_override_keys(
   sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'test': {'schedules': {'tmpl': {'hold': 90, 'unknown_field': 'ignored'}}}},
   )
@@ -557,9 +557,9 @@ def test_load_file_ignores_unknown_override_keys(
 def test_load_file_skips_disabled_template(
   sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'disabled': True}}}})
+  monkeypatch.setattr(_config_mod, '_config', {'test': {'schedules': {'tmpl': {'disabled': True}}}})
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))
   _mod._load_file(sched, f)
@@ -569,9 +569,9 @@ def test_load_file_skips_disabled_template(
 def test_load_file_disabled_false_does_not_skip(
   sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'disabled': False}}}})
+  monkeypatch.setattr(_config_mod, '_config', {'test': {'schedules': {'tmpl': {'disabled': False}}}})
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))
   _mod._load_file(sched, f)
@@ -584,9 +584,9 @@ def test_load_file_disabled_string_true_coerces(
   monkeypatch: pytest.MonkeyPatch,
   caplog: pytest.LogCaptureFixture,
 ) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'disabled': 'true'}}}})
+  monkeypatch.setattr(_config_mod, '_config', {'test': {'schedules': {'tmpl': {'disabled': 'true'}}}})
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))
   _mod._load_file(sched, f)
@@ -600,9 +600,9 @@ def test_load_file_disabled_invalid_type_ignored(
   monkeypatch: pytest.MonkeyPatch,
   caplog: pytest.LogCaptureFixture,
 ) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'disabled': 1}}}})
+  monkeypatch.setattr(_config_mod, '_config', {'test': {'schedules': {'tmpl': {'disabled': 1}}}})
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))
   _mod._load_file(sched, f)
@@ -614,7 +614,7 @@ def test_load_file_skips_disabled_webhook_only_template(
   sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
   # Cron template enabled, webhook-only template disabled — only cron job scheduled.
-  import config as _cfg
+  import config as _config_mod
 
   content: dict[str, Any] = {
     'templates': {
@@ -631,7 +631,7 @@ def test_load_file_skips_disabled_webhook_only_template(
       },
     }
   }
-  monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'webhook_tmpl': {'disabled': True}}}})
+  monkeypatch.setattr(_config_mod, '_config', {'test': {'schedules': {'webhook_tmpl': {'disabled': True}}}})
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(content))
   _mod._load_file(sched, f)
@@ -642,9 +642,9 @@ def test_load_file_skips_disabled_webhook_only_template(
 def test_load_file_private_override_sets_data_flag(
   sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'private': True}}}})
+  monkeypatch.setattr(_config_mod, '_config', {'test': {'schedules': {'tmpl': {'private': True}}}})
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content()))  # template has no 'private' field in JSON
   _mod._load_file(sched, f)
@@ -656,9 +656,9 @@ def test_load_file_private_override_sets_data_flag(
 def test_load_file_private_override_false_clears_json_flag(
   sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'tmpl': {'private': False}}}})
+  monkeypatch.setattr(_config_mod, '_config', {'test': {'schedules': {'tmpl': {'private': False}}}})
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_content(private=True)))
   _mod._load_file(sched, f)
@@ -712,10 +712,10 @@ def test_load_file_webhook_non_private_not_in_dict(
 def test_load_file_webhook_private_override_false(
   sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(_mod, '_webhook_private', {})
-  monkeypatch.setattr(_cfg, '_config', {'test': {'schedules': {'now_playing': {'private': False}}}})
+  monkeypatch.setattr(_config_mod, '_config', {'test': {'schedules': {'now_playing': {'private': False}}}})
   f = tmp_path / 'test.json'
   f.write_text(json.dumps(_make_webhook_private_content(private=True)))
   _mod._load_file(sched, f)
@@ -1249,10 +1249,10 @@ def test_main_empty_board_on_startup(monkeypatch: pytest.MonkeyPatch, caplog: py
 def test_main_passes_timezone_to_scheduler(monkeypatch: pytest.MonkeyPatch) -> None:
   from zoneinfo import ZoneInfo
 
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr('sys.argv', ['e-note-ion'])
-  monkeypatch.setattr(_cfg, '_config', {'scheduler': {'timezone': 'America/New_York'}})
+  monkeypatch.setattr(_config_mod, '_config', {'scheduler': {'timezone': 'America/New_York'}})
   mock_sched = _mock_sched()
   with (
     patch.object(_mod, '_validate_startup'),
@@ -1701,10 +1701,10 @@ def test_load_file_refresh_interval_absent_not_in_data(sched: BackgroundSchedule
 def test_load_file_applies_refresh_interval_override(
   sched: BackgroundScheduler, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'test': {'schedules': {'tmpl': {'refresh_interval': 90}}}},
   )
@@ -1720,10 +1720,10 @@ def test_load_file_ignores_invalid_refresh_interval_override(
   monkeypatch: pytest.MonkeyPatch,
   caplog: pytest.LogCaptureFixture,
 ) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'test': {'schedules': {'tmpl': {'refresh_interval': 10}}}},
   )

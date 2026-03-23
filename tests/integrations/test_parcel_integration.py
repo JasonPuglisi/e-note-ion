@@ -12,7 +12,7 @@ import os
 
 import pytest
 
-import config as _cfg
+import config as _config_mod
 import integrations.parcel as pc
 from exceptions import IntegrationDataUnavailableError
 
@@ -26,7 +26,7 @@ def test_get_variables_or_no_deliveries(require_env: None, monkeypatch: pytest.M
   The test verifies the API call succeeds either way.
   """
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'parcel': {'api_key': os.environ['PARCEL_API_KEY']}},
   )

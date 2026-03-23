@@ -75,16 +75,16 @@ def get_variables() -> dict[str, list[list[str]]]:
   """
   global _cache
 
-  import config as _cfg
+  import config as _config_mod
 
   if _cache is not None and _cache.is_valid(_CACHE_TTL):
     logger.debug('qBittorrent: cache hit')
     return _cache.value
 
-  base_url = _cfg.get('qbittorrent', 'url').rstrip('/')
-  username = _cfg.get('qbittorrent', 'username')
-  password = _cfg.get('qbittorrent', 'password')
-  verify = _cfg.get_optional_bool('qbittorrent', 'verify_tls', default=True)
+  base_url = _config_mod.get('qbittorrent', 'url').rstrip('/')
+  username = _config_mod.get('qbittorrent', 'username')
+  password = _config_mod.get('qbittorrent', 'password')
+  verify = _config_mod.get_optional_bool('qbittorrent', 'verify_tls', default=True)
 
   try:
     with warnings.catch_warnings():

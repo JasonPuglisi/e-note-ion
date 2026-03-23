@@ -530,6 +530,76 @@ def test_delete_config_section_missing_file_raises(
 # --- migrate_message_credentials ---
 
 
+# --- migrate_quiet_config ---
+
+
+def test_migrate_quiet_config_rewrites_active_true(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  content = '[scheduler]\nmodel = "note"\n\n[scheduler.quiet]\nactive = true\n'
+  cfg = _setup_wcs(tmp_path, monkeypatch, content)
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'model': 'note', 'quiet': {'active': True}}})
+  _mod.migrate_quiet_config()
+  text = cfg.read_text()
+  assert '[scheduler.quiet]' not in text
+  assert 'quiet = true' in text
+  assert _mod._config['scheduler'].get('quiet') is True  # noqa: SLF001
+
+
+def test_migrate_quiet_config_rewrites_active_false(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  content = '[scheduler]\nmodel = "note"\n\n[scheduler.quiet]\nactive = false\n'
+  cfg = _setup_wcs(tmp_path, monkeypatch, content)
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'model': 'note', 'quiet': {'active': False}}})
+  _mod.migrate_quiet_config()
+  text = cfg.read_text()
+  assert '[scheduler.quiet]' not in text
+  assert 'quiet = false' in text
+
+
+def test_migrate_quiet_config_noop_when_already_flat(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  content = '[scheduler]\nquiet = true\n'
+  cfg = _setup_wcs(tmp_path, monkeypatch, content)
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'quiet': True}})
+  _mod.migrate_quiet_config()
+  assert cfg.read_text() == content
+
+
+def test_migrate_quiet_config_noop_when_absent(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  content = '[scheduler]\nmodel = "note"\n'
+  cfg = _setup_wcs(tmp_path, monkeypatch, content)
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'model': 'note'}})
+  _mod.migrate_quiet_config()
+  assert cfg.read_text() == content
+
+
+def test_migrate_quiet_config_logs_deprecation_warning(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  caplog: pytest.LogCaptureFixture,
+) -> None:
+  content = '[scheduler]\nmodel = "note"\n\n[scheduler.quiet]\nactive = true\n'
+  _setup_wcs(tmp_path, monkeypatch, content)
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'model': 'note', 'quiet': {'active': True}}})
+  import logging
+
+  with caplog.at_level(logging.WARNING, logger='config'):
+    _mod.migrate_quiet_config()
+  assert 'deprecated' in caplog.text.lower()
+
+
+# --- migrate_message_credentials ---
+
+
 def test_migrate_message_credentials_rewrites_friend_to_nested_path(
   tmp_path: Path,
   monkeypatch: pytest.MonkeyPatch,

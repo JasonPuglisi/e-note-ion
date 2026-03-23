@@ -20,7 +20,6 @@ from typing import Any
 
 import requests
 
-import config as _cfg
 import integrations.vestaboard as _vb
 from exceptions import IntegrationDataUnavailableError
 from integrations.http import CacheEntry, fetch_with_retry
@@ -67,7 +66,9 @@ def _fetch_monitors() -> list[dict[str, Any]]:
   Returns the list of monitor dicts from the response. Raises
   IntegrationDataUnavailableError on API errors.
   """
-  api_key = _cfg.get('uptimerobot', 'api_key')
+  import config as _config_mod
+
+  api_key = _config_mod.get('uptimerobot', 'api_key')
 
   try:
     r = fetch_with_retry(

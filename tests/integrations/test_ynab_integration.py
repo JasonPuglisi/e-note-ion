@@ -15,7 +15,7 @@ import os
 
 import pytest
 
-import config as _cfg
+import config as _config_mod
 import integrations.ynab as ynab
 
 
@@ -28,7 +28,7 @@ def test_get_variables(require_env: None, monkeypatch: pytest.MonkeyPatch) -> No
   if budget_id:
     cfg['ynab']['budget_id'] = budget_id
 
-  monkeypatch.setattr(_cfg, '_config', cfg)
+  monkeypatch.setattr(_config_mod, '_config', cfg)
   ynab._cache = None
   ynab._resolved_budget_id = None
 

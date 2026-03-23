@@ -35,9 +35,9 @@ def handle_webhook(
     raise ValueError(f'Invalid scheduler action: {action!r} — expected one of {sorted(_VALID_ACTIONS)}')
 
   if action == 'quiet':
-    quiet.activate()
+    quiet.set_quiet(True)
   elif action == 'wake':
-    quiet.deactivate()
+    quiet.set_quiet(False)
   elif action == 'public':
     public.set_public(True)
   elif action == 'private':

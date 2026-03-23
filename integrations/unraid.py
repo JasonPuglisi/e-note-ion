@@ -88,15 +88,15 @@ def get_variables() -> dict[str, list[list[str]]]:
   """
   global _cache
 
-  import config as _cfg
+  import config as _config_mod
 
   if _cache is not None and _cache.is_valid(_CACHE_TTL):
     logger.debug('Unraid: cache hit')
     return _cache.value
 
-  base_url = _cfg.get('unraid', 'url').rstrip('/')
-  api_key = _cfg.get('unraid', 'api_key')
-  verify = _cfg.get_optional_bool('unraid', 'verify_tls', default=True)
+  base_url = _config_mod.get('unraid', 'url').rstrip('/')
+  api_key = _config_mod.get('unraid', 'api_key')
+  verify = _config_mod.get_optional_bool('unraid', 'verify_tls', default=True)
 
   try:
     with warnings.catch_warnings():

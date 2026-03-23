@@ -386,7 +386,7 @@ def worker() -> None:
     # Handle quiet→wake transition: send the last virtual state to the board
     # so it wakes to contextually relevant content. Detected within ≤1s of
     # the wake webhook firing (the pop_valid_message timeout).
-    if not _quiet_mod.is_active():
+    if not _quiet_mod.is_quiet():
       virtual = _quiet_mod.pop_virtual_state()
       if virtual is not None:
         logger.info('Quiet mode ended — sending virtual state to board')
@@ -427,7 +427,7 @@ def worker() -> None:
 
     scheduled = datetime.fromtimestamp(time.time() - (time.monotonic() - message.scheduled_at))
     hold_desc = f'{message.hold}s (indefinite)' if message.indefinite else f'{message.hold}s'
-    quiet_tag = ' [quiet]' if _quiet_mod.is_active() else ''
+    quiet_tag = ' [quiet]' if _quiet_mod.is_quiet() else ''
     logger.info(
       'Sending %s%s | scheduled: %s | priority: %d | hold: %s',
       message.name,
@@ -452,7 +452,7 @@ def worker() -> None:
         variables = getattr(_get_integration(message.data['integration']), fn_name)()
       templates = message.data['templates']
       truncation = message.data.get('truncation', 'hard')
-      if _quiet_mod.is_active():
+      if _quiet_mod.is_quiet():
         grid = vestaboard.render(templates, variables, truncation)
         _quiet_mod.set_virtual_state(grid)
       else:
@@ -487,7 +487,7 @@ def worker() -> None:
     # During quiet mode, skip hold — no physical display to keep showing.
     # Transfer refresh capability to idle state so virtual state stays current,
     # then immediately process the next message.
-    if _quiet_mod.is_active():
+    if _quiet_mod.is_quiet():
       with _current_hold_lock:
         _current_hold_supersede_tag = ''
         _current_hold_priority = None
@@ -505,7 +505,7 @@ def worker() -> None:
           _tr: Any = _truncation,
         ) -> None:
           new_vars = getattr(_i, _f)()
-          if _quiet_mod.is_active():
+          if _quiet_mod.is_quiet():
             _grid = vestaboard.render(_t, new_vars, _tr)
             _quiet_mod.set_virtual_state(_grid)
           else:
@@ -539,7 +539,7 @@ def worker() -> None:
         _tr: Any = _truncation,
       ) -> None:
         new_vars = getattr(_i, _f)()
-        if _quiet_mod.is_active():
+        if _quiet_mod.is_quiet():
           _grid = vestaboard.render(_t, new_vars, _tr)
           _quiet_mod.set_virtual_state(_grid)
         else:
@@ -1190,6 +1190,7 @@ def main() -> None:
   logging.basicConfig(level=logging.INFO, handlers=[_handler])
   _validate_startup(args.config)
   _config_mod.load_config(args.config)
+  _config_mod.migrate_quiet_config()
   _quiet_mod.init()
   _public_mod.init()
 
@@ -1218,7 +1219,7 @@ def main() -> None:
     extras.append('no content loaded')
   if _public_mod.is_public():
     extras.append('public mode')
-  if _quiet_mod.is_active():
+  if _quiet_mod.is_quiet():
     extras.append('quiet mode')
   version = importlib.metadata.version('e-note-ion')
   logger.info('Starting e-note-ion v%s — %s, %s', version, board_desc, ', '.join(extras))

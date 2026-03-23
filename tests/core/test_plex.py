@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-import config as _cfg
+import config as _config_mod
 import integrations.plex as _plex
 import integrations.tmdb as _tmdb
 import integrations.vestaboard as _vb
@@ -45,7 +45,7 @@ def _movie_payload(event: str = 'media.play', title: str = 'A Quiet Place') -> d
 @pytest.fixture(autouse=True)
 def _empty_config(monkeypatch: pytest.MonkeyPatch) -> None:
   """Ensure config has no plex schedule overrides for most tests."""
-  monkeypatch.setattr(_cfg, '_config', {})
+  monkeypatch.setattr(_config_mod, '_config', {})
 
 
 @pytest.fixture(autouse=True)
@@ -796,7 +796,7 @@ def test_handle_webhook_long_show_name_truncated_to_one_row() -> None:
 
 def test_handle_webhook_applies_config_override(monkeypatch: pytest.MonkeyPatch) -> None:
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'plex': {'schedules': {'now_playing': {'hold': 7200, 'priority': 9}}}},
   )
@@ -910,7 +910,7 @@ def _movie_payload_with_guid(tmdb_id: int, title: str = 'Inception') -> dict[str
 
 def test_handle_webhook_episode_uses_tmdb_canonical_show_name(monkeypatch: pytest.MonkeyPatch) -> None:
   """TVDb episode ID → find_episode_by_tvdb_id → show_id → get_show_title."""
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
   # find returns (season, episode, title, show_id=40290, tmdb_episode_id=99001)
   monkeypatch.setattr(_tmdb, 'find_episode_by_tvdb_id', lambda tvdb_id: (1, 3, 'The Dish', 40290, 99001))
   show_calls: list[int] = []
@@ -930,7 +930,7 @@ def test_handle_webhook_episode_uses_tmdb_canonical_show_name(monkeypatch: pytes
 
 def test_handle_webhook_episode_falls_back_when_no_guid(monkeypatch: pytest.MonkeyPatch) -> None:
   """When the payload has no Guid array and title search fails, falls back to grandparentTitle."""
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
   find_calls: list[int] = []
   monkeypatch.setattr(_tmdb, 'find_episode_by_tvdb_id', lambda tvdb_id: find_calls.append(tvdb_id) or None)
   monkeypatch.setattr(_tmdb, 'search_show_by_title', lambda title: None)
@@ -945,7 +945,7 @@ def test_handle_webhook_episode_falls_back_when_no_guid(monkeypatch: pytest.Monk
 
 def test_handle_webhook_episode_falls_back_when_find_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
   """When find_episode_by_tvdb_id returns None, falls back to grandparentTitle."""
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
   monkeypatch.setattr(_tmdb, 'find_episode_by_tvdb_id', lambda tvdb_id: None)
 
   with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
@@ -957,7 +957,7 @@ def test_handle_webhook_episode_falls_back_when_find_returns_none(monkeypatch: p
 
 def test_handle_webhook_episode_falls_back_when_tmdb_unconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
   """When TMDb is not configured, no lookup is attempted even with Guid."""
-  monkeypatch.setattr(_cfg, '_config', {})
+  monkeypatch.setattr(_config_mod, '_config', {})
   find_calls: list[int] = []
   monkeypatch.setattr(_tmdb, 'find_episode_by_tvdb_id', lambda tvdb_id: find_calls.append(tvdb_id) or None)
 
@@ -971,7 +971,7 @@ def test_handle_webhook_episode_falls_back_when_tmdb_unconfigured(monkeypatch: p
 
 def test_handle_webhook_movie_uses_tmdb_canonical_title(monkeypatch: pytest.MonkeyPatch) -> None:
   """When TMDb is configured, movie title uses the canonical TMDb title."""
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
   calls: list[int] = []
 
   def _mock_get_movie_title(tmdb_id: int) -> str:
@@ -989,7 +989,7 @@ def test_handle_webhook_movie_uses_tmdb_canonical_title(monkeypatch: pytest.Monk
 
 def test_handle_webhook_movie_falls_back_when_tmdb_lookup_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
   """When the TMDb lookup returns None, falls back to Plex's native title."""
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
   monkeypatch.setattr(_tmdb, 'get_movie_title', lambda tmdb_id: None)
 
   with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
@@ -1019,7 +1019,7 @@ def _episode_payload_with_imdb_guid(imdb_id: str, show: str = 'Jujutsu Kaisen') 
 
 def test_handle_webhook_episode_uses_tmdb_episode_title(monkeypatch: pytest.MonkeyPatch) -> None:
   """TMDb episode title is used instead of Plex's native episode title."""
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
   monkeypatch.setattr(_tmdb, 'find_episode_by_tvdb_id', lambda tvdb_id: (1, 51, 'Perfect Preparation', 95479, 6827061))
   monkeypatch.setattr(_tmdb, 'get_show_title', lambda show_id: 'Jujutsu Kaisen')
 
@@ -1036,7 +1036,7 @@ def test_handle_webhook_episode_falls_back_to_plex_title_when_no_tmdb_ep_title(
   monkeypatch: pytest.MonkeyPatch,
 ) -> None:
   """When TMDb returns an empty episode title, Plex's native title is used."""
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
   # empty string title from TMDb (episode exists but title not yet filled in)
   monkeypatch.setattr(_tmdb, 'find_episode_by_tvdb_id', lambda tvdb_id: (1, 3, '', 40290, 99001))
   monkeypatch.setattr(_tmdb, 'get_show_title', lambda show_id: 'MasterChef')
@@ -1051,7 +1051,7 @@ def test_handle_webhook_episode_falls_back_to_plex_title_when_no_tmdb_ep_title(
 
 def test_handle_webhook_episode_uses_imdb_fallback_when_no_tvdb_guid(monkeypatch: pytest.MonkeyPatch) -> None:
   """When no tvdb:// guid is present, imdb:// is tried and the TMDb title is used."""
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
   imdb_calls: list[str] = []
 
   def _mock_find_imdb(imdb_id: str) -> tuple[int, int, str, int, int]:
@@ -1073,7 +1073,7 @@ def test_handle_webhook_episode_uses_imdb_fallback_when_no_tvdb_guid(monkeypatch
 
 def test_handle_webhook_episode_falls_back_when_no_tvdb_and_no_imdb_guid(monkeypatch: pytest.MonkeyPatch) -> None:
   """When no tvdb://, imdb://, and title search all fail, falls back to Plex's raw title."""
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
   imdb_calls: list[str] = []
   monkeypatch.setattr(_tmdb, 'find_episode_by_imdb_id', lambda imdb_id: imdb_calls.append(imdb_id) or None)
   monkeypatch.setattr(_tmdb, 'search_show_by_title', lambda title: None)
@@ -1100,7 +1100,7 @@ def test_handle_webhook_episode_falls_back_when_no_tvdb_and_no_imdb_guid(monkeyp
 
 def test_handle_webhook_episode_uses_title_search_when_no_guid(monkeypatch: pytest.MonkeyPatch) -> None:
   """When no external guid is present, title search + S/E lookup returns TMDb episode title."""
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
   monkeypatch.setattr(_tmdb, 'search_show_by_title', lambda title: 95479)
   monkeypatch.setattr(_tmdb, 'get_episode_by_number', lambda show_id, s, e: ('Perfect Preparation', 6827061))
   monkeypatch.setattr(_tmdb, 'get_episode_group_position', lambda show_id, ep_id: None)
@@ -1133,7 +1133,7 @@ def test_handle_webhook_episode_uses_episode_group_fallback_when_base_lookup_fai
   Covers anime like Frieren and JJK where TMDb base data uses a flat Season 1
   but Plex uses broadcast-season numbering matching the type-6 episode group.
   """
-  monkeypatch.setattr(_cfg, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
   monkeypatch.setattr(_tmdb, 'search_show_by_title', lambda title: 209867)
   monkeypatch.setattr(_tmdb, 'get_episode_by_number', lambda show_id, s, e: None)  # base lookup fails (404)
   monkeypatch.setattr(

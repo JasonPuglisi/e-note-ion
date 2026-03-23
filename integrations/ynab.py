@@ -112,9 +112,9 @@ def _resolve_budget_id(api_key: str) -> str:
   """Return the budget ID from config, or auto-detect if only one budget exists."""
   global _resolved_budget_id
 
-  import config as _cfg
+  import config as _config_mod
 
-  explicit = _cfg.get_optional('ynab', 'budget_id')
+  explicit = _config_mod.get_optional('ynab', 'budget_id')
   if explicit:
     return explicit
 
@@ -153,13 +153,13 @@ def get_variables() -> dict[str, list[list[str]]]:
   """
   global _cache
 
-  import config as _cfg
+  import config as _config_mod
 
   if _cache is not None and _cache.is_valid(_CACHE_TTL):
     logger.debug('YNAB: cache hit')
     return _cache.value
 
-  api_key = _cfg.get('ynab', 'api_key')
+  api_key = _config_mod.get('ynab', 'api_key')
   budget_id = _resolve_budget_id(api_key)
   hdrs = _headers(api_key)
 

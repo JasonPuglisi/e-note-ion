@@ -28,9 +28,9 @@ def mock_fetch_cover_color() -> Generator[None, None, None]:
 @pytest.fixture()
 def discogs_config(monkeypatch: pytest.MonkeyPatch) -> None:
   """Patch config with Discogs settings."""
-  import config as _cfg
+  import config as _config_mod
 
-  monkeypatch.setattr(_cfg, '_config', {'discogs': {'token': 'test-token'}})
+  monkeypatch.setattr(_config_mod, '_config', {'discogs': {'token': 'test-token'}})
 
 
 def _mock_identity(username: str = 'testuser') -> MagicMock:

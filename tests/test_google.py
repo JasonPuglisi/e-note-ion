@@ -11,10 +11,10 @@ from exceptions import IntegrationDataUnavailableError
 
 @pytest.fixture(autouse=True)
 def _mock_config(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'google': {
@@ -52,10 +52,10 @@ def test_get_token_returns_valid_token() -> None:
 
 
 def test_get_token_no_token_raises_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {'google': {'client_id': 'id', 'client_secret': 'secret'}},
   )
@@ -70,10 +70,10 @@ def test_get_token_no_token_raises_unavailable(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_get_token_refreshes_near_expiry(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'google': {
@@ -107,10 +107,10 @@ def test_get_token_refreshes_near_expiry(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_get_token_refresh_failure_clears_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
-  import config as _cfg
+  import config as _config_mod
 
   monkeypatch.setattr(
-    _cfg,
+    _config_mod,
     '_config',
     {
       'google': {

@@ -59,12 +59,11 @@ and persist it for future restarts.
 Both modes are controlled via webhook. Persisted state is stored automatically:
 
 ```toml
-# Written by quiet.activate() / quiet.deactivate() — do not edit manually.
-[scheduler.quiet]
-active = false
+[scheduler]
+# Written by quiet.set_quiet() — can also be set manually before startup.
+quiet = false
 
 # Written by public.set_public() — can also be set manually before startup.
-[scheduler]
 public = false
 ```
 
