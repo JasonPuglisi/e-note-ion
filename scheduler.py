@@ -333,9 +333,14 @@ def _do_hold(
   If refresh_fn and refresh_interval are provided, refresh_fn() is called
   every refresh_interval seconds during the hold. Errors from refresh_fn are
   logged and the hold continues; the display keeps showing the last good content.
+
+  Quiet→wake transitions are detected within ≤1s (the poll interval). When
+  detected, the virtual state is sent to the board immediately and the hold
+  continues normally.
   """
   hold_start = time.monotonic()
   last_refresh = hold_start
+  was_quiet = _quiet_mod.is_quiet()
   while True:
     elapsed = time.monotonic() - hold_start
     remaining = message.hold - elapsed
@@ -362,6 +367,24 @@ def _do_hold(
             time.monotonic() - hold_start,
           )
           break
+
+    # Detect quiet→wake transition and push the virtual state to the board
+    # immediately, without breaking the hold. Subsequent refreshes (if any)
+    # will write to the board directly via _do_refresh's is_quiet() check.
+    now_quiet = _quiet_mod.is_quiet()
+    if was_quiet and not now_quiet:
+      virtual = _quiet_mod.pop_virtual_state()
+      if virtual is not None:
+        logger.info('[hold] quiet→wake during %s — sending virtual state to board', message.name)
+        try:
+          vestaboard.set_state_raw(virtual)
+        except vestaboard.DuplicateContentError:
+          pass
+        except vestaboard.BoardLockedError:
+          logger.warning('[hold] board locked on wake — virtual state discarded')
+        except Exception as e:  # noqa: BLE001
+          logger.error('[hold] error sending virtual state on wake: %s', e)
+    was_quiet = now_quiet
 
     if refresh_fn and refresh_interval:
       now = time.monotonic()
@@ -482,41 +505,6 @@ def worker() -> None:
         _current_hold_supersede_tag = ''
         _current_hold_priority = None
       logger.error('Error sending to board: %s', e)
-      continue
-
-    # During quiet mode, skip hold — no physical display to keep showing.
-    # Transfer refresh capability to idle state so virtual state stays current,
-    # then immediately process the next message.
-    if _quiet_mod.is_quiet():
-      with _current_hold_lock:
-        _current_hold_supersede_tag = ''
-        _current_hold_priority = None
-      refresh_interval = message.data.get('refresh_interval')
-      if refresh_interval and 'integration' in message.data:
-        _integration = _get_integration(message.data['integration'])
-        _fn_name = message.data.get('integration_fn', 'get_variables')
-        _templates = message.data['templates']
-        _truncation = message.data.get('truncation', 'hard')
-
-        def _do_quiet_refresh(
-          _i: Any = _integration,
-          _f: Any = _fn_name,
-          _t: Any = _templates,
-          _tr: Any = _truncation,
-        ) -> None:
-          new_vars = getattr(_i, _f)()
-          if _quiet_mod.is_quiet():
-            _grid = vestaboard.render(_t, new_vars, _tr)
-            _quiet_mod.set_virtual_state(_grid)
-          else:
-            try:
-              vestaboard.set_state(_t, new_vars, _tr)
-            except vestaboard.DuplicateContentError, IntegrationDataUnavailableError:
-              pass
-
-        _idle_refresh_fn = _do_quiet_refresh
-        _idle_refresh_interval = refresh_interval
-        _idle_last_refresh = 0.0
       continue
 
     # New message successfully sent (or DuplicateContentError fell through) —
