@@ -119,41 +119,32 @@ called by multiple automation triggers.
 - Webhook listener enabled in `config.toml` (with a route to your device —
   Cloudflare Tunnel, LAN, etc.)
 - The auto-generated scheduler webhook secret from the log
-- iOS 18+ (Bedtime/Waking Up triggers; Arrive/Leave triggers)
+- iOS 18+ (Focus mode triggers; Arrive/Leave triggers)
 
 ### Step 1: Create the Shortcuts
 
-Build two Shortcuts — one for quiet, one for wake. Each includes a Wi-Fi
-gate so the webhook only fires when you are on your home network (i.e. near
-the board). This keeps the logic in one place instead of duplicating it
-across every automation.
+Build four Shortcuts — one per action (quiet, wake, public, private). Each
+is a simple webhook POST with no conditional logic, so redundant calls (e.g.
+waking an already-awake board) are harmless.
 
 #### Vestaboard Quiet
 
 A pre-built template is available at
 `content/contrib/shortcuts/Vestaboard Quiet.shortcut`. Import it and fill in
-the three import questions. To build manually:
+the two import questions. To build manually:
 
 1. Open Shortcuts > tap **+** > name it "Vestaboard Quiet"
-2. Add **Text** > paste the home Wi-Fi SSID (replaced by import question);
-   rename output to `ssid`
-3. Add **Get Network Details** > Network: Wi-Fi, Get: Network Name
-4. Add **If** > Input: Network Name result from step 3, Condition: **is**,
-   Value: `ssid` magic variable from step 2
-5. Add **Text** > paste the webhook secret (replaced by import question);
+2. Add **Text** > paste the webhook secret (replaced by import question);
    rename output to `secret`
-6. Add **Get Contents of URL**:
+3. Add **Get Contents of URL**:
    - URL: `https://<your-webhook-url>/webhook/scheduler` (replaced by import
      question)
    - Method: **POST**
-   - Headers: add `X-Webhook-Secret` > `secret` magic variable from step 5
+   - Headers: add `X-Webhook-Secret` > `secret` magic variable from step 2
    - Body: **JSON** > add key `action` (Type: Text) > value `quiet`
-7. Add **Otherwise** > (leave empty)
-8. Add **End If**
-9. Tap the **i** button > **Import Questions** > add three questions:
-   - Question: `Home Wi-Fi SSID`, Parameter: the Text action from step 2
+4. Tap the **i** button > **Import Questions** > add two questions:
    - Question: `Webhook URL`, Parameter: URL field of Get Contents of URL
-   - Question: `Webhook secret`, Parameter: the Text action from step 5
+   - Question: `Webhook secret`, Parameter: the Text action from step 2
 
 #### Vestaboard Wake
 
@@ -180,8 +171,7 @@ A pre-built template is available at
 ### Step 2: Create the automations
 
 Create Personal Automations that call the Shortcuts above. Each automation
-is a single "Run Shortcut" action — the Wi-Fi check is handled inside the
-Shortcut itself.
+is a single "Run Shortcut" action.
 
 #### Bedtime Begins > Quiet
 
@@ -196,16 +186,29 @@ Same as above, but:
 - Choose **Waking Up** instead of Bedtime Begins
 - Select "Vestaboard Wake" instead of "Vestaboard Quiet"
 
-### Naps and Do Not Disturb
+### Focus mode triggers
 
-The Bedtime/Waking Up triggers fire once per sleep schedule. For nap-time
-quiet, create two additional automations using **Focus** triggers:
+Sleep Focus only offers Bedtime Begins and Waking Up as automation triggers —
+it lacks the standard "When Turning On/Off" triggers that other Focus modes
+have. The Waking Up trigger only fires from the Health app's sleep schedule,
+not when manually switching away from Sleep to another Focus. This means a
+"turns off" trigger cannot reliably detect when Sleep ends.
 
-1. **Do Not Disturb turns on** > Run Shortcut "Vestaboard Quiet"
-2. **Do Not Disturb turns off** > Run Shortcut "Vestaboard Wake"
+The recommended strategy is to **categorize each Focus as quiet or wake and
+only use "turns on" triggers**. When you always have a Focus active, switching
+between them fires the new Focus's "turns on" trigger, which is reliable.
 
-Same pattern — just a single Run Shortcut action. The Wi-Fi gate in the
-Shortcut prevents the webhook from firing when you are away from home.
+Create one automation per Focus mode, each calling the appropriate Shortcut:
+
+- **Quiet focuses** (board should sleep): DND, Sleep (via Bedtime Begins)
+- **Wake focuses** (board should be active): Personal, Work, etc.
+
+Since the webhook calls are idempotent (waking an awake board or quieting a
+quiet board is a no-op), redundant triggers from Focus switches are harmless.
+
+> **Note:** This approach requires that you always have a Focus active. If you
+> sometimes have no Focus on, you'll also need a "DND turns off" > Wake
+> automation as a fallback.
 
 ### Arrive and Leave (public mode)
 
@@ -219,18 +222,18 @@ on iOS 17+, and fire the same `POST /webhook/scheduler` endpoint.
 2. **Arrive home** > Run Shortcut "Vestaboard Private" (restore private
    content when home)
 
-The Wi-Fi gate in the Shortcut provides a secondary check. Note: Arrive/Leave
-triggers have a minimum geofence radius of ~100 m and can be delayed in
-low-power mode.
+Note: Arrive/Leave triggers have a minimum geofence radius of ~100 m and can
+be delayed in low-power mode.
 
 ### Summary of automations
 
 | Trigger | Shortcut | Purpose |
 |---|---|---|
 | Bedtime Begins | Vestaboard Quiet | Nightly quiet |
-| Waking Up | Vestaboard Wake | Morning wake |
-| DND turns on | Vestaboard Quiet | Nap quiet |
-| DND turns off | Vestaboard Wake | Nap wake |
+| Waking Up | Vestaboard Wake | Scheduled wake |
+| DND turns on | Vestaboard Quiet | Nap / ad-hoc quiet |
+| Personal turns on | Vestaboard Wake | Wake on Focus switch |
+| Work turns on | Vestaboard Wake | Wake on Focus switch |
 | Leave home | Vestaboard Public | Hide private content |
 | Arrive home | Vestaboard Private | Restore private content |
 
