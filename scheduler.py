@@ -271,6 +271,11 @@ _current_hold_lock = threading.Lock()
 _current_hold_supersede_tag: str = ''
 _current_hold_priority: int | None = None
 
+# Tracks whether the board is currently showing private content. Defaults to
+# True (safe assumption after restart — we don't know what was last displayed).
+# Set True when a private message is sent, False on non-private send or clear.
+_board_showing_private: bool = True
+
 
 def current_hold_tag() -> str:
   """Return the supersede_tag of the message currently being held, or ''."""
@@ -386,6 +391,14 @@ def _do_hold(
           logger.error('[hold] error sending virtual state on wake: %s', e)
     was_quiet = now_quiet
 
+    # Detect public mode activation while the board shows private content.
+    # Break immediately so the worker can drain the queue or clear the board.
+    if _public_mod.changed_event().is_set():
+      _public_mod.changed_event().clear()
+      if _board_showing_private:
+        logger.info('[hold] public mode activated while private content displayed (%s) — breaking', message.name)
+        break
+
     if refresh_fn and refresh_interval:
       now = time.monotonic()
       if now - last_refresh >= refresh_interval:
@@ -396,12 +409,47 @@ def _do_hold(
           logger.warning('Refresh error for %s: %s', message.name, e)
 
 
+def _clear_private_content() -> None:
+  """Drain the queue for the next public message, or clear the board.
+
+  Called when public mode is activated while the board shows private content.
+  Skips private messages in the queue until a public one is found (put back for
+  the main loop). If no public message is available, sends a blank grid to the
+  board. Privacy trumps quiet mode: the blank grid is sent to the real board
+  even when quiet is active.
+  """
+  global _board_showing_private
+  found_public = False
+  while True:
+    try:
+      m = _queue.get_nowait()
+    except Empty:
+      break
+    m_private = m.data.get('private')
+    if not m_private and m.name.startswith('webhook.'):
+      m_private = _webhook_private.get(m.name.removeprefix('webhook.'), False)
+    if m_private:
+      logger.debug('Draining %s — private content hidden in public mode', m.name)
+      continue
+    _queue.put(m)
+    found_public = True
+    break
+  if not found_public:
+    logger.info('Public mode active with private content displayed — clearing board')
+    try:
+      blank = [[0] * vestaboard.model.cols for _ in range(vestaboard.model.rows)]
+      vestaboard.set_state_raw(blank)
+      _board_showing_private = False
+    except Exception as e:  # noqa: BLE001
+      logger.error('Error clearing board for public mode: %s', e)
+
+
 def worker() -> None:
   # Single worker thread — ensures messages are sent to the Vestaboard
   # sequentially and never overlap. After sending a message, sleeps for
   # `hold` seconds before pulling the next one, giving the physical flaps
   # time to settle and the content time to be read.
-  global _current_hold_supersede_tag, _current_hold_priority
+  global _current_hold_supersede_tag, _current_hold_priority, _board_showing_private
   _idle_refresh_fn: Callable[[], None] | None = None
   _idle_refresh_interval: int | None = None
   _idle_last_refresh: float = 0.0
@@ -421,6 +469,15 @@ def worker() -> None:
           logger.warning('Board locked on wake — virtual state discarded')
         except Exception as e:  # noqa: BLE001
           logger.error('Error sending virtual state on wake: %s', e)
+
+    # Public mode activated while idle — if the board shows private content,
+    # drain the queue for the next public message or clear the board.
+    if _public_mod.changed_event().is_set():
+      _public_mod.changed_event().clear()
+      if _board_showing_private:
+        _idle_refresh_fn = None
+        _idle_refresh_interval = None
+        _clear_private_content()
 
     # Idle refresh: if the queue is empty and the previous integration message
     # is still on the board, keep refreshing at the same interval until a new
@@ -508,7 +565,10 @@ def worker() -> None:
       continue
 
     # New message successfully sent (or DuplicateContentError fell through) —
-    # clear idle refresh state before setting up the new hold.
+    # track whether the board is now showing private content.
+    _board_showing_private = bool(is_private)
+
+    # Clear idle refresh state before setting up the new hold.
     _idle_refresh_fn = None
     _idle_refresh_interval = None
 
@@ -554,6 +614,14 @@ def worker() -> None:
       _current_hold_supersede_tag = ''
       _current_hold_priority = None
     logger.debug('[hold] %s hold ended, tag cleared', message.name)
+
+    # Public mode activated while private content is on the board — drain the
+    # queue for the next public message or clear the board.
+    if _board_showing_private and _public_mod.is_public():
+      _idle_refresh_fn = None
+      _idle_refresh_interval = None
+      _clear_private_content()
+      continue
 
     # Hold expired — if this was a refresh-capable integration message, transfer
     # the refresh fn to idle state so the display keeps updating while the queue

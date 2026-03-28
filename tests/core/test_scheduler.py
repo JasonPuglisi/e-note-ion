@@ -2349,3 +2349,195 @@ def test_worker_wake_no_virtual_state_is_noop() -> None:
     with pytest.raises(KeyboardInterrupt):
       _mod.worker()
   mock_raw.assert_not_called()
+
+
+# --- public mode: clear private content on activation ---
+
+
+def test_do_hold_breaks_on_public_activation_with_private_content() -> None:
+  """Public mode activation while board shows private content exits the hold early."""
+  import public as public_mod
+
+  message = _make_message(priority=5, hold=10)
+  _mod._hold_interrupt.clear()
+  _mod._board_showing_private = True
+  public_mod._changed.clear()
+
+  t = threading.Timer(1.0, public_mod._changed.set)
+  t.start()
+  try:
+    start = time.monotonic()
+    _mod._do_hold(message, min_hold=0)
+    elapsed = time.monotonic() - start
+    assert elapsed < 5, f'Expected early exit, got {elapsed:.2f}s'
+  finally:
+    t.cancel()
+    _mod._board_showing_private = True
+    public_mod._changed.clear()
+
+
+def test_do_hold_ignores_public_activation_with_non_private_content() -> None:
+  """Public mode activation while board shows non-private content does not break the hold."""
+  import public as public_mod
+
+  message = _make_message(priority=5, hold=3)
+  _mod._hold_interrupt.clear()
+  _mod._board_showing_private = False
+  public_mod._changed.clear()
+
+  t = threading.Timer(1.0, public_mod._changed.set)
+  t.start()
+  try:
+    start = time.monotonic()
+    _mod._do_hold(message, min_hold=0)
+    elapsed = time.monotonic() - start
+    assert elapsed >= 2.5, f'Expected full hold, got {elapsed:.2f}s'
+  finally:
+    t.cancel()
+    _mod._board_showing_private = True
+    public_mod._changed.clear()
+
+
+def test_board_showing_private_defaults_true() -> None:
+  """_board_showing_private defaults to True (safe assumption after restart)."""
+  # Read the module-level default — it's True unless a test mutated it.
+  # We restore it in teardown regardless.
+  assert _mod._board_showing_private is True
+
+
+def test_clear_private_content_drains_to_first_public_message() -> None:
+  """_clear_private_content skips private messages and puts first public one back."""
+  _mod._queue.put(
+    _mod.QueuedMessage(
+      priority=5,
+      seq=1,
+      name='queued_private',
+      scheduled_at=time.monotonic(),
+      data={'private': True, 'templates': [{'format': ['X']}], 'variables': {}, 'truncation': 'hard'},
+      hold=60,
+      timeout=3600,
+    )
+  )
+  _mod._queue.put(
+    _mod.QueuedMessage(
+      priority=5,
+      seq=2,
+      name='queued_public',
+      scheduled_at=time.monotonic(),
+      data={'templates': [{'format': ['Y']}], 'variables': {}, 'truncation': 'hard'},
+      hold=60,
+      timeout=3600,
+    )
+  )
+  with patch('integrations.vestaboard.set_state_raw') as mock_raw:
+    _mod._clear_private_content()
+  mock_raw.assert_not_called()
+  # Public message should be back on the queue
+  m = _mod._queue.get_nowait()
+  assert m.name == 'queued_public'
+
+
+def test_clear_private_content_clears_board_when_queue_empty() -> None:
+  """_clear_private_content sends a blank grid when no public message is available."""
+  with patch('integrations.vestaboard.set_state_raw') as mock_raw:
+    _mod._clear_private_content()
+  mock_raw.assert_called_once()
+  grid = mock_raw.call_args[0][0]
+  assert all(all(c == 0 for c in row) for row in grid)
+  assert _mod._board_showing_private is False
+  _mod._board_showing_private = True  # restore default
+
+
+def test_clear_private_content_clears_board_when_all_private() -> None:
+  """_clear_private_content clears the board when only private messages are queued."""
+  _mod._queue.put(
+    _mod.QueuedMessage(
+      priority=5,
+      seq=1,
+      name='priv1',
+      scheduled_at=time.monotonic(),
+      data={'private': True, 'templates': [{'format': ['X']}], 'variables': {}, 'truncation': 'hard'},
+      hold=60,
+      timeout=3600,
+    )
+  )
+  with patch('integrations.vestaboard.set_state_raw') as mock_raw:
+    _mod._clear_private_content()
+  mock_raw.assert_called_once()
+  grid = mock_raw.call_args[0][0]
+  assert all(all(c == 0 for c in row) for row in grid)
+  _mod._board_showing_private = True  # restore default
+
+
+def test_worker_clears_board_on_public_activation_during_idle() -> None:
+  """Public mode activated while idle with board showing private content clears the board."""
+  import public as public_mod
+
+  public_mod._changed.set()
+  _mod._board_showing_private = True
+
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=KeyboardInterrupt()),
+    patch('integrations.vestaboard.set_state_raw') as mock_raw,
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+  mock_raw.assert_called_once()
+  grid = mock_raw.call_args[0][0]
+  assert all(all(c == 0 for c in row) for row in grid)
+  _mod._board_showing_private = True  # restore default
+  public_mod._changed.clear()
+
+
+def test_worker_no_clear_during_idle_when_board_not_private() -> None:
+  """Public mode activated while idle with non-private content does not clear."""
+  import public as public_mod
+
+  public_mod._changed.set()
+  _mod._board_showing_private = False
+
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=KeyboardInterrupt()),
+    patch('integrations.vestaboard.set_state_raw') as mock_raw,
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+  mock_raw.assert_not_called()
+  _mod._board_showing_private = True  # restore default
+  public_mod._changed.clear()
+
+
+def test_board_showing_private_set_false_on_non_private_send() -> None:
+  """Sending a non-private message sets _board_showing_private to False."""
+  msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  _mod._board_showing_private = True
+
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch('public.is_public', return_value=False),
+    patch('integrations.vestaboard.set_state'),
+    patch.object(_mod, '_do_hold', side_effect=lambda *a, **kw: None),
+    patch.object(_mod, '_hold_interrupt'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+  assert _mod._board_showing_private is False
+  _mod._board_showing_private = True  # restore default
+
+
+def test_board_showing_private_set_true_on_private_send() -> None:
+  """Sending a private message sets _board_showing_private to True."""
+  msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  msg.data['private'] = True
+  _mod._board_showing_private = False
+
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch('public.is_public', return_value=False),
+    patch('integrations.vestaboard.set_state'),
+    patch.object(_mod, '_do_hold', side_effect=lambda *a, **kw: None),
+    patch.object(_mod, '_hold_interrupt'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+  assert _mod._board_showing_private is True
