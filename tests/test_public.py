@@ -45,3 +45,31 @@ def test_set_public_noop_when_unchanged() -> None:
 def test_is_public_default_false() -> None:
   _mod._public = False
   assert _mod.is_public() is False
+
+
+def test_set_public_true_fires_changed_event() -> None:
+  _mod._public = False
+  _mod._changed.clear()
+  with patch('config.write_config_section'):
+    _mod.set_public(True)
+  assert _mod._changed.is_set()
+  _mod._public = False
+  _mod._changed.clear()
+
+
+def test_set_public_false_does_not_fire_changed_event() -> None:
+  _mod._public = True
+  _mod._changed.clear()
+  with patch('config.write_config_section'):
+    _mod.set_public(False)
+  assert not _mod._changed.is_set()
+
+
+def test_changed_event_not_fired_on_noop() -> None:
+  _mod._public = True
+  _mod._changed.clear()
+  with patch('config.write_config_section') as mock_write:
+    _mod.set_public(True)
+  assert not _mod._changed.is_set()
+  mock_write.assert_not_called()
+  _mod._public = False

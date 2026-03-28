@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 _lock = threading.Lock()
 _public: bool = False
 
+# Set by set_public(True) so the worker can detect activation without polling.
+# The worker should check this event (with is_set/clear) in its hold loop.
+_changed = threading.Event()
+
 
 def init() -> None:
   """Load persisted public mode state from config.toml.
@@ -40,9 +44,16 @@ def set_public(value: bool) -> None:
     _public = value
     _config_mod.write_config_section('scheduler', {'public': value})
     logger.info('Public mode %s', 'activated' if value else 'deactivated')
+    if value:
+      _changed.set()
 
 
 def is_public() -> bool:
   """Return whether public mode is currently active."""
   with _lock:
     return _public
+
+
+def changed_event() -> threading.Event:
+  """Return the event that signals public mode activation."""
+  return _changed
