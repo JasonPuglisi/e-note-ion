@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import config as _config_mod  # noqa: E402
+import health as _health_mod  # noqa: E402
 import scheduler as _mod  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -131,6 +132,8 @@ def test_webhook_server_not_started_when_no_section(
       patch.object(_mod, 'load_content'),
       patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
       patch('threading.Thread'),
+      patch('health.start_periodic_log'),
+      patch('health.stop_periodic_log'),
       patch('apscheduler.schedulers.background.BackgroundScheduler', return_value=mock_sched),
       patch('time.sleep', side_effect=KeyboardInterrupt),
     ):
@@ -152,6 +155,8 @@ def test_webhook_server_started_when_section_present(
       patch.object(_mod, 'load_content'),
       patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
       patch('threading.Thread'),
+      patch('health.start_periodic_log'),
+      patch('health.stop_periodic_log'),
       patch('apscheduler.schedulers.background.BackgroundScheduler', return_value=mock_sched),
       patch('time.sleep', side_effect=KeyboardInterrupt),
     ):
@@ -303,14 +308,14 @@ def test_bad_path_returns_404() -> None:
     server.shutdown()
 
 
-def test_non_post_method_returns_501() -> None:
-  # BaseHTTPRequestHandler returns 501 for methods with no do_<METHOD> handler.
+def test_get_non_health_path_returns_404() -> None:
+  # GET requests to paths other than /health return 404.
   server, port = _start_test_server()
   try:
     conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
     conn.request('GET', '/webhook/bart', headers={'X-Webhook-Secret': _CRED_SECRET})
     resp = conn.getresponse()
-    assert resp.status == 501
+    assert resp.status == 404
   finally:
     server.shutdown()
 
@@ -1008,3 +1013,131 @@ def test_credential_name_passed_to_handle_webhook() -> None:
           assert kwargs.get('credential_name') == 'alice'
         finally:
           server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# GET /health endpoint
+# ---------------------------------------------------------------------------
+
+
+def _get(
+  port: int,
+  path: str,
+  secret: str = _CRED_SECRET,
+) -> tuple[int, str]:
+  """GET from the test server and return (status_code, response_body)."""
+  conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+  headers: dict[str, str] = {}
+  if secret:
+    headers['X-Webhook-Secret'] = secret
+  conn.request('GET', path, headers=headers)
+  resp = conn.getresponse()
+  return resp.status, resp.read().decode()
+
+
+def _health_cred_config() -> dict[str, Any]:
+  """Config with a test credential scoped to health."""
+  return {
+    'webhook': {
+      'credentials': {
+        'test': {'secret_hash': _CRED_HASH, 'webhooks': ['health']},
+      },
+    },
+  }
+
+
+@pytest.mark.skipif(_CRED_HASH is None, reason='argon2-cffi not installed')
+def test_health_endpoint_returns_200_when_healthy() -> None:
+  _health_mod.reset()
+  _health_mod.init()
+  _health_mod.register('weather')
+  _health_mod.record_success('weather')
+
+  with patch.dict('config._config', _health_cred_config()):
+    server, port = _start_test_server()
+    try:
+      status, body = _get(port, '/health')
+      assert status == 200
+      data = json.loads(body)
+      assert data['status'] == 'healthy'
+      assert 'weather' in data['integrations']
+      assert data['integrations']['weather']['status'] == 'healthy'
+    finally:
+      server.shutdown()
+      _health_mod.reset()
+
+
+@pytest.mark.skipif(_CRED_HASH is None, reason='argon2-cffi not installed')
+def test_health_endpoint_returns_503_when_unhealthy() -> None:
+  _health_mod.reset()
+  _health_mod.init()
+  _health_mod.register('bart')
+  _health_mod.record_error('bart', 'API down')
+
+  with patch.dict('config._config', _health_cred_config()):
+    server, port = _start_test_server()
+    try:
+      status, body = _get(port, '/health')
+      assert status == 503
+      data = json.loads(body)
+      assert data['status'] == 'error'
+    finally:
+      server.shutdown()
+      _health_mod.reset()
+
+
+@pytest.mark.skipif(_CRED_HASH is None, reason='argon2-cffi not installed')
+def test_health_endpoint_401_without_secret() -> None:
+  _health_mod.reset()
+  _health_mod.init()
+
+  with patch.dict('config._config', _health_cred_config()):
+    server, port = _start_test_server()
+    try:
+      status, _ = _get(port, '/health', secret='')
+      assert status == 401
+    finally:
+      server.shutdown()
+      _health_mod.reset()
+
+
+@pytest.mark.skipif(_CRED_HASH is None, reason='argon2-cffi not installed')
+def test_health_endpoint_401_wrong_secret() -> None:
+  _health_mod.reset()
+  _health_mod.init()
+
+  with patch.dict('config._config', _health_cred_config()):
+    server, port = _start_test_server()
+    try:
+      status, _ = _get(port, '/health', secret='wrong-secret')
+      assert status == 401
+    finally:
+      server.shutdown()
+      _health_mod.reset()
+
+
+def test_health_endpoint_404_wrong_path() -> None:
+  with patch.dict('config._config', {}):
+    server, port = _start_test_server()
+    try:
+      status, _ = _get(port, '/notfound', secret='')
+      assert status == 404
+    finally:
+      server.shutdown()
+
+
+@pytest.mark.skipif(_CRED_HASH is None, reason='argon2-cffi not installed')
+def test_health_endpoint_query_param_auth() -> None:
+  _health_mod.reset()
+  _health_mod.init()
+
+  with patch.dict('config._config', _health_cred_config()):
+    server, port = _start_test_server()
+    try:
+      status, body = _get(port, f'/health?secret={_CRED_SECRET}', secret='')
+      assert status == 200
+      data = json.loads(body)
+      assert data['status'] == 'healthy'
+    finally:
+      server.shutdown()
+      _health_mod.reset()

@@ -114,7 +114,7 @@ def get_variables() -> dict[str, list[list[str]]]:
   if not current_down:
     # All monitors up — clean up tracking state.
     _first_seen_down.clear()
-    raise IntegrationDataUnavailableError('UptimeRobot: all monitors up')
+    raise IntegrationDataUnavailableError('UptimeRobot: all monitors up', expected=True)
 
   # Track first-seen time for newly down monitors.
   now = time.monotonic()

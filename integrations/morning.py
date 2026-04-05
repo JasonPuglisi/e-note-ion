@@ -134,7 +134,7 @@ def _grid_key_from_weather() -> str:
 def get_variables() -> dict[str, list[list[str]]]:
   today = datetime.date.today()
   if today.month == 9 and today.day == 21:
-    raise IntegrationDataUnavailableError('Sep 21 uses static template')
+    raise IntegrationDataUnavailableError('Sep 21 uses static template', expected=True)
   key = _grid_key_from_weather()
   if key in _RANDOM_GRIDS:
     color, density, min_cells = _RANDOM_GRIDS[key]

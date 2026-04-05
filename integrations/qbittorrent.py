@@ -118,7 +118,7 @@ def get_variables() -> dict[str, list[list[str]]]:
 
   torrents = r.json()
   if not torrents:
-    raise IntegrationDataUnavailableError('qBittorrent: no seeding torrents')
+    raise IntegrationDataUnavailableError('qBittorrent: no seeding torrents', expected=True)
 
   count = len(torrents)
   total_size = sum(t.get('size', 0) for t in torrents)

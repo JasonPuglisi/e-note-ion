@@ -158,7 +158,7 @@ def get_variables() -> dict[str, list[list[str]]]:
 
     total = data.get('pagination', {}).get('items', 0)
     if total == 0:
-      raise IntegrationDataUnavailableError('Discogs: collection is empty')
+      raise IntegrationDataUnavailableError('Discogs: collection is empty', expected=True)
 
     # Pick a uniformly random position across the entire collection, then
     # derive which page and index within that page it falls on.

@@ -3,6 +3,7 @@ from typing import Generator
 
 import pytest
 
+import health as _health_mod
 import integrations.vestaboard as vestaboard
 
 
@@ -12,6 +13,13 @@ def reset_vestaboard_model() -> Generator[None, None, None]:
   original = vestaboard.model
   yield
   vestaboard.model = original
+
+
+@pytest.fixture(autouse=True)
+def _reset_health_state() -> Generator[None, None, None]:
+  """Reset health state and stop any periodic log timers after each test."""
+  yield
+  _health_mod.reset()
 
 
 @pytest.fixture

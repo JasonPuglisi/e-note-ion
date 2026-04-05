@@ -448,14 +448,14 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
 
   entries = r.json()
   if not entries:
-    raise IntegrationDataUnavailableError('No upcoming episodes in calendar window')
+    raise IntegrationDataUnavailableError('No upcoming episodes in calendar window', expected=True)
 
   now = datetime.now(timezone.utc)
   future_entries = [
     e for e in entries if e.get('first_aired') and datetime.fromisoformat(e['first_aired'].replace('Z', '+00:00')) > now
   ]
   if not future_entries:
-    raise IntegrationDataUnavailableError('No upcoming episodes in calendar window')
+    raise IntegrationDataUnavailableError('No upcoming episodes in calendar window', expected=True)
 
   future_entries.sort(key=lambda e: e['first_aired'])
   entry = future_entries[0]
@@ -545,7 +545,7 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
       stopped = dict(last)
       stopped['status_line'] = [['[V] NOW PLAYING']]
       return stopped
-    raise IntegrationDataUnavailableError('Nothing currently playing')
+    raise IntegrationDataUnavailableError('Nothing currently playing', expected=True)
 
   try:
     r.raise_for_status()
@@ -621,7 +621,7 @@ def get_variables_next_up() -> dict[str, list[list[str]]]:
 
   shows = r.json()[:_NEXT_UP_MAX_SHOWS]
   if not shows:
-    raise IntegrationDataUnavailableError('No watched shows found')
+    raise IntegrationDataUnavailableError('No watched shows found', expected=True)
 
   for entry in shows:
     trakt_id = entry['show']['ids']['trakt']
@@ -669,4 +669,4 @@ def get_variables_next_up() -> dict[str, list[list[str]]]:
       _next_up_cache = CacheEntry(result)
       return result
 
-  raise IntegrationDataUnavailableError('No next episode found in watched shows')
+  raise IntegrationDataUnavailableError('No next episode found in watched shows', expected=True)
