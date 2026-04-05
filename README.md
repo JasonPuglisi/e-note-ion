@@ -134,6 +134,49 @@ Key `[scheduler]` settings:
 | `timezone` | system TZ | IANA timezone for cron job scheduling (e.g. `"America/Los_Angeles"`) |
 | `min_hold` | `60` | Minimum seconds any message stays on display before a high-priority (≥8) queued message can interrupt it. Set to `0` to disable (not recommended for physical displays). |
 
+## Health monitoring
+
+When the [webhook listener](#configuration) is enabled, a health endpoint is
+available at `GET /health`. It returns a JSON summary of all registered
+integration statuses, useful for uptime monitoring (e.g. UptimeRobot).
+
+**Authentication:** A credential is auto-generated on first startup — check
+the container logs for the plaintext secret. Pass it as
+`X-Webhook-Secret: <secret>` (preferred) or `?secret=<secret>`.
+
+**HTTP status codes:**
+- `200` — all integrations healthy (or unknown)
+- `503` — one or more integrations degraded or errored
+
+**Response format:**
+```json
+{
+  "status": "healthy",
+  "uptime_seconds": 3600,
+  "integrations": {
+    "weather": {
+      "status": "healthy",
+      "last_success": "2026-01-01T12:00:00+00:00",
+      "last_expected_empty": null,
+      "last_error": null,
+      "last_error_message": null,
+      "success_rate": 1.0,
+      "total_events": 10,
+      "registered_at": "2026-01-01T08:00:00+00:00"
+    }
+  }
+}
+```
+
+Each integration tracks the last 10 events in a rolling buffer. Status levels:
+`healthy` (no errors), `degraded` (mixed), `error` (all errors), `unknown`
+(no events yet). Expected empty data (e.g. nothing playing, no events today)
+counts as healthy — only API failures trigger degraded/error.
+
+A periodic health summary also logs to the console every hour, showing
+non-healthy integrations and their recent error rates. Health state is
+in-memory and resets on container restart.
+
 ## Installing from PyPI
 
 **Requirements:** Python 3.14+

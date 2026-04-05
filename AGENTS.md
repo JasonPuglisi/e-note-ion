@@ -263,12 +263,15 @@ The webhook listener is activated by adding a `[webhook]` section to
 `config.toml` (see `config.example.toml`). It binds to `127.0.0.1:8080` by
 default. Authentication is handled entirely via **named credentials** defined
 in `[webhook.credentials.<name>]` sections — each scoped to one or more
-integrations via the `webhooks` list. Credentials for plex, notion, and
-message-admin are auto-generated on first startup if absent (check the log for
-the plaintext secret to copy into your sender). Endpoint:
-`POST /webhook/<integration>` — credential secret accepted as
-`X-Webhook-Secret: <secret>` header (preferred) or `?secret=<secret>` query
-parameter (for senders like Plex that cannot set custom headers). All
+integrations via the `webhooks` list. Credentials for diving, health, message-admin,
+notion, plex, and scheduler are auto-generated on first startup if absent (check
+the log for the plaintext secret to copy into your sender). Endpoints:
+`POST /webhook/<integration>` for webhook events, `GET /health` for the
+health monitoring endpoint (returns JSON, 200 when healthy, 503 when
+degraded/errored — see README for response format). Credential secret
+accepted as `X-Webhook-Secret: <secret>` header (preferred) or
+`?secret=<secret>` query parameter (for senders like Plex that cannot set
+custom headers). All
 `handle_webhook` implementations must accept `credential_name: str | None = None`
 as a keyword argument.
 
