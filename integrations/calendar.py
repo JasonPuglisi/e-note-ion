@@ -307,18 +307,20 @@ def _get_caldav_calendars(
     logger.debug('calendar: CalDAV cache hit (%d calendar(s))', len(_caldav_cache))
     return _caldav_cache
 
-  import caldav
+  from caldav.davclient import get_davclient
   from caldav.elements import ical as caldav_ical
 
-  client = caldav.DAVClient(
+  client = get_davclient(
     url=caldav_url,
     username=username,
     password=password,
     timeout=15,
   )
+  if client is None:
+    raise IntegrationDataUnavailableError('calendar: CalDAV client initialization failed')
   try:
     principal = client.principal()
-    all_cals = principal.calendars()
+    all_cals = principal.get_calendars()
   except Exception as e:  # noqa: BLE001
     raise IntegrationDataUnavailableError(f'calendar: CalDAV connection failed — {e}') from None
 
@@ -335,7 +337,7 @@ def _get_caldav_calendars(
     color_tag: str | None = None
     try:
       props = cal.get_properties([caldav_ical.CalendarColor()])
-      raw_color = props.get('{http://apple.com/ns/ical/}calendar-color') if props else None
+      raw_color = props.get('{http://apple.com/ns/ical/}calendar-color') if props else None  # pyright: ignore[reportAttributeAccessIssue] — caldav dual sync/async return typing
       if raw_color:
         color_tag = hex_to_color_tag(str(raw_color))
     except Exception:  # noqa: BLE001  # nosec B110 — color is optional; CalDAV property fetch may fail on non-Apple servers
@@ -389,7 +391,7 @@ def _collect_candidates_caldav(
 
   for i, (cal, color_tag) in enumerate(calendars):
     try:
-      events = cal.events()
+      events = cal.get_events()
     except Exception as e:  # noqa: BLE001
       logger.warning('calendar: failed to fetch events from CalDAV calendar %d — %s', i + 1, e)
       continue

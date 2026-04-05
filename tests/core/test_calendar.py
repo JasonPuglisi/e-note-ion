@@ -426,7 +426,7 @@ def test_get_variables_both_modes_merged(monkeypatch: pytest.MonkeyPatch) -> Non
   fake_cal_obj = MagicMock()
   fake_cal_obj.icalendar_instance = Calendar.from_ical(caldav_event_ics)
   fake_caldav_cal = MagicMock()
-  fake_caldav_cal.events.return_value = [fake_cal_obj]
+  fake_caldav_cal.get_events.return_value = [fake_cal_obj]
 
   with patch('integrations.calendar._fetch_ics_bytes', return_value=ics):
     with patch('integrations.calendar._get_caldav_calendars', return_value=[(fake_caldav_cal, '[G]')]):

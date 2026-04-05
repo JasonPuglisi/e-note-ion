@@ -1,4 +1,4 @@
-FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
+FROM ghcr.io/astral-sh/uv:python3.14-trixie-slim
 
 LABEL org.opencontainers.image.title="e-note-ion" \
       org.opencontainers.image.description="Cron-based content scheduler for Vestaboard split-flap displays" \
