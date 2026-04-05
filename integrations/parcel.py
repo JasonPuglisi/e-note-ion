@@ -124,7 +124,7 @@ def get_variables() -> dict[str, list[list[str]]]:
   active = [d for d in deliveries if d.get('status_code') in _ACTIVE_STATUSES]
 
   if not active:
-    raise IntegrationDataUnavailableError('Parcel: no active deliveries')
+    raise IntegrationDataUnavailableError('Parcel: no active deliveries', expected=True)
 
   active.sort(key=_sort_key)
   chosen = active[0]

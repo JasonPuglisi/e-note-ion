@@ -1141,6 +1141,8 @@ def test_main_note_startup_banner(monkeypatch: pytest.MonkeyPatch, caplog: pytes
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
+    patch('health.start_periodic_log'),
+    patch('health.stop_periodic_log'),
     patch('apscheduler.schedulers.background.BackgroundScheduler', return_value=mock_sched),
     patch('time.sleep', side_effect=KeyboardInterrupt),
   ):
@@ -1160,6 +1162,8 @@ def test_main_version_in_banner(monkeypatch: pytest.MonkeyPatch, caplog: pytest.
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
+    patch('health.start_periodic_log'),
+    patch('health.stop_periodic_log'),
     patch('apscheduler.schedulers.background.BackgroundScheduler', return_value=mock_sched),
     patch('time.sleep', side_effect=KeyboardInterrupt),
     patch('importlib.metadata.version', return_value='1.2.3'),
@@ -1181,6 +1185,8 @@ def test_main_flagship_sets_model_and_banner(monkeypatch: pytest.MonkeyPatch, ca
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
+    patch('health.start_periodic_log'),
+    patch('health.stop_periodic_log'),
     patch('apscheduler.schedulers.background.BackgroundScheduler', return_value=mock_sched),
     patch('time.sleep', side_effect=KeyboardInterrupt),
   ):
@@ -1201,6 +1207,8 @@ def test_main_public_mode_in_banner(monkeypatch: pytest.MonkeyPatch, caplog: pyt
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
+    patch('health.start_periodic_log'),
+    patch('health.stop_periodic_log'),
     patch('apscheduler.schedulers.background.BackgroundScheduler', return_value=mock_sched),
     patch('time.sleep', side_effect=KeyboardInterrupt),
   ):
@@ -1220,6 +1228,8 @@ def test_main_content_enabled_in_banner(monkeypatch: pytest.MonkeyPatch, caplog:
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
+    patch('health.start_periodic_log'),
+    patch('health.stop_periodic_log'),
     patch('apscheduler.schedulers.background.BackgroundScheduler', return_value=mock_sched),
     patch('time.sleep', side_effect=KeyboardInterrupt),
   ):
@@ -1239,6 +1249,8 @@ def test_main_empty_board_on_startup(monkeypatch: pytest.MonkeyPatch, caplog: py
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', side_effect=vb.EmptyBoardError('no message')),
     patch('threading.Thread'),
+    patch('health.start_periodic_log'),
+    patch('health.stop_periodic_log'),
     patch('apscheduler.schedulers.background.BackgroundScheduler', return_value=mock_sched),
     patch('time.sleep', side_effect=KeyboardInterrupt),
   ):
@@ -1263,6 +1275,8 @@ def test_main_passes_timezone_to_scheduler(monkeypatch: pytest.MonkeyPatch) -> N
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
+    patch('health.start_periodic_log'),
+    patch('health.stop_periodic_log'),
     patch('scheduler.BackgroundScheduler', return_value=mock_sched) as mock_bs,
     patch('time.sleep', side_effect=KeyboardInterrupt),
   ):

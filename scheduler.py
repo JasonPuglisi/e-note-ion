@@ -38,6 +38,7 @@ from urllib.parse import parse_qs, urlparse
 from apscheduler.schedulers.background import BackgroundScheduler
 
 import config as _config_mod
+import health as _health_mod
 import integrations.vestaboard as vestaboard
 import public as _public_mod
 import quiet as _quiet_mod
@@ -74,6 +75,7 @@ _KNOWN_INTEGRATIONS: frozenset[str] = frozenset(
     'calendar',
     'discogs',
     'diving',
+    'health',
     'message',
     'moon',
     'morning',
@@ -525,6 +527,7 @@ def worker() -> None:
       _current_hold_supersede_tag = message.supersede_tag
       _current_hold_priority = message.priority
 
+    _health_name = message.data.get('integration', '')
     try:
       variables = message.data['variables']
       if 'integration' in message.data:
@@ -537,7 +540,14 @@ def worker() -> None:
         _quiet_mod.set_virtual_state(grid)
       else:
         vestaboard.set_state(templates, variables, truncation)
+      if _health_name:
+        _health_mod.record_success(_health_name)
     except IntegrationDataUnavailableError as e:
+      if _health_name:
+        if e.expected:
+          _health_mod.record_expected_empty(_health_name)
+        else:
+          _health_mod.record_error(_health_name, str(e))
       with _current_hold_lock:
         _current_hold_supersede_tag = ''
         _current_hold_priority = None
@@ -558,6 +568,8 @@ def worker() -> None:
         _queue.put(message)
       continue
     except Exception as e:
+      if _health_name:
+        _health_mod.record_error(_health_name, str(e))
       with _current_hold_lock:
         _current_hold_supersede_tag = ''
         _current_hold_priority = None
@@ -585,8 +597,23 @@ def worker() -> None:
         _f: Any = _fn_name,
         _t: Any = _templates,
         _tr: Any = _truncation,
+        _hn: str = _health_name,
       ) -> None:
-        new_vars = getattr(_i, _f)()
+        try:
+          new_vars = getattr(_i, _f)()
+        except IntegrationDataUnavailableError as _e:
+          if _hn:
+            if _e.expected:
+              _health_mod.record_expected_empty(_hn)
+            else:
+              _health_mod.record_error(_hn, str(_e))
+          raise
+        except Exception as _e:
+          if _hn:
+            _health_mod.record_error(_hn, str(_e))
+          raise
+        if _hn:
+          _health_mod.record_success(_hn)
         if _quiet_mod.is_quiet():
           _grid = vestaboard.render(_t, new_vars, _tr)
           _quiet_mod.set_virtual_state(_grid)
@@ -758,13 +785,17 @@ def _make_webhook_handler() -> type:
       try:
         result: WebhookMessage | None = mod.handle_webhook(payload, credential_name=credential_name)
       except Exception as e:  # noqa: BLE001
+        _health_mod.record_error(integration_name, str(e))
         logger.error('Webhook error in %r: %s', integration_name, e)
         self._respond(500, 'Internal error')
         return
 
       if result is None:
+        _health_mod.record_success(integration_name)
         self._respond(200, 'Discarded')
         return
+
+      _health_mod.record_success(integration_name)
 
       if result.interrupt_only:
         if _current_hold_is_interruptible():
@@ -794,10 +825,37 @@ def _make_webhook_handler() -> type:
 
       self._respond(200, 'Enqueued')
 
+    def do_GET(self) -> None:  # noqa: N802
+      parsed = urlparse(self.path)
+      if parsed.path.strip('/') != 'health':
+        self._respond(404, 'Not found')
+        return
+
+      header_secret = self.headers.get('X-Webhook-Secret', '')
+      query_secret = parse_qs(parsed.query).get('secret', [''])[0]
+      provided = header_secret or query_secret
+      credential_name = _authenticate_webhook(provided, 'health')
+      if credential_name is None:
+        logger.warning('Health: rejected request — invalid or missing secret')
+        self._respond(401, 'Unauthorized')
+        return
+
+      summary = _health_mod.get_summary()
+      status_code = 200 if summary['status'] == 'healthy' else 503
+      self._respond_json(status_code, summary)
+
     def _respond(self, code: int, message: str) -> None:
       body = message.encode()
       self.send_response(code)
       self.send_header('Content-Type', 'text/plain')
+      self.send_header('Content-Length', str(len(body)))
+      self.end_headers()
+      self.wfile.write(body)
+
+    def _respond_json(self, code: int, data: dict[str, Any]) -> None:
+      body = json.dumps(data, indent=2).encode()
+      self.send_response(code)
+      self.send_header('Content-Type', 'application/json')
       self.send_header('Content-Length', str(len(body)))
       self.end_headers()
       self.wfile.write(body)
@@ -813,6 +871,7 @@ def _make_webhook_handler() -> type:
 # [webhook.credentials.message.admin] and is keyed as 'admin' in get_credentials.
 _WEBHOOK_AUTOGEN: dict[str, str] = {
   'diving': 'diving',
+  'health': 'health',
   'message': 'admin',
   'notion': 'notion',
   'plex': 'plex',
@@ -1029,6 +1088,7 @@ def _load_file(
         logger.warning('skipping template %s.%r — %s', stem, template_name, e)
         continue
       data['integration'] = integration_name
+      _health_mod.register(integration_name)
     if 'integration_fn' in template:
       data['integration_fn'] = template['integration_fn']
     schedule = template['schedule']
@@ -1249,6 +1309,7 @@ def main() -> None:
   _config_mod.migrate_quiet_config()
   _quiet_mod.init()
   _public_mod.init()
+  _health_mod.init()
 
   log_level_str = _config_mod.get_optional('scheduler', 'log_level', 'INFO').upper()
   level = getattr(logging, log_level_str, None)
@@ -1307,6 +1368,7 @@ def main() -> None:
       logger.warning('preflight for %r failed: %s', name, e)
 
   threading.Thread(target=worker, daemon=True).start()
+  _health_mod.start_periodic_log()
 
   if _config_mod.has_section('webhook'):
     _start_webhook_server()
@@ -1315,6 +1377,7 @@ def main() -> None:
     while True:
       time.sleep(1)
   except KeyboardInterrupt:
+    _health_mod.stop_periodic_log()
     scheduler.shutdown()
 
 

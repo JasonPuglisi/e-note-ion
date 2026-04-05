@@ -24,6 +24,8 @@ def _run_main_with_log_level(
     patch.object(_mod, 'load_content'),
     patch('integrations.vestaboard.get_state', return_value=MagicMock(__str__=lambda s: '')),
     patch('threading.Thread'),
+    patch('health.start_periodic_log'),
+    patch('health.stop_periodic_log'),
     patch('apscheduler.schedulers.background.BackgroundScheduler', return_value=mock_sched),
     patch('time.sleep', side_effect=KeyboardInterrupt),
   ):

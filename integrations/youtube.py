@@ -234,11 +234,11 @@ def get_variables() -> dict[str, list[list[str]]]:
 
   channel_ids = _get_subscriptions()
   if not channel_ids:
-    raise IntegrationDataUnavailableError('YouTube: no subscriptions found')
+    raise IntegrationDataUnavailableError('YouTube: no subscriptions found', expected=True)
 
   video_ids = _fetch_rss_video_ids(channel_ids)
   if not video_ids:
-    raise IntegrationDataUnavailableError('YouTube: no recent videos in RSS feeds')
+    raise IntegrationDataUnavailableError('YouTube: no recent videos in RSS feeds', expected=True)
 
   token = _google.get_token(_YOUTUBE_SCOPE)
   try:
@@ -250,7 +250,7 @@ def get_variables() -> dict[str, list[list[str]]]:
     raise IntegrationDataUnavailableError(f'YouTube: videos.list failed — {e}') from None
 
   if not live_streams:
-    raise IntegrationDataUnavailableError('YouTube: no subscribed channels are live')
+    raise IntegrationDataUnavailableError('YouTube: no subscribed channels are live', expected=True)
 
   # Sort by start time descending — most recently started stream first.
   live_streams.sort(

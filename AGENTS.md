@@ -62,6 +62,7 @@ on this project collaboratively with the user.
 scheduler.py                # Entry point — scheduler, queue, worker (argparse CLI)
 public.py                   # Runtime public mode state (thread-safe, persisted to config.toml)
 quiet.py                    # Software-side quiet mode state (thread-safe, persisted to config.toml)
+health.py                   # Integration health tracking (thread-safe, in-memory — resets on restart)
 config.py                   # TOML config loader (load_config, get, get_optional, get_schedule_override, write_section_values — in-place token persistence)
 exceptions.py               # Custom exception types (IntegrationDataUnavailableError)
 config.toml                 # Runtime config with API keys (git-ignored; copy from config.example.toml)

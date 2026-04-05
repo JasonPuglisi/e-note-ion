@@ -795,7 +795,7 @@ def get_variables() -> dict[str, list[list[str]]]:
   lines = _sort_and_format(candidates, now, tz_)
 
   if not lines:
-    raise IntegrationDataUnavailableError('calendar: no events today')
+    raise IntegrationDataUnavailableError('calendar: no events today', expected=True)
 
   return {'events': [lines]}
 
@@ -852,7 +852,7 @@ def get_variables_birthdays() -> dict[str, list[list[str]]]:
     entries.append((days_ahead, display_name, f'{day_label} {display_name}'))
 
   if not entries:
-    raise IntegrationDataUnavailableError(f'calendar: no birthdays in the next {lookahead} days')
+    raise IntegrationDataUnavailableError(f'calendar: no birthdays in the next {lookahead} days', expected=True)
 
   entries.sort(key=lambda x: (x[0], x[1]))
   return {'birthdays': [[line for _, _, line in entries]]}
@@ -891,9 +891,12 @@ def get_variables_self_birthday() -> dict[str, list[list[str]]]:
   try:
     birthday_this_year = today.replace(month=month, day=day)
   except ValueError:
-    raise IntegrationDataUnavailableError('calendar: self birthday (Feb 29) skipped on non-leap year') from None
+    raise IntegrationDataUnavailableError(
+      'calendar: self birthday (Feb 29) skipped on non-leap year',
+      expected=True,
+    ) from None
 
   if today != birthday_this_year:
-    raise IntegrationDataUnavailableError("calendar: today is not the owner's birthday")
+    raise IntegrationDataUnavailableError("calendar: today is not the owner's birthday", expected=True)
 
   return {'name': [[display_name]]}
