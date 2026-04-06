@@ -21,3 +21,6 @@ config.toml
 # User content (personal, not committed to the project repo)
 content/user/*
 !content/user/.gitkeep
+
+# Runtime data (health event log, etc. — persisted via Docker volume)
+data/
