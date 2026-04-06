@@ -1035,6 +1035,24 @@ def _get(
   return resp.status, resp.read().decode()
 
 
+def _head(
+  port: int,
+  path: str,
+  secret: str = _CRED_SECRET,
+) -> tuple[int, dict[str, str]]:
+  """HEAD to the test server and return (status_code, response_headers)."""
+  conn = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+  headers: dict[str, str] = {}
+  if secret:
+    headers['X-Webhook-Secret'] = secret
+  conn.request('HEAD', path, headers=headers)
+  resp = conn.getresponse()
+  resp_headers = {k.lower(): v for k, v in resp.getheaders()}
+  body = resp.read()
+  assert body == b'', f'HEAD response must have no body, got {body!r}'
+  return resp.status, resp_headers
+
+
 def _health_cred_config() -> dict[str, Any]:
   """Config with a test credential scoped to health."""
   return {
@@ -1138,6 +1156,62 @@ def test_health_endpoint_query_param_auth() -> None:
       assert status == 200
       data = json.loads(body)
       assert data['status'] == 'healthy'
+    finally:
+      server.shutdown()
+      _health_mod.reset()
+
+
+# ---------------------------------------------------------------------------
+# HEAD /health
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(_CRED_HASH is None, reason='argon2-cffi not installed')
+def test_head_health_returns_200_no_body() -> None:
+  _health_mod.reset()
+  _health_mod.init()
+  _health_mod.register('weather')
+  _health_mod.record_success('weather')
+
+  with patch.dict('config._config', _health_cred_config()):
+    server, port = _start_test_server()
+    try:
+      status, headers = _head(port, '/health')
+      assert status == 200
+      assert headers['content-type'] == 'application/json'
+      assert int(headers['content-length']) > 0
+    finally:
+      server.shutdown()
+      _health_mod.reset()
+
+
+@pytest.mark.skipif(_CRED_HASH is None, reason='argon2-cffi not installed')
+def test_head_health_returns_503_when_unhealthy() -> None:
+  _health_mod.reset()
+  _health_mod.init()
+  _health_mod.register('bart')
+  _health_mod.record_error('bart', 'API down')
+
+  with patch.dict('config._config', _health_cred_config()):
+    server, port = _start_test_server()
+    try:
+      status, _ = _head(port, '/health')
+      assert status == 503
+    finally:
+      server.shutdown()
+      _health_mod.reset()
+
+
+@pytest.mark.skipif(_CRED_HASH is None, reason='argon2-cffi not installed')
+def test_head_health_401_without_secret() -> None:
+  _health_mod.reset()
+  _health_mod.init()
+
+  with patch.dict('config._config', _health_cred_config()):
+    server, port = _start_test_server()
+    try:
+      status, _ = _head(port, '/health', secret='')
+      assert status == 401
     finally:
       server.shutdown()
       _health_mod.reset()

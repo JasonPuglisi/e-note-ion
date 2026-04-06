@@ -825,11 +825,16 @@ def _make_webhook_handler() -> type:
 
       self._respond(200, 'Enqueued')
 
-    def do_GET(self) -> None:  # noqa: N802
+    def _handle_health(self) -> tuple[int, dict[str, Any]] | None:
+      """Shared GET/HEAD /health logic: path check, auth, status.
+
+      Returns (status_code, summary) on success, or None after sending
+      an error response for path/auth failures.
+      """
       parsed = urlparse(self.path)
       if parsed.path.strip('/') != 'health':
         self._respond(404, 'Not found')
-        return
+        return None
 
       header_secret = self.headers.get('X-Webhook-Secret', '')
       query_secret = parse_qs(parsed.query).get('secret', [''])[0]
@@ -838,11 +843,25 @@ def _make_webhook_handler() -> type:
       if credential_name is None:
         logger.warning('Health: rejected request — invalid or missing secret')
         self._respond(401, 'Unauthorized')
-        return
+        return None
 
       summary = _health_mod.get_summary()
       status_code = 200 if summary['status'] == 'healthy' else 503
-      self._respond_json(status_code, summary)
+      return status_code, summary
+
+    def do_GET(self) -> None:  # noqa: N802
+      result = self._handle_health()
+      if result is not None:
+        self._respond_json(result[0], result[1])
+
+    def do_HEAD(self) -> None:  # noqa: N802
+      result = self._handle_health()
+      if result is not None:
+        body = json.dumps(result[1], indent=2).encode()
+        self.send_response(result[0])
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
 
     def _respond(self, code: int, message: str) -> None:
       body = message.encode()
