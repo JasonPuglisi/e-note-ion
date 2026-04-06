@@ -2,6 +2,8 @@
 
 import json
 import threading
+import time
+from pathlib import Path
 
 import pytest
 
@@ -10,7 +12,10 @@ import health as _mod
 
 @pytest.fixture(autouse=True)
 def _reset_health() -> None:
-  """Ensure clean health state for each test."""
+  """Ensure clean health state for each test.
+
+  Log path isolation is handled by the conftest fixture.
+  """
   _mod.reset()
   _mod.init()
 
@@ -71,7 +76,7 @@ def test_record_on_unregistered_is_noop() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Status computation
+# Status computation — threshold-based
 # ---------------------------------------------------------------------------
 
 
@@ -97,6 +102,7 @@ def test_status_healthy_mixed_success_and_expected_empty() -> None:
 
 
 def test_status_degraded_errors_with_successes() -> None:
+  """50% success rate (below 70% threshold) → degraded."""
   _mod.register('bart')
   _mod.record_success('bart')
   _mod.record_error('bart', 'fail')
@@ -112,9 +118,16 @@ def test_status_error_all_errors() -> None:
   assert _mod.get_summary()['integrations']['bart']['status'] == 'error'
 
 
+def test_status_error_single_error() -> None:
+  """A single error (100% error rate) → error."""
+  _mod.register('bart')
+  _mod.record_error('bart', 'fail')
+  assert _mod.get_summary()['integrations']['bart']['status'] == 'error'
+
+
 def test_status_error_errors_and_expected_empty_only() -> None:
-  """Errors + expected_empty (no successes) → error, because expected_empty
-  doesn't count as a success for error rate purposes."""
+  """Errors + expected_empty (no successes) → degraded, because expected_empty
+  doesn't count as an error."""
   _mod.register('bart')
   _mod.record_expected_empty('bart')
   _mod.record_error('bart', 'fail')
@@ -122,18 +135,48 @@ def test_status_error_errors_and_expected_empty_only() -> None:
   assert _mod.get_summary()['integrations']['bart']['status'] == 'degraded'
 
 
-def test_rolling_window_capped_at_10() -> None:
+def test_status_healthy_above_threshold() -> None:
+  """80% success rate (above 70% threshold) → healthy."""
+  _mod.register('weather')
+  for _ in range(8):
+    _mod.record_success('weather')
+  for _ in range(2):
+    _mod.record_error('weather', 'fail')
+  assert _mod.get_summary()['integrations']['weather']['status'] == 'healthy'
+
+
+def test_status_degraded_below_threshold() -> None:
+  """60% success rate (below 70% threshold) → degraded."""
+  _mod.register('weather')
+  for _ in range(6):
+    _mod.record_success('weather')
+  for _ in range(4):
+    _mod.record_error('weather', 'fail')
+  assert _mod.get_summary()['integrations']['weather']['status'] == 'degraded'
+
+
+def test_status_healthy_at_threshold() -> None:
+  """70% success rate (exactly at threshold) → healthy."""
+  _mod.register('weather')
+  for _ in range(7):
+    _mod.record_success('weather')
+  for _ in range(3):
+    _mod.record_error('weather', 'fail')
+  assert _mod.get_summary()['integrations']['weather']['status'] == 'healthy'
+
+
+def test_rolling_window_capped_at_20() -> None:
   _mod.register('weather')
   # Fill with errors
-  for _ in range(10):
+  for _ in range(20):
     _mod.record_error('weather', 'fail')
   assert _mod.get_summary()['integrations']['weather']['status'] == 'error'
   # Push out errors with successes
-  for _ in range(10):
+  for _ in range(20):
     _mod.record_success('weather')
   detail = _mod.get_summary()['integrations']['weather']
   assert detail['status'] == 'healthy'
-  assert detail['total_events'] == 10
+  assert detail['total_events'] == 20
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +200,8 @@ def test_overall_healthy_with_unknown() -> None:
   assert _mod.overall_status() == _mod.Status.HEALTHY
 
 
-def test_overall_unhealthy_any_degraded() -> None:
+def test_overall_degraded_below_threshold() -> None:
+  """50% success rate on bart → degraded overall."""
   _mod.register('weather')
   _mod.register('bart')
   _mod.record_success('weather')
@@ -237,9 +281,9 @@ def test_concurrent_recording() -> None:
   for t in threads:
     t.join()
 
-  # All should have been recorded (deque maxlen caps at 10, but no crash)
+  # All should have been recorded (deque maxlen caps at 20, but no crash)
   detail = _mod.get_summary()['integrations']['weather']
-  assert detail['total_events'] == 10
+  assert detail['total_events'] == 20
   assert detail['status'] == 'healthy'
 
 
@@ -257,3 +301,140 @@ def test_log_summary(caplog: pytest.LogCaptureFixture) -> None:
     _mod._log_summary()
   assert 'Health:' in caplog.text
   assert 'bart' in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Persistence — file I/O
+# ---------------------------------------------------------------------------
+
+
+def test_persistence_file_written_on_record() -> None:
+  """Each record_* call appends a line to the log file."""
+  _mod.register('weather')
+  _mod.record_success('weather')
+  _mod.record_error('weather', 'HTTP 502')
+
+  lines = _mod._LOG_PATH.read_text().strip().splitlines()
+  assert len(lines) == 2
+  first = json.loads(lines[0])
+  assert first['name'] == 'weather'
+  assert first['event'] == 'success'
+  assert 'error' not in first
+  second = json.loads(lines[1])
+  assert second['event'] == 'error'
+  assert second['error'] == 'HTTP 502'
+
+
+def test_persistence_write_and_load() -> None:
+  """Events survive a reset + init cycle (simulating a restart)."""
+  _mod.register('weather')
+  _mod.record_success('weather')
+  _mod.record_success('weather')
+  _mod.record_error('weather', 'fail')
+
+  log_path = _mod._LOG_PATH
+  log_dir = _mod._LOG_DIR
+
+  # Simulate restart: clear in-memory state, re-init from disk.
+  _mod.reset()
+  _mod._LOG_PATH = log_path
+  _mod._LOG_DIR = log_dir
+  _mod.init()
+
+  detail = _mod.get_summary()['integrations']['weather']
+  assert detail['total_events'] == 3
+  assert detail['success_rate'] == pytest.approx(2 / 3)
+
+
+def test_persistence_purge_old_events(tmp_path: Path) -> None:
+  """Events older than _PURGE_DAYS are discarded on load."""
+  log_file = tmp_path / 'health.jsonl'
+  old_ts = time.time() - (_mod._PURGE_SECONDS + 3600)  # 8 days ago
+  recent_ts = time.time() - 3600  # 1 hour ago
+
+  lines = [
+    json.dumps({'ts': old_ts, 'name': 'weather', 'event': 'error', 'error': 'old'}),
+    json.dumps({'ts': recent_ts, 'name': 'weather', 'event': 'success'}),
+  ]
+  log_file.write_text('\n'.join(lines) + '\n')
+
+  _mod.reset()
+  _mod._LOG_DIR = tmp_path
+  _mod._LOG_PATH = log_file
+  _mod.init()
+
+  detail = _mod.get_summary()['integrations']['weather']
+  assert detail['total_events'] == 1
+  assert detail['status'] == 'healthy'
+
+  # File should be rewritten without the old event.
+  remaining = log_file.read_text().strip().splitlines()
+  assert len(remaining) == 1
+
+
+def test_persistence_corrupt_lines_skipped(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+  """Malformed lines are skipped with a warning."""
+  log_file = tmp_path / 'health.jsonl'
+  recent_ts = time.time() - 60
+  lines = [
+    'not valid json',
+    json.dumps({'ts': recent_ts, 'name': 'bart', 'event': 'success'}),
+    '{bad',
+  ]
+  log_file.write_text('\n'.join(lines) + '\n')
+
+  _mod.reset()
+  _mod._LOG_DIR = tmp_path
+  _mod._LOG_PATH = log_file
+  with caplog.at_level('WARNING', logger='health'):
+    _mod.init()
+
+  assert 'skipping malformed line 1' in caplog.text
+  detail = _mod.get_summary()['integrations']['bart']
+  assert detail['total_events'] == 1
+
+
+def test_persistence_missing_file() -> None:
+  """init() with no log file starts clean (no crash)."""
+  _mod.reset()
+  _mod._LOG_PATH = Path('/nonexistent/health.jsonl')
+  _mod._LOG_DIR = Path('/nonexistent')
+  _mod.init()
+  assert _mod.get_summary()['integrations'] == {}
+
+
+def test_persistence_register_preserves_loaded_state() -> None:
+  """register() is a no-op for integrations already loaded from disk."""
+  _mod.register('weather')
+  _mod.record_success('weather')
+  _mod.record_success('weather')
+
+  log_path = _mod._LOG_PATH
+  log_dir = _mod._LOG_DIR
+
+  _mod.reset()
+  _mod._LOG_PATH = log_path
+  _mod._LOG_DIR = log_dir
+  _mod.init()
+
+  # register() should not clobber the loaded history.
+  _mod.register('weather')
+  detail = _mod.get_summary()['integrations']['weather']
+  assert detail['total_events'] == 2
+
+
+def test_periodic_purge_removes_stale_events(tmp_path: Path) -> None:
+  """_log_summary() purges stale events from memory and rewrites the file."""
+  _mod.register('weather')
+
+  # Inject an old event directly into the deque.
+  old_ts = time.time() - (_mod._PURGE_SECONDS + 3600)
+  with _mod._lock:
+    state = _mod._integrations['weather']
+    state.events.appendleft(_mod.HealthEvent(old_ts, _mod.EventType.ERROR, 'stale'))
+
+  _mod._log_summary()
+
+  # The old event should have been purged.
+  for event in _mod._integrations['weather'].events:
+    assert event.timestamp > old_ts

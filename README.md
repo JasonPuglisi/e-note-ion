@@ -168,14 +168,18 @@ the container logs for the plaintext secret. Pass it as
 }
 ```
 
-Each integration tracks the last 10 events in a rolling buffer. Status levels:
-`healthy` (no errors), `degraded` (mixed), `error` (all errors), `unknown`
-(no events yet). Expected empty data (e.g. nothing playing, no events today)
-counts as healthy — only API failures trigger degraded/error.
+Each integration tracks the last 20 events in a rolling buffer. Status levels:
+`healthy` (≥70% non-error rate), `degraded` (below threshold), `error` (all
+errors), `unknown` (no events yet). Expected empty data (e.g. nothing playing,
+no events today) counts as healthy — only API failures trigger degraded/error.
+
+Health events are persisted to `data/health.jsonl` so that history survives
+container restarts. Events older than 7 days are automatically purged. In
+Docker, the `data/` directory is an anonymous volume — no user configuration
+is needed for persistence across stop/start cycles.
 
 A periodic health summary also logs to the console every hour, showing
-non-healthy integrations and their recent error rates. Health state is
-in-memory and resets on container restart.
+non-healthy integrations and their recent error rates.
 
 ## Installing from PyPI
 

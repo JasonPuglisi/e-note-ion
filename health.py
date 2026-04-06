@@ -4,11 +4,17 @@
 # success/failure/expected-empty outcomes per integration and exposes a
 # summary for the /health endpoint and periodic console log.
 #
-# Thread-safe: all state is behind a single lock. No persistence — state
-# resets on restart, which is fine for daily container restarts.
+# Thread-safe: all state is behind a single lock.
+#
+# Events are persisted to data/health.jsonl so that health history survives
+# container restarts. On startup, historical events are loaded from disk and
+# entries older than _PURGE_DAYS are discarded. The data/ directory is
+# declared as a Docker VOLUME so it persists automatically across container
+# stop/start/recreate cycles without user configuration.
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -16,11 +22,30 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 _LOG_INTERVAL = 3600  # seconds between periodic health log entries
+
+# --- Persistence and threshold constants ---
+
+# Runtime state directory. Declared as a Docker VOLUME (/app/data) so it
+# persists across container lifecycle events without user-visible mounts.
+# Other features that need persistent runtime state should also use this
+# directory.
+_LOG_DIR = Path('data')
+_LOG_PATH = _LOG_DIR / 'health.jsonl'
+
+_PURGE_DAYS = 7  # discard events older than this on startup and hourly
+_PURGE_SECONDS = _PURGE_DAYS * 86400
+
+# Status is HEALTHY when the non-error rate meets or exceeds this threshold.
+_SUCCESS_RATE_THRESHOLD = 0.7
+
+# Number of recent events to keep per integration.
+_WINDOW_SIZE = 20
 
 
 class EventType(Enum):
@@ -46,7 +71,7 @@ class HealthEvent:
 @dataclass
 class _IntegrationState:
   registered_at: float
-  events: deque[HealthEvent] = field(default_factory=lambda: deque(maxlen=10))
+  events: deque[HealthEvent] = field(default_factory=lambda: deque(maxlen=_WINDOW_SIZE))
 
 
 _lock = threading.Lock()
@@ -55,10 +80,129 @@ _started_at: float = 0.0
 _log_timer: threading.Timer | None = None
 
 
+# ---------------------------------------------------------------------------
+# Persistence helpers
+# ---------------------------------------------------------------------------
+
+
+def _load_log() -> None:
+  """Load historical health events from disk, purging entries older than
+  _PURGE_DAYS. Called once during init() before any integrations fire.
+
+  Handles missing files (fresh install) and malformed lines (skipped with
+  a warning). After loading, rewrites the file without purged entries.
+  """
+  try:
+    lines = _LOG_PATH.read_text().splitlines()
+  except FileNotFoundError:
+    return
+  except OSError as e:
+    logger.warning('Health: could not read %s — %s', _LOG_PATH, e)
+    return
+
+  cutoff = time.time() - _PURGE_SECONDS
+  kept_lines: list[str] = []
+
+  for i, line in enumerate(lines):
+    line = line.strip()
+    if not line:
+      continue
+    try:
+      obj = json.loads(line)
+    except json.JSONDecodeError:
+      logger.warning('Health: skipping malformed line %d in %s', i + 1, _LOG_PATH)
+      continue
+
+    ts = obj.get('ts')
+    if not isinstance(ts, (int, float)) or ts < cutoff:
+      continue
+
+    name = obj.get('name', '')
+    event_str = obj.get('event', '')
+    try:
+      event_type = EventType(event_str)
+    except ValueError:
+      logger.warning('Health: unknown event type %r on line %d', event_str, i + 1)
+      continue
+
+    error_msg = obj.get('error') if event_type == EventType.ERROR else None
+
+    if name not in _integrations:
+      _integrations[name] = _IntegrationState(registered_at=ts)
+    _integrations[name].events.append(HealthEvent(ts, event_type, error_msg))
+    kept_lines.append(line)
+
+  # Rewrite the file without purged entries.
+  try:
+    _LOG_DIR.mkdir(parents=True, exist_ok=True)
+    _LOG_PATH.write_text('\n'.join(kept_lines) + '\n' if kept_lines else '')
+  except OSError as e:
+    logger.warning('Health: could not rewrite %s — %s', _LOG_PATH, e)
+
+
+def _append_log(name: str, event_type: EventType, ts: float, error: str | None = None) -> None:
+  """Append a single event to the health log file. Caller holds _lock."""
+  entry: dict[str, Any] = {'ts': ts, 'name': name, 'event': event_type.value}
+  if error is not None:
+    entry['error'] = error
+  try:
+    _LOG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(_LOG_PATH, 'a') as f:
+      f.write(json.dumps(entry, separators=(',', ':')) + '\n')
+  except OSError as e:
+    logger.warning('Health: could not write to %s — %s', _LOG_PATH, e)
+
+
+def _purge_stale_events() -> bool:
+  """Remove events older than _PURGE_DAYS from in-memory state.
+
+  Returns True if any events were purged (caller should rewrite the log).
+  Caller holds _lock.
+  """
+  cutoff = time.time() - _PURGE_SECONDS
+  purged = False
+  for state in _integrations.values():
+    before = len(state.events)
+    state.events = deque(
+      (e for e in state.events if e.timestamp >= cutoff),
+      maxlen=_WINDOW_SIZE,
+    )
+    if len(state.events) < before:
+      purged = True
+  return purged
+
+
+def _rewrite_log() -> None:
+  """Rewrite the log file from current in-memory state. Caller holds _lock."""
+  lines: list[str] = []
+  for name, state in sorted(_integrations.items()):
+    for event in state.events:
+      entry: dict[str, Any] = {
+        'ts': event.timestamp,
+        'name': name,
+        'event': event.event_type.value,
+      }
+      if event.error_message is not None:
+        entry['error'] = event.error_message
+      lines.append(json.dumps(entry, separators=(',', ':')))
+  try:
+    _LOG_DIR.mkdir(parents=True, exist_ok=True)
+    _LOG_PATH.write_text('\n'.join(lines) + '\n' if lines else '')
+  except OSError as e:
+    logger.warning('Health: could not rewrite %s — %s', _LOG_PATH, e)
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
 def init() -> None:
   """Initialize the health system. Call once at scheduler startup."""
   global _started_at
   _started_at = time.time()
+  with _lock:
+    _load_log()
 
 
 def register(name: str) -> None:
@@ -79,7 +223,9 @@ def record_success(name: str) -> None:
     state = _integrations.get(name)
     if state is None:
       return
-    state.events.append(HealthEvent(time.time(), EventType.SUCCESS))
+    ts = time.time()
+    state.events.append(HealthEvent(ts, EventType.SUCCESS))
+    _append_log(name, EventType.SUCCESS, ts)
 
 
 def record_expected_empty(name: str) -> None:
@@ -88,7 +234,9 @@ def record_expected_empty(name: str) -> None:
     state = _integrations.get(name)
     if state is None:
       return
-    state.events.append(HealthEvent(time.time(), EventType.EXPECTED_EMPTY))
+    ts = time.time()
+    state.events.append(HealthEvent(ts, EventType.EXPECTED_EMPTY))
+    _append_log(name, EventType.EXPECTED_EMPTY, ts)
 
 
 def record_error(name: str, error: str) -> None:
@@ -97,11 +245,21 @@ def record_error(name: str, error: str) -> None:
     state = _integrations.get(name)
     if state is None:
       return
-    state.events.append(HealthEvent(time.time(), EventType.ERROR, error))
+    ts = time.time()
+    state.events.append(HealthEvent(ts, EventType.ERROR, error))
+    _append_log(name, EventType.ERROR, ts, error)
 
 
 def _compute_status(state: _IntegrationState) -> Status:
-  """Compute health status for a single integration. Caller holds _lock."""
+  """Compute health status for a single integration. Caller holds _lock.
+
+  Uses a success-rate threshold instead of binary error detection:
+  - No events → unknown
+  - No errors → healthy
+  - All errors → error
+  - Non-error rate ≥ _SUCCESS_RATE_THRESHOLD → healthy
+  - Below threshold → degraded
+  """
   if not state.events:
     return Status.UNKNOWN
   errors = sum(1 for e in state.events if e.event_type == EventType.ERROR)
@@ -110,6 +268,8 @@ def _compute_status(state: _IntegrationState) -> Status:
     return Status.HEALTHY
   if errors == total:
     return Status.ERROR
+  if (total - errors) / total >= _SUCCESS_RATE_THRESHOLD:
+    return Status.HEALTHY
   return Status.DEGRADED
 
 
@@ -189,8 +349,16 @@ def get_summary() -> dict[str, Any]:
 
 
 def _log_summary() -> None:
-  """Log a one-line health summary plus details for non-healthy integrations."""
+  """Log a one-line health summary plus details for non-healthy integrations.
+
+  Also purges stale events (older than _PURGE_DAYS) from memory and disk
+  as a belt-and-suspenders check for long-running instances.
+  """
   with _lock:
+    # Periodic purge of stale events.
+    if _purge_stale_events():
+      _rewrite_log()
+
     if not _integrations:
       return
     counts: dict[str, int] = {}

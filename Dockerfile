@@ -24,8 +24,11 @@ COPY scheduler.py config.py exceptions.py health.py public.py quiet.py config.ex
 COPY integrations/ ./integrations/
 COPY content/contrib/ ./content/contrib/
 
-# Create user content directory and drop to a non-root user.
-RUN mkdir -p content/user \
+# Create user content directory and runtime data directory, then drop to a
+# non-root user. The data/ directory stores persistent runtime state
+# (e.g. health event log) that survives container restarts via an anonymous
+# Docker volume — no user-visible mount is required.
+RUN mkdir -p content/user data \
     && chown -R nobody:nogroup /app
 
 USER nobody
@@ -33,7 +36,7 @@ USER nobody
 # Put the venv on PATH so `python` resolves without needing `uv run`.
 ENV PATH="/app/.venv/bin:$PATH"
 
-VOLUME ["/app/content/user"]
+VOLUME ["/app/content/user", "/app/data"]
 
 # Uncomment and adjust if using the webhook listener with bind = "0.0.0.0".
 # Map the same port with -p 8080:8080 (or equivalent) in your docker run / compose.
