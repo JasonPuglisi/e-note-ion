@@ -15,6 +15,7 @@ import json
 import logging
 import random
 import re
+import threading
 import time
 import unicodedata
 from enum import Enum
@@ -284,9 +285,37 @@ class VestaboardState:
 
 # --- API calls ---
 
+# Minimum seconds between consecutive Vestaboard requests. The Vestaboard
+# backend (or the physical board itself) returns 500 when hit with multiple
+# writes in rapid succession — see issue #513 for the root-cause analysis.
+# Gating every call at the client layer prevents cron-boundary bursts from
+# triggering these self-inflicted failures.
+_MIN_POST_INTERVAL = 3.0
+_last_post_time: float = 0.0
+_post_gate_lock = threading.Lock()
+
+
+def _await_post_gate() -> None:
+  """Block until _MIN_POST_INTERVAL has elapsed since the last request start.
+
+  Thread-safe. Updates _last_post_time to the post-wait monotonic time so the
+  next call measures from "this request is starting now". The first call
+  after process start does not wait.
+  """
+  global _last_post_time
+  with _post_gate_lock:
+    if _last_post_time > 0:
+      elapsed = time.monotonic() - _last_post_time
+      if elapsed < _MIN_POST_INTERVAL:
+        wait = _MIN_POST_INTERVAL - elapsed
+        logger.debug('Vestaboard pacing gate: waiting %.1fs', wait)
+        time.sleep(wait)
+    _last_post_time = time.monotonic()
+
 
 def get_state(color: VestaboardColor = VestaboardColor.BLACK) -> VestaboardState:
   """Fetch and return the current board state."""
+  _await_post_gate()
   r = requests.get(_HOST, headers=_get_headers(), timeout=10)
   if r.status_code == 404:
     raise EmptyBoardError('board has no current message')
@@ -580,6 +609,7 @@ def set_state_raw(grid: list[list[int]]) -> None:
   Raises BoardLockedError on HTTP 423, DuplicateContentError on HTTP 409.
   All other HTTP errors raise requests.exceptions.HTTPError.
   """
+  _await_post_gate()
   for attempt in range(1 + _RATE_LIMIT_RETRIES):
     r = requests.post(_HOST, json=grid, headers=_get_headers(), timeout=10)
     if r.status_code == 409:

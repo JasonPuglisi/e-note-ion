@@ -1,11 +1,23 @@
 import json
 import logging
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
 
 import integrations.vestaboard as vb
+
+
+@pytest.fixture(autouse=True)
+def _reset_vestaboard_pacing() -> Generator[None, None, None]:
+  """Reset module-level pacing state between tests so one test's _last_post_time
+  cannot leak into the next (which would trigger unexpected real sleeps).
+  """
+  vb._last_post_time = 0.0  # noqa: SLF001
+  yield
+  vb._last_post_time = 0.0  # noqa: SLF001
+
 
 # --- display_len ---
 
@@ -772,3 +784,132 @@ def test_set_state_calls_render_then_raw(monkeypatch: pytest.MonkeyPatch) -> Non
   _, kwargs = mock_post.call_args
   grid = kwargs['json']
   assert len(grid) == vb.model.rows
+
+
+# --- pacing gate ---
+
+
+def test_pacing_gate_first_call_no_wait(monkeypatch: pytest.MonkeyPatch) -> None:
+  """The first call after process start (or test reset) must not sleep."""
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  mock_resp = MagicMock()
+  mock_resp.status_code = 200
+  mock_resp.raise_for_status.return_value = None
+  with (
+    patch('integrations.vestaboard.requests.post', return_value=mock_resp),
+    patch('integrations.vestaboard.time.sleep') as mock_sleep,
+  ):
+    vb.set_state_raw([[0] * vb.model.cols for _ in range(vb.model.rows)])
+  mock_sleep.assert_not_called()
+
+
+def test_pacing_gate_second_call_waits(monkeypatch: pytest.MonkeyPatch) -> None:
+  """A rapid second call must sleep approximately _MIN_POST_INTERVAL seconds."""
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  mock_resp = MagicMock()
+  mock_resp.status_code = 200
+  mock_resp.raise_for_status.return_value = None
+  # Freeze monotonic time so elapsed is exactly 0 between calls.
+  with (
+    patch('integrations.vestaboard.requests.post', return_value=mock_resp),
+    patch('integrations.vestaboard.time.sleep') as mock_sleep,
+    patch('integrations.vestaboard.time.monotonic', return_value=100.0),
+  ):
+    grid = [[0] * vb.model.cols for _ in range(vb.model.rows)]
+    vb.set_state_raw(grid)
+    vb.set_state_raw(grid)
+  # First call: no sleep. Second call: full interval.
+  mock_sleep.assert_called_once_with(vb._MIN_POST_INTERVAL)  # noqa: SLF001
+
+
+def test_pacing_gate_elapsed_exceeds_interval(monkeypatch: pytest.MonkeyPatch) -> None:
+  """If enough time has passed since the last call, no wait is needed."""
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  # Simulate a prior call well outside the pacing window.
+  vb._last_post_time = 100.0  # noqa: SLF001
+  mock_resp = MagicMock()
+  mock_resp.status_code = 200
+  mock_resp.raise_for_status.return_value = None
+  with (
+    patch('integrations.vestaboard.requests.post', return_value=mock_resp),
+    patch('integrations.vestaboard.time.sleep') as mock_sleep,
+    patch('integrations.vestaboard.time.monotonic', return_value=200.0),
+  ):
+    vb.set_state_raw([[0] * vb.model.cols for _ in range(vb.model.rows)])
+  mock_sleep.assert_not_called()
+
+
+def test_pacing_gate_failure_still_updates_timestamp(monkeypatch: pytest.MonkeyPatch) -> None:
+  """A failed POST still counts against pacing — the next call must wait."""
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  fail = MagicMock()
+  fail.status_code = 500
+  fail.reason = 'Internal Server Error'
+  fail.raise_for_status.side_effect = requests.HTTPError(response=fail)
+  ok = MagicMock()
+  ok.status_code = 200
+  ok.raise_for_status.return_value = None
+  with (
+    patch('integrations.vestaboard.requests.post', side_effect=[fail, ok]),
+    patch('integrations.vestaboard.time.sleep') as mock_sleep,
+    patch('integrations.vestaboard.time.monotonic', return_value=100.0),
+  ):
+    grid = [[0] * vb.model.cols for _ in range(vb.model.rows)]
+    with pytest.raises(requests.HTTPError):
+      vb.set_state_raw(grid)
+    vb.set_state_raw(grid)
+  # First call: no wait (fresh state). Second call: full pacing interval.
+  mock_sleep.assert_called_once_with(vb._MIN_POST_INTERVAL)  # noqa: SLF001
+
+
+def test_pacing_gate_applies_to_get_state(monkeypatch: pytest.MonkeyPatch) -> None:
+  """get_state() must also respect the pacing gate for consistency."""
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  layout = [[0] * vb.model.cols for _ in range(vb.model.rows)]
+  mock_resp = MagicMock()
+  mock_resp.json.return_value = {
+    'currentMessage': {
+      'id': 'abc',
+      'appeared': '2024-01-01T00:00:00Z',
+      'layout': json.dumps(layout),
+    }
+  }
+  mock_resp.raise_for_status.return_value = None
+  with (
+    patch('integrations.vestaboard.requests.get', return_value=mock_resp),
+    patch('integrations.vestaboard.time.sleep') as mock_sleep,
+    patch('integrations.vestaboard.time.monotonic', return_value=100.0),
+  ):
+    vb.get_state()
+    vb.get_state()
+  mock_sleep.assert_called_once_with(vb._MIN_POST_INTERVAL)  # noqa: SLF001
+
+
+def test_pacing_gate_disabled_via_interval_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Setting _MIN_POST_INTERVAL to 0 disables pacing entirely."""
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  monkeypatch.setattr(vb, '_MIN_POST_INTERVAL', 0.0)
+  mock_resp = MagicMock()
+  mock_resp.status_code = 200
+  mock_resp.raise_for_status.return_value = None
+  with (
+    patch('integrations.vestaboard.requests.post', return_value=mock_resp),
+    patch('integrations.vestaboard.time.sleep') as mock_sleep,
+    patch('integrations.vestaboard.time.monotonic', return_value=100.0),
+  ):
+    grid = [[0] * vb.model.cols for _ in range(vb.model.rows)]
+    vb.set_state_raw(grid)
+    vb.set_state_raw(grid)
+  mock_sleep.assert_not_called()
