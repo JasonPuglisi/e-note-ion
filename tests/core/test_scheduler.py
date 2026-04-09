@@ -747,7 +747,7 @@ def test_worker_skips_private_message_in_public_mode() -> None:
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
     patch('public.is_public', return_value=True),
-    patch('integrations.vestaboard.set_state') as mock_set,
+    patch('integrations.vestaboard.set_state_raw') as mock_set,
   ):
     with pytest.raises(KeyboardInterrupt):
       _mod.worker()
@@ -760,7 +760,7 @@ def test_worker_shows_private_message_in_normal_mode() -> None:
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
     patch('public.is_public', return_value=False),
-    patch('integrations.vestaboard.set_state'),
+    patch('integrations.vestaboard.set_state_raw'),
     patch('time.sleep'),
     patch.object(_mod, '_hold_interrupt'),
   ):
@@ -776,7 +776,7 @@ def test_worker_skips_webhook_private_message_in_public_mode(monkeypatch: pytest
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
     patch('public.is_public', return_value=True),
-    patch('integrations.vestaboard.set_state') as mock_set,
+    patch('integrations.vestaboard.set_state_raw') as mock_set,
   ):
     with pytest.raises(KeyboardInterrupt):
       _mod.worker()
@@ -791,7 +791,7 @@ def test_worker_shows_webhook_private_message_in_normal_mode(monkeypatch: pytest
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
     patch('public.is_public', return_value=False),
-    patch('integrations.vestaboard.set_state'),
+    patch('integrations.vestaboard.set_state_raw'),
     patch('time.sleep'),
     patch.object(_mod, '_hold_interrupt'),
   ):
@@ -803,7 +803,7 @@ def test_worker_board_locked_requeues_within_timeout() -> None:
   msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
-    patch('integrations.vestaboard.set_state', side_effect=vb.BoardLockedError('locked')),
+    patch('integrations.vestaboard.set_state_raw', side_effect=vb.BoardLockedError('locked')),
     patch('time.sleep'),
   ):
     with pytest.raises(KeyboardInterrupt):
@@ -815,7 +815,7 @@ def test_worker_board_locked_discards_after_timeout() -> None:
   msg = _make_worker_msg(scheduled_at=time.monotonic() - 1000, timeout=10)
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
-    patch('integrations.vestaboard.set_state', side_effect=vb.BoardLockedError('locked')),
+    patch('integrations.vestaboard.set_state_raw', side_effect=vb.BoardLockedError('locked')),
     patch('time.sleep'),
   ):
     with pytest.raises(KeyboardInterrupt):
@@ -828,7 +828,7 @@ def test_worker_log_includes_template_name(caplog: pytest.LogCaptureFixture) -> 
   msg.name = 'user.test.my_template'
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
-    patch('integrations.vestaboard.set_state'),
+    patch('integrations.vestaboard.set_state_raw'),
     patch('time.sleep'),
     patch.object(_mod, '_hold_interrupt'),
   ):
@@ -853,7 +853,7 @@ def test_worker_clears_stale_hold_interrupt_before_hold() -> None:
 
   with (
     patch.object(_mod, 'pop_valid_message', return_value=msg),
-    patch('integrations.vestaboard.set_state'),
+    patch('integrations.vestaboard.set_state_raw'),
     patch.object(_mod, '_do_hold', side_effect=_fake_do_hold),
   ):
     with pytest.raises(KeyboardInterrupt):
@@ -887,7 +887,7 @@ def test_worker_sets_hold_tag_before_set_state() -> None:
 
   with (
     patch.object(_mod, 'pop_valid_message', return_value=msg),
-    patch('integrations.vestaboard.set_state', side_effect=_fake_set_state),
+    patch('integrations.vestaboard.set_state_raw', side_effect=_fake_set_state),
   ):
     with pytest.raises(KeyboardInterrupt):
       _mod.worker()
@@ -908,12 +908,14 @@ def test_worker_clears_hold_tag_on_integration_data_unavailable() -> None:
   )
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
-    patch('integrations.vestaboard.set_state', side_effect=IntegrationDataUnavailableError('no data')),
+    # Raise from render() which is in the fetch/render phase, since worker
+    # attribution now separates fetch-phase from send-phase errors.
+    patch('integrations.vestaboard.render', side_effect=IntegrationDataUnavailableError('no data')),
   ):
     with pytest.raises(KeyboardInterrupt):
       _mod.worker()
 
-  assert _mod.current_hold_tag() == '', 'tag must be cleared when set_state raises IntegrationDataUnavailableError'
+  assert _mod.current_hold_tag() == '', 'tag must be cleared when fetch phase raises IntegrationDataUnavailableError'
 
 
 def test_worker_clears_hold_tag_on_board_locked() -> None:
@@ -929,7 +931,7 @@ def test_worker_clears_hold_tag_on_board_locked() -> None:
   )
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
-    patch('integrations.vestaboard.set_state', side_effect=vb.BoardLockedError('locked')),
+    patch('integrations.vestaboard.set_state_raw', side_effect=vb.BoardLockedError('locked')),
     patch('time.sleep'),
   ):
     with pytest.raises(KeyboardInterrupt):
@@ -951,7 +953,7 @@ def test_worker_clears_hold_tag_on_generic_exception() -> None:
   )
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
-    patch('integrations.vestaboard.set_state', side_effect=RuntimeError('boom')),
+    patch('integrations.vestaboard.set_state_raw', side_effect=RuntimeError('boom')),
   ):
     with pytest.raises(KeyboardInterrupt):
       _mod.worker()
@@ -1000,7 +1002,7 @@ def test_worker_refires_interrupt_when_same_tag_message_queued_during_set_state(
 
   with (
     patch.object(_mod, 'pop_valid_message', return_value=now_playing),
-    patch('integrations.vestaboard.set_state', side_effect=_fake_set_state),
+    patch('integrations.vestaboard.set_state_raw', side_effect=_fake_set_state),
     patch.object(_mod, '_do_hold', side_effect=_fake_do_hold),
   ):
     with pytest.raises(KeyboardInterrupt):
@@ -1009,6 +1011,159 @@ def test_worker_refires_interrupt_when_same_tag_message_queued_during_set_state(
   assert interrupt_state_at_hold == [True], (
     '_hold_interrupt must be re-fired when a same-tag message is queued during set_state'
   )
+
+
+# --- Worker health attribution (phase split: fetch vs send) ---
+
+
+def _make_integration_worker_msg(*, integration: str, scheduled_at: float, timeout: int) -> Any:
+  """Build a worker message whose fetch phase calls a mocked integration."""
+  return _mod.QueuedMessage(
+    priority=5,
+    seq=0,
+    name=f'user.{integration}.tmpl',
+    scheduled_at=scheduled_at,
+    data={
+      'integration': integration,
+      'templates': [{'format': ['HELLO']}],
+      'variables': {},
+      'truncation': 'hard',
+    },
+    hold=60,
+    timeout=timeout,
+  )
+
+
+def test_worker_fetch_failure_records_integration_not_vestaboard() -> None:
+  """When the integration raises, only the integration target gets an error."""
+  msg = _make_integration_worker_msg(integration='weather', scheduled_at=time.monotonic(), timeout=3600)
+  mock_int = MagicMock()
+  mock_int.get_variables.side_effect = RuntimeError('fetch boom')
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch.object(_mod, '_get_integration', return_value=mock_int),
+    patch('integrations.vestaboard.set_state_raw') as mock_send,
+    patch.object(_mod._health_mod, 'record_error') as mock_err,
+    patch.object(_mod._health_mod, 'record_success') as mock_ok,
+    patch.object(_mod, '_do_hold'),
+    patch('time.sleep'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+  mock_send.assert_not_called()
+  # Exactly one error for 'weather'; no errors for vestaboard.
+  targets_with_errors = [c.args[0] for c in mock_err.call_args_list]
+  assert 'weather' in targets_with_errors
+  assert _mod._health_mod.VESTABOARD_TARGET not in targets_with_errors
+  # No successes recorded at all — fetch never completed.
+  targets_with_success = [c.args[0] for c in mock_ok.call_args_list]
+  assert 'weather' not in targets_with_success
+  assert _mod._health_mod.VESTABOARD_TARGET not in targets_with_success
+
+
+def test_worker_send_failure_records_integration_success_and_vestaboard_error() -> None:
+  """Integration success + vestaboard HTTPError → both recorded distinctly."""
+  import requests
+
+  msg = _make_integration_worker_msg(integration='weather', scheduled_at=time.monotonic(), timeout=3600)
+  mock_int = MagicMock()
+  mock_int.get_variables.return_value = {}
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch.object(_mod, '_get_integration', return_value=mock_int),
+    patch('integrations.vestaboard.set_state_raw', side_effect=requests.HTTPError('500')),
+    patch.object(_mod._health_mod, 'record_error') as mock_err,
+    patch.object(_mod._health_mod, 'record_success') as mock_ok,
+    patch.object(_mod, '_do_hold'),
+    patch('time.sleep'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+  # Integration recorded success (fetch succeeded).
+  assert ('weather',) in [c.args for c in mock_ok.call_args_list]
+  # Vestaboard recorded error.
+  err_targets = [c.args[0] for c in mock_err.call_args_list]
+  assert _mod._health_mod.VESTABOARD_TARGET in err_targets
+  # Integration did NOT get an error.
+  assert 'weather' not in err_targets
+
+
+def test_worker_duplicate_content_records_both_success() -> None:
+  """409 DuplicateContentError counts as vestaboard success (user's goal met)."""
+  msg = _make_integration_worker_msg(integration='weather', scheduled_at=time.monotonic(), timeout=3600)
+  mock_int = MagicMock()
+  mock_int.get_variables.return_value = {}
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch.object(_mod, '_get_integration', return_value=mock_int),
+    patch('integrations.vestaboard.set_state_raw', side_effect=vb.DuplicateContentError('dup')),
+    patch.object(_mod._health_mod, 'record_error') as mock_err,
+    patch.object(_mod._health_mod, 'record_success') as mock_ok,
+    patch.object(_mod._health_mod, 'record_locked') as mock_locked,
+    patch.object(_mod, '_do_hold'),
+    patch('time.sleep'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+  ok_targets = [c.args[0] for c in mock_ok.call_args_list]
+  assert 'weather' in ok_targets
+  assert _mod._health_mod.VESTABOARD_TARGET in ok_targets
+  mock_err.assert_not_called()
+  mock_locked.assert_not_called()
+
+
+def test_worker_board_locked_records_integration_success_and_vestaboard_locked() -> None:
+  """423 BoardLockedError → vestaboard.locked, integration.success."""
+  msg = _make_integration_worker_msg(integration='weather', scheduled_at=time.monotonic(), timeout=3600)
+  mock_int = MagicMock()
+  mock_int.get_variables.return_value = {}
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch.object(_mod, '_get_integration', return_value=mock_int),
+    patch('integrations.vestaboard.set_state_raw', side_effect=vb.BoardLockedError('locked')),
+    patch.object(_mod._health_mod, 'record_error') as mock_err,
+    patch.object(_mod._health_mod, 'record_success') as mock_ok,
+    patch.object(_mod._health_mod, 'record_locked') as mock_locked,
+    patch.object(_mod, '_do_hold'),
+    patch('time.sleep'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+  # Integration fetch recorded success.
+  assert ('weather',) in [c.args for c in mock_ok.call_args_list]
+  # Vestaboard locked, not errored.
+  mock_locked.assert_called_once_with(_mod._health_mod.VESTABOARD_TARGET)
+  err_targets = [c.args[0] for c in mock_err.call_args_list]
+  assert _mod._health_mod.VESTABOARD_TARGET not in err_targets
+
+
+def test_worker_quiet_mode_no_vestaboard_health_event() -> None:
+  """In quiet mode the board is not POSTed to — no vestaboard event recorded."""
+  msg = _make_integration_worker_msg(integration='weather', scheduled_at=time.monotonic(), timeout=3600)
+  mock_int = MagicMock()
+  mock_int.get_variables.return_value = {}
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch.object(_mod, '_get_integration', return_value=mock_int),
+    patch('quiet.is_quiet', return_value=True),
+    patch('quiet.set_virtual_state'),
+    patch('integrations.vestaboard.set_state_raw') as mock_send,
+    patch.object(_mod._health_mod, 'record_error') as mock_err,
+    patch.object(_mod._health_mod, 'record_success') as mock_ok,
+    patch.object(_mod._health_mod, 'record_locked') as mock_locked,
+    patch.object(_mod, '_do_hold'),
+    patch('time.sleep'),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+  mock_send.assert_not_called()
+  # Integration still gets credit for the fetch.
+  assert ('weather',) in [c.args for c in mock_ok.call_args_list]
+  # Vestaboard gets no events in quiet mode — recording a fake success would
+  # mask real outages when quiet mode is active.
+  assert _mod._health_mod.VESTABOARD_TARGET not in [c.args[0] for c in mock_ok.call_args_list]
+  assert _mod._health_mod.VESTABOARD_TARGET not in [c.args[0] for c in mock_err.call_args_list]
+  mock_locked.assert_not_called()
 
 
 # --- _load_file (private key missing) ---
@@ -1307,7 +1462,7 @@ def test_worker_calls_integration_get_variables() -> None:
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
     patch.object(_mod, '_get_integration', return_value=mock_integration),
-    patch('integrations.vestaboard.set_state'),
+    patch('integrations.vestaboard.set_state_raw'),
     patch('time.sleep'),
   ):
     with pytest.raises(KeyboardInterrupt):
@@ -1333,7 +1488,7 @@ def test_worker_logs_and_skips_on_missing_integration_deps() -> None:
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
     patch.object(_mod, '_get_integration', side_effect=RuntimeError('missing dependencies')),
-    patch('integrations.vestaboard.set_state') as mock_set_state,
+    patch('integrations.vestaboard.set_state_raw') as mock_set_state,
     patch('time.sleep'),
   ):
     with pytest.raises(KeyboardInterrupt):
@@ -1352,7 +1507,7 @@ def test_worker_still_holds_on_duplicate_content() -> None:
   hold_called = []
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
-    patch('integrations.vestaboard.set_state', side_effect=vb.DuplicateContentError('already shown')),
+    patch('integrations.vestaboard.set_state_raw', side_effect=vb.DuplicateContentError('already shown')),
     patch.object(_mod, '_do_hold', side_effect=lambda *a, **kw: hold_called.append(True)),
   ):
     with pytest.raises(KeyboardInterrupt):
@@ -1424,7 +1579,7 @@ def test_worker_silently_skips_on_data_unavailable() -> None:
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
     patch.object(_mod, '_get_integration', return_value=mock_integration),
-    patch('integrations.vestaboard.set_state') as mock_set_state,
+    patch('integrations.vestaboard.set_state_raw') as mock_set_state,
     patch('time.sleep'),
   ):
     with pytest.raises(KeyboardInterrupt):
@@ -1459,7 +1614,7 @@ def test_worker_uses_integration_fn_when_specified() -> None:
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
     patch.object(_mod, '_get_integration', return_value=mock_integration),
-    patch('integrations.vestaboard.set_state'),
+    patch('integrations.vestaboard.set_state_raw'),
     patch('time.sleep'),
   ):
     with pytest.raises(KeyboardInterrupt):
@@ -1788,7 +1943,7 @@ def test_worker_passes_refresh_fn_to_do_hold_for_integration_with_refresh_interv
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
     patch.object(_mod, '_get_integration', return_value=mock_integration),
-    patch('integrations.vestaboard.set_state'),
+    patch('integrations.vestaboard.set_state_raw'),
     patch.object(_mod, '_do_hold', side_effect=_fake_do_hold),
   ):
     with pytest.raises(KeyboardInterrupt):
@@ -1812,7 +1967,7 @@ def test_worker_no_refresh_fn_when_no_refresh_interval() -> None:
 
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
-    patch('integrations.vestaboard.set_state'),
+    patch('integrations.vestaboard.set_state_raw'),
     patch.object(_mod, '_do_hold', side_effect=_fake_do_hold),
   ):
     with pytest.raises(KeyboardInterrupt):
@@ -1840,14 +1995,14 @@ def test_worker_refresh_fn_skips_duplicate_content() -> None:
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
     patch.object(_mod, '_get_integration', return_value=mock_integration),
-    patch('integrations.vestaboard.set_state'),
+    patch('integrations.vestaboard.set_state_raw'),
     patch.object(_mod, '_do_hold', side_effect=_fake_do_hold),
   ):
     with pytest.raises(KeyboardInterrupt):
       _mod.worker()
 
   assert refresh_fn_ref, 'refresh_fn was not captured'
-  with patch('integrations.vestaboard.set_state', side_effect=vb.DuplicateContentError('dup')):
+  with patch('integrations.vestaboard.set_state_raw', side_effect=vb.DuplicateContentError('dup')):
     refresh_fn_ref[0]()  # must not raise
 
 
@@ -1867,7 +2022,7 @@ def test_worker_idle_refresh_called_after_hold_expires() -> None:
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, None, KeyboardInterrupt()]),
     patch.object(_mod, '_get_integration', return_value=mock_integration),
-    patch('integrations.vestaboard.set_state', side_effect=fake_set_state),
+    patch('integrations.vestaboard.set_state_raw', side_effect=fake_set_state),
     patch.object(_mod, '_do_hold'),  # returns immediately
   ):
     with pytest.raises(KeyboardInterrupt):
@@ -1891,7 +2046,7 @@ def test_worker_idle_refresh_cleared_on_new_send() -> None:
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg1, msg2, None, KeyboardInterrupt()]),
     patch.object(_mod, '_get_integration', return_value=mock_integration),
-    patch('integrations.vestaboard.set_state', side_effect=fake_set_state),
+    patch('integrations.vestaboard.set_state_raw', side_effect=fake_set_state),
     patch.object(_mod, '_do_hold'),  # returns immediately
   ):
     with pytest.raises(KeyboardInterrupt):
@@ -1917,7 +2072,7 @@ def test_worker_idle_refresh_error_logged_and_continues(caplog: pytest.LogCaptur
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, None, KeyboardInterrupt()]),
     patch.object(_mod, '_get_integration', return_value=mock_integration),
-    patch('integrations.vestaboard.set_state', side_effect=fake_set_state),
+    patch('integrations.vestaboard.set_state_raw', side_effect=fake_set_state),
     patch.object(_mod, '_do_hold'),
   ):
     with pytest.raises(KeyboardInterrupt):
@@ -1936,7 +2091,7 @@ def test_worker_idle_refresh_not_set_for_non_integration_message() -> None:
 
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, None, KeyboardInterrupt()]),
-    patch('integrations.vestaboard.set_state', side_effect=fake_set_state),
+    patch('integrations.vestaboard.set_state_raw', side_effect=fake_set_state),
     patch.object(_mod, '_do_hold'),
   ):
     with pytest.raises(KeyboardInterrupt):
@@ -1963,7 +2118,7 @@ def test_worker_idle_refresh_skipped_when_queue_pending() -> None:
     with (
       patch.object(_mod, 'pop_valid_message', side_effect=[msg, None, KeyboardInterrupt()]),
       patch.object(_mod, '_get_integration', return_value=mock_integration),
-      patch('integrations.vestaboard.set_state', side_effect=fake_set_state),
+      patch('integrations.vestaboard.set_state_raw', side_effect=fake_set_state),
       patch.object(_mod, '_do_hold'),  # returns immediately
     ):
       with pytest.raises(KeyboardInterrupt):
@@ -2187,7 +2342,7 @@ def test_worker_logs_warning_on_integration_data_unavailable(caplog: pytest.LogC
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
     patch.object(_mod, '_get_integration', return_value=mock_integration),
-    patch('integrations.vestaboard.set_state'),
+    patch('integrations.vestaboard.set_state_raw'),
     patch('time.sleep'),
   ):
     with pytest.raises(KeyboardInterrupt):
@@ -2287,7 +2442,7 @@ def test_worker_quiet_mode_stores_virtual_state() -> None:
   try:
     with (
       patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
-      patch('integrations.vestaboard.set_state') as mock_set_state,
+      patch('integrations.vestaboard.set_state_raw') as mock_set_state,
       patch.object(_mod, '_do_hold'),
     ):
       with pytest.raises(KeyboardInterrupt):
@@ -2529,7 +2684,7 @@ def test_board_showing_private_set_false_on_non_private_send() -> None:
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
     patch('public.is_public', return_value=False),
-    patch('integrations.vestaboard.set_state'),
+    patch('integrations.vestaboard.set_state_raw'),
     patch.object(_mod, '_do_hold', side_effect=lambda *a, **kw: None),
     patch.object(_mod, '_hold_interrupt'),
   ):
@@ -2548,7 +2703,7 @@ def test_board_showing_private_set_true_on_private_send() -> None:
   with (
     patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
     patch('public.is_public', return_value=False),
-    patch('integrations.vestaboard.set_state'),
+    patch('integrations.vestaboard.set_state_raw'),
     patch.object(_mod, '_do_hold', side_effect=lambda *a, **kw: None),
     patch.object(_mod, '_hold_interrupt'),
   ):

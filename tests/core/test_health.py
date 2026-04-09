@@ -230,6 +230,7 @@ def test_summary_structure() -> None:
   assert 'status' in summary
   assert 'uptime_seconds' in summary
   assert isinstance(summary['uptime_seconds'], int)
+  assert 'vestaboard' in summary
   assert 'integrations' in summary
   detail = summary['integrations']['weather']
   assert 'status' in detail
@@ -237,6 +238,8 @@ def test_summary_structure() -> None:
   assert 'last_expected_empty' in detail
   assert 'last_error' in detail
   assert 'last_error_message' in detail
+  assert 'last_locked' in detail
+  assert 'locked_events' in detail
   assert 'success_rate' in detail
   assert 'total_events' in detail
   assert 'registered_at' in detail
@@ -261,6 +264,105 @@ def test_success_rate_computation() -> None:
 def test_success_rate_none_when_no_events() -> None:
   _mod.register('bart')
   assert _mod.get_summary()['integrations']['bart']['success_rate'] is None
+
+
+# ---------------------------------------------------------------------------
+# Locked events and vestaboard target split
+# ---------------------------------------------------------------------------
+
+
+def test_record_locked_event() -> None:
+  """record_locked() appends a LOCKED event exposed via last_locked/locked_events."""
+  _mod.register(_mod.VESTABOARD_TARGET)
+  _mod.record_locked(_mod.VESTABOARD_TARGET)
+  detail = _mod.get_summary()['vestaboard']
+  assert detail is not None
+  assert detail['locked_events'] == 1
+  assert detail['last_locked'] is not None
+  # A lone locked event leaves the target UNKNOWN — no scored events yet.
+  assert detail['status'] == 'unknown'
+
+
+def test_locked_excluded_from_success_rate() -> None:
+  """LOCKED events do not affect success_rate or status."""
+  _mod.register(_mod.VESTABOARD_TARGET)
+  for _ in range(5):
+    _mod.record_success(_mod.VESTABOARD_TARGET)
+  for _ in range(3):
+    _mod.record_locked(_mod.VESTABOARD_TARGET)
+  detail = _mod.get_summary()['vestaboard']
+  assert detail['status'] == 'healthy'
+  assert detail['success_rate'] == 1.0
+  assert detail['total_events'] == 5  # scored events only
+  assert detail['locked_events'] == 3
+
+
+def test_locked_does_not_mask_errors() -> None:
+  """LOCKED events don't dilute error rate — 2 success + 3 error + 10 locked = degraded."""
+  _mod.register(_mod.VESTABOARD_TARGET)
+  for _ in range(2):
+    _mod.record_success(_mod.VESTABOARD_TARGET)
+  for _ in range(3):
+    _mod.record_error(_mod.VESTABOARD_TARGET, 'boom')
+  for _ in range(10):
+    _mod.record_locked(_mod.VESTABOARD_TARGET)
+  detail = _mod.get_summary()['vestaboard']
+  # 2/5 = 40% scored success → below 70% threshold → degraded
+  assert detail['status'] == 'degraded'
+  assert detail['total_events'] == 5
+  assert detail['locked_events'] == 10
+
+
+def test_vestaboard_target_registered_on_init() -> None:
+  """init() auto-registers the reserved vestaboard target."""
+  # _reset_health autouse fixture already called init(); assert it is present.
+  summary = _mod.get_summary()
+  assert 'vestaboard' in summary
+  assert summary['vestaboard'] is not None
+  assert summary['vestaboard']['status'] == 'unknown'
+  # And it is NOT in the integrations dict.
+  assert 'vestaboard' not in summary['integrations']
+
+
+def test_vestaboard_errored_drives_rollup() -> None:
+  """A vestaboard error propagates to top-level status even when integrations are healthy."""
+  _mod.register('weather')
+  _mod.record_success('weather')
+  _mod.record_error(_mod.VESTABOARD_TARGET, 'HTTP 500')
+  summary = _mod.get_summary()
+  assert summary['status'] == 'error'
+  assert summary['vestaboard']['status'] == 'error'
+  assert summary['integrations']['weather']['status'] == 'healthy'
+
+
+def test_vestaboard_unknown_does_not_drive_rollup() -> None:
+  """vestaboard starts UNKNOWN on fresh deploy — top-level stays healthy."""
+  _mod.register('weather')
+  _mod.record_success('weather')
+  # vestaboard registered but no events yet
+  summary = _mod.get_summary()
+  assert summary['status'] == 'healthy'
+  assert summary['vestaboard']['status'] == 'unknown'
+
+
+def test_locked_persisted_and_reloaded(tmp_path: Path) -> None:
+  """LOCKED events survive a reset + init cycle."""
+  _mod.register(_mod.VESTABOARD_TARGET)
+  _mod.record_success(_mod.VESTABOARD_TARGET)
+  _mod.record_locked(_mod.VESTABOARD_TARGET)
+  _mod.record_locked(_mod.VESTABOARD_TARGET)
+
+  log_path = _mod._LOG_PATH
+  log_dir = _mod._LOG_DIR
+
+  _mod.reset()
+  _mod._LOG_PATH = log_path
+  _mod._LOG_DIR = log_dir
+  _mod.init()
+
+  detail = _mod.get_summary()['vestaboard']
+  assert detail['total_events'] == 1
+  assert detail['locked_events'] == 2
 
 
 # ---------------------------------------------------------------------------
@@ -430,11 +532,11 @@ def test_periodic_purge_removes_stale_events(tmp_path: Path) -> None:
   # Inject an old event directly into the deque.
   old_ts = time.time() - (_mod._PURGE_SECONDS + 3600)
   with _mod._lock:
-    state = _mod._integrations['weather']
+    state = _mod._targets['weather']
     state.events.appendleft(_mod.HealthEvent(old_ts, _mod.EventType.ERROR, 'stale'))
 
   _mod._log_summary()
 
   # The old event should have been purged.
-  for event in _mod._integrations['weather'].events:
+  for event in _mod._targets['weather'].events:
     assert event.timestamp > old_ts

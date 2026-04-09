@@ -145,14 +145,26 @@ the container logs for the plaintext secret. Pass it as
 `X-Webhook-Secret: <secret>` (preferred) or `?secret=<secret>`.
 
 **HTTP status codes:**
-- `200` — all integrations healthy (or unknown)
-- `503` — one or more integrations degraded or errored
+- `200` — everything healthy (or unknown)
+- `503` — one or more targets degraded or errored
 
 **Response format:**
 ```json
 {
   "status": "healthy",
   "uptime_seconds": 3600,
+  "vestaboard": {
+    "status": "healthy",
+    "last_success": "2026-01-01T12:00:00+00:00",
+    "last_expected_empty": null,
+    "last_error": null,
+    "last_error_message": null,
+    "last_locked": "2026-01-01T07:00:00+00:00",
+    "locked_events": 2,
+    "success_rate": 1.0,
+    "total_events": 10,
+    "registered_at": "2026-01-01T08:00:00+00:00"
+  },
   "integrations": {
     "weather": {
       "status": "healthy",
@@ -160,6 +172,8 @@ the container logs for the plaintext secret. Pass it as
       "last_expected_empty": null,
       "last_error": null,
       "last_error_message": null,
+      "last_locked": null,
+      "locked_events": 0,
       "success_rate": 1.0,
       "total_events": 10,
       "registered_at": "2026-01-01T08:00:00+00:00"
@@ -168,10 +182,15 @@ the container logs for the plaintext secret. Pass it as
 }
 ```
 
-Each integration tracks the last 20 events in a rolling buffer. Status levels:
-`healthy` (≥70% non-error rate), `degraded` (below threshold), `error` (all
-errors), `unknown` (no events yet). Expected empty data (e.g. nothing playing,
-no events today) counts as healthy — only API failures trigger degraded/error.
+The `vestaboard` key tracks the display send path itself (POST to the
+Read/Write API) separately from integrations, so a Vestaboard outage does
+not smear across every integration's status — and vice versa. Each target
+tracks the last 20 events in a rolling buffer. Status levels: `healthy`
+(≥70% non-error rate), `degraded` (below threshold), `error` (all errors),
+`unknown` (no events yet). Expected empty data (e.g. nothing playing, no
+events today) counts as healthy — only API failures trigger degraded/error.
+Vestaboard `locked` responses (HTTP 423 during quiet hours) are tracked
+separately via `last_locked` / `locked_events` and do not affect status.
 
 Health events are persisted to `data/health.jsonl` so that history survives
 container restarts. Events older than 7 days are automatically purged. In
