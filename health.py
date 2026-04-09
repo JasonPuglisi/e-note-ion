@@ -1,8 +1,15 @@
 # health.py
 #
-# Integration health tracking for the Vestaboard scheduler. Records
-# success/failure/expected-empty outcomes per integration and exposes a
-# summary for the /health endpoint and periodic console log.
+# Health tracking for the Vestaboard scheduler. Records outcomes for two
+# kinds of targets:
+#   1. Integrations — data sources (weather, bart, discogs, …) tracked via
+#      success / expected_empty / error events.
+#   2. The Vestaboard send path itself — tracked under the reserved target
+#      name 'vestaboard' via success / error / locked events. This lets the
+#      /health endpoint distinguish "fetch failed" from "display POST failed"
+#      so a Vestaboard outage doesn't smear across every integration.
+#
+# Exposes a summary for the /health endpoint and periodic console log.
 #
 # Thread-safe: all state is behind a single lock.
 #
@@ -52,6 +59,7 @@ class EventType(Enum):
   SUCCESS = 'success'
   EXPECTED_EMPTY = 'expected_empty'
   ERROR = 'error'
+  LOCKED = 'locked'
 
 
 class Status(Enum):
@@ -69,13 +77,18 @@ class HealthEvent:
 
 
 @dataclass
-class _IntegrationState:
+class _TargetState:
   registered_at: float
   events: deque[HealthEvent] = field(default_factory=lambda: deque(maxlen=_WINDOW_SIZE))
 
 
+# Reserved target name for the Vestaboard send path. Registered implicitly
+# alongside the user's integrations so the /health endpoint can attribute
+# display failures separately from integration data fetch failures.
+VESTABOARD_TARGET = 'vestaboard'
+
 _lock = threading.Lock()
-_integrations: dict[str, _IntegrationState] = {}
+_targets: dict[str, _TargetState] = {}
 _started_at: float = 0.0
 _log_timer: threading.Timer | None = None
 
@@ -127,9 +140,9 @@ def _load_log() -> None:
 
     error_msg = obj.get('error') if event_type == EventType.ERROR else None
 
-    if name not in _integrations:
-      _integrations[name] = _IntegrationState(registered_at=ts)
-    _integrations[name].events.append(HealthEvent(ts, event_type, error_msg))
+    if name not in _targets:
+      _targets[name] = _TargetState(registered_at=ts)
+    _targets[name].events.append(HealthEvent(ts, event_type, error_msg))
     kept_lines.append(line)
 
   # Rewrite the file without purged entries.
@@ -161,7 +174,7 @@ def _purge_stale_events() -> bool:
   """
   cutoff = time.time() - _PURGE_SECONDS
   purged = False
-  for state in _integrations.values():
+  for state in _targets.values():
     before = len(state.events)
     state.events = deque(
       (e for e in state.events if e.timestamp >= cutoff),
@@ -175,7 +188,7 @@ def _purge_stale_events() -> bool:
 def _rewrite_log() -> None:
   """Rewrite the log file from current in-memory state. Caller holds _lock."""
   lines: list[str] = []
-  for name, state in sorted(_integrations.items()):
+  for name, state in sorted(_targets.items()):
     for event in state.events:
       entry: dict[str, Any] = {
         'ts': event.timestamp,
@@ -198,29 +211,35 @@ def _rewrite_log() -> None:
 
 
 def init() -> None:
-  """Initialize the health system. Call once at scheduler startup."""
+  """Initialize the health system. Call once at scheduler startup.
+
+  Loads persisted events from disk and registers the reserved Vestaboard
+  send-path target so /health always reports it alongside integrations.
+  """
   global _started_at
   _started_at = time.time()
   with _lock:
     _load_log()
+    if VESTABOARD_TARGET not in _targets:
+      _targets[VESTABOARD_TARGET] = _TargetState(registered_at=time.time())
 
 
 def register(name: str) -> None:
-  """Register an integration for health tracking.
+  """Register a target for health tracking.
 
   Called at content load time for each integration template. Safe to call
   multiple times for the same name (e.g. when multiple templates use the
   same integration with different functions).
   """
   with _lock:
-    if name not in _integrations:
-      _integrations[name] = _IntegrationState(registered_at=time.time())
+    if name not in _targets:
+      _targets[name] = _TargetState(registered_at=time.time())
 
 
 def record_success(name: str) -> None:
-  """Record a successful integration call."""
+  """Record a successful call against the named target."""
   with _lock:
-    state = _integrations.get(name)
+    state = _targets.get(name)
     if state is None:
       return
     ts = time.time()
@@ -231,7 +250,7 @@ def record_success(name: str) -> None:
 def record_expected_empty(name: str) -> None:
   """Record an integration call that returned no data (expected)."""
   with _lock:
-    state = _integrations.get(name)
+    state = _targets.get(name)
     if state is None:
       return
     ts = time.time()
@@ -240,9 +259,9 @@ def record_expected_empty(name: str) -> None:
 
 
 def record_error(name: str, error: str) -> None:
-  """Record a failed integration call."""
+  """Record a failed call against the named target."""
   with _lock:
-    state = _integrations.get(name)
+    state = _targets.get(name)
     if state is None:
       return
     ts = time.time()
@@ -250,20 +269,39 @@ def record_error(name: str, error: str) -> None:
     _append_log(name, EventType.ERROR, ts, error)
 
 
-def _compute_status(state: _IntegrationState) -> Status:
-  """Compute health status for a single integration. Caller holds _lock.
+def record_locked(name: str) -> None:
+  """Record a Vestaboard 'locked' response (HTTP 423).
 
-  Uses a success-rate threshold instead of binary error detection:
-  - No events → unknown
+  423 is expected behavior during quiet hours or when the board is briefly
+  rate-limited, so it is tracked separately from errors and does NOT count
+  toward the success-rate denominator used to compute status.
+  """
+  with _lock:
+    state = _targets.get(name)
+    if state is None:
+      return
+    ts = time.time()
+    state.events.append(HealthEvent(ts, EventType.LOCKED))
+    _append_log(name, EventType.LOCKED, ts)
+
+
+def _compute_status(state: _TargetState) -> Status:
+  """Compute health status for a single target. Caller holds _lock.
+
+  Uses a success-rate threshold instead of binary error detection. LOCKED
+  events are excluded from the denominator so expected quiet-hours 423
+  responses do not tank status.
+  - No scored events → unknown
   - No errors → healthy
   - All errors → error
   - Non-error rate ≥ _SUCCESS_RATE_THRESHOLD → healthy
   - Below threshold → degraded
   """
-  if not state.events:
+  scored = [e for e in state.events if e.event_type != EventType.LOCKED]
+  if not scored:
     return Status.UNKNOWN
-  errors = sum(1 for e in state.events if e.event_type == EventType.ERROR)
-  total = len(state.events)
+  errors = sum(1 for e in scored if e.event_type == EventType.ERROR)
+  total = len(scored)
   if errors == 0:
     return Status.HEALTHY
   if errors == total:
@@ -280,17 +318,25 @@ def _format_timestamp(ts: float | None) -> str | None:
   return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
 
 
-def _integration_detail(name: str, state: _IntegrationState) -> dict[str, Any]:
-  """Build the per-integration health detail dict. Caller holds _lock."""
+def _target_detail(name: str, state: _TargetState) -> dict[str, Any]:
+  """Build the per-target health detail dict. Caller holds _lock.
+
+  `success_rate` and `total_events` exclude LOCKED events (they are not
+  failures and would skew the denominator). `locked_events` reports the
+  raw count of locked events in the window.
+  """
   status = _compute_status(state)
-  total = len(state.events)
-  errors = sum(1 for e in state.events if e.event_type == EventType.ERROR)
+  scored = [e for e in state.events if e.event_type != EventType.LOCKED]
+  total = len(scored)
+  errors = sum(1 for e in scored if e.event_type == EventType.ERROR)
   ok = total - errors
+  locked = sum(1 for e in state.events if e.event_type == EventType.LOCKED)
 
   last_success: float | None = None
   last_expected_empty: float | None = None
   last_error: float | None = None
   last_error_message: str | None = None
+  last_locked: float | None = None
 
   for event in reversed(state.events):
     if event.event_type == EventType.SUCCESS and last_success is None:
@@ -300,6 +346,8 @@ def _integration_detail(name: str, state: _IntegrationState) -> dict[str, Any]:
     elif event.event_type == EventType.ERROR and last_error is None:
       last_error = event.timestamp
       last_error_message = event.error_message
+    elif event.event_type == EventType.LOCKED and last_locked is None:
+      last_locked = event.timestamp
 
   detail: dict[str, Any] = {
     'status': status.value,
@@ -307,6 +355,8 @@ def _integration_detail(name: str, state: _IntegrationState) -> dict[str, Any]:
     'last_expected_empty': _format_timestamp(last_expected_empty),
     'last_error': _format_timestamp(last_error),
     'last_error_message': last_error_message,
+    'last_locked': _format_timestamp(last_locked),
+    'locked_events': locked,
     'success_rate': ok / total if total else None,
     'total_events': total,
     'registered_at': _format_timestamp(state.registered_at),
@@ -318,7 +368,7 @@ def overall_status() -> Status:
   """Return the worst status across all registered integrations."""
   with _lock:
     worst = Status.HEALTHY
-    for state in _integrations.values():
+    for state in _targets.values():
       s = _compute_status(state)
       if s == Status.ERROR:
         return Status.ERROR
@@ -328,13 +378,22 @@ def overall_status() -> Status:
 
 
 def get_summary() -> dict[str, Any]:
-  """Return the full health summary for the /health endpoint."""
+  """Return the full health summary for the /health endpoint.
+
+  The Vestaboard send-path target is returned under its own top-level
+  `vestaboard` key, separate from the `integrations` dict, so display
+  failures can be attributed distinctly from integration fetch failures.
+  """
   with _lock:
     integrations: dict[str, Any] = {}
+    vestaboard_detail: dict[str, Any] | None = None
     worst = Status.HEALTHY
-    for name, state in sorted(_integrations.items()):
-      detail = _integration_detail(name, state)
-      integrations[name] = detail
+    for name, state in sorted(_targets.items()):
+      detail = _target_detail(name, state)
+      if name == VESTABOARD_TARGET:
+        vestaboard_detail = detail
+      else:
+        integrations[name] = detail
       s = Status(detail['status'])
       if s == Status.ERROR:
         worst = Status.ERROR
@@ -344,12 +403,13 @@ def get_summary() -> dict[str, Any]:
     return {
       'status': worst.value,
       'uptime_seconds': round(time.time() - _started_at) if _started_at else 0,
+      'vestaboard': vestaboard_detail,
       'integrations': integrations,
     }
 
 
 def _log_summary() -> None:
-  """Log a one-line health summary plus details for non-healthy integrations.
+  """Log a one-line health summary plus details for non-healthy targets.
 
   Also purges stale events (older than _PURGE_DAYS) from memory and disk
   as a belt-and-suspenders check for long-running instances.
@@ -359,16 +419,17 @@ def _log_summary() -> None:
     if _purge_stale_events():
       _rewrite_log()
 
-    if not _integrations:
+    if not _targets:
       return
     counts: dict[str, int] = {}
     problems: list[str] = []
-    for name, state in sorted(_integrations.items()):
+    for name, state in sorted(_targets.items()):
       s = _compute_status(state)
       counts[s.value] = counts.get(s.value, 0) + 1
       if s in (Status.DEGRADED, Status.ERROR):
-        total = len(state.events)
-        errors = sum(1 for e in state.events if e.event_type == EventType.ERROR)
+        scored = [e for e in state.events if e.event_type != EventType.LOCKED]
+        total = len(scored)
+        errors = sum(1 for e in scored if e.event_type == EventType.ERROR)
         ok = total - errors
         last_err = None
         for event in reversed(state.events):
@@ -382,7 +443,7 @@ def _log_summary() -> None:
 
   total_count = sum(counts.values())
   parts = [f'{v} {k}' for k, v in counts.items()]
-  logger.info('Health: %d integrations — %s', total_count, ', '.join(parts))
+  logger.info('Health: %d targets — %s', total_count, ', '.join(parts))
   for line in problems:
     logger.info(line)
 
@@ -415,6 +476,6 @@ def reset() -> None:
   """Clear all state (for tests)."""
   global _started_at, _log_timer
   with _lock:
-    _integrations.clear()
+    _targets.clear()
     _started_at = 0.0
   stop_periodic_log()

@@ -1080,6 +1080,35 @@ def test_health_endpoint_returns_200_when_healthy() -> None:
       assert data['status'] == 'healthy'
       assert 'weather' in data['integrations']
       assert data['integrations']['weather']['status'] == 'healthy'
+      # Vestaboard target is reported under its own top-level key, not under
+      # integrations. It starts UNKNOWN on a fresh reset — does not drive
+      # top-level status.
+      assert 'vestaboard' in data
+      assert data['vestaboard'] is not None
+      assert 'vestaboard' not in data['integrations']
+    finally:
+      server.shutdown()
+      _health_mod.reset()
+
+
+@pytest.mark.skipif(_CRED_HASH is None, reason='argon2-cffi not installed')
+def test_health_endpoint_returns_503_when_vestaboard_errored() -> None:
+  """A vestaboard send failure drives the endpoint to 503 even with healthy integrations."""
+  _health_mod.reset()
+  _health_mod.init()
+  _health_mod.register('weather')
+  _health_mod.record_success('weather')
+  _health_mod.record_error(_health_mod.VESTABOARD_TARGET, 'HTTP 500')
+
+  with patch.dict('config._config', _health_cred_config()):
+    server, port = _start_test_server()
+    try:
+      status, body = _get(port, '/health')
+      assert status == 503
+      data = json.loads(body)
+      assert data['status'] == 'error'
+      assert data['vestaboard']['status'] == 'error'
+      assert data['integrations']['weather']['status'] == 'healthy'
     finally:
       server.shutdown()
       _health_mod.reset()

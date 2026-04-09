@@ -442,7 +442,11 @@ def _clear_private_content() -> None:
       blank = [[0] * vestaboard.model.cols for _ in range(vestaboard.model.rows)]
       vestaboard.set_state_raw(blank)
       _board_showing_private = False
+      _health_mod.record_success(_health_mod.VESTABOARD_TARGET)
+    except vestaboard.BoardLockedError:
+      _health_mod.record_locked(_health_mod.VESTABOARD_TARGET)
     except Exception as e:  # noqa: BLE001
+      _health_mod.record_error(_health_mod.VESTABOARD_TARGET, str(e))
       logger.error('Error clearing board for public mode: %s', e)
 
 
@@ -528,6 +532,10 @@ def worker() -> None:
       _current_hold_priority = message.priority
 
     _health_name = message.data.get('integration', '')
+    # Phase 1: fetch + render — attributed to the integration target.
+    # Phase 2: POST to the board — attributed to the 'vestaboard' target.
+    # Splitting the phases keeps Vestaboard-side outages from smearing
+    # across every integration's health status and vice versa.
     try:
       variables = message.data['variables']
       if 'integration' in message.data:
@@ -535,13 +543,7 @@ def worker() -> None:
         variables = getattr(_get_integration(message.data['integration']), fn_name)()
       templates = message.data['templates']
       truncation = message.data.get('truncation', 'hard')
-      if _quiet_mod.is_quiet():
-        grid = vestaboard.render(templates, variables, truncation)
-        _quiet_mod.set_virtual_state(grid)
-      else:
-        vestaboard.set_state(templates, variables, truncation)
-      if _health_name:
-        _health_mod.record_success(_health_name)
+      grid = vestaboard.render(templates, variables, truncation)
     except IntegrationDataUnavailableError as e:
       if _health_name:
         if e.expected:
@@ -553,28 +555,51 @@ def worker() -> None:
         _current_hold_priority = None
       logger.warning('Skipping %s: %s', message.name, e)
       continue
-    except vestaboard.DuplicateContentError:
-      logger.warning('Duplicate content for %s — already on board, still holding.', message.name)
-      # Fall through to _do_hold(): content is already showing; we must still
-      # hold it so lower-priority queued messages cannot preempt it.
-    except vestaboard.BoardLockedError as e:
-      with _current_hold_lock:
-        _current_hold_supersede_tag = ''
-        _current_hold_priority = None
-      logger.warning('Board locked: %s. Retrying in %ds.', e, _LOCK_RETRY_DELAY)
-      time.sleep(_LOCK_RETRY_DELAY)
-      # Re-enqueue if the message hasn't exceeded its timeout.
-      if time.monotonic() - message.scheduled_at <= message.timeout:
-        _queue.put(message)
-      continue
     except Exception as e:
       if _health_name:
         _health_mod.record_error(_health_name, str(e))
       with _current_hold_lock:
         _current_hold_supersede_tag = ''
         _current_hold_priority = None
-      logger.error('Error sending to board: %s', e)
+      logger.error('Error fetching data for %s: %s', message.name, e)
       continue
+    if _health_name:
+      _health_mod.record_success(_health_name)
+
+    # Phase 2: send to the board. Quiet mode skips the POST entirely, so
+    # no vestaboard health event is recorded — recording a fake success
+    # there would mask real outages whenever quiet mode is active.
+    if _quiet_mod.is_quiet():
+      _quiet_mod.set_virtual_state(grid)
+    else:
+      try:
+        vestaboard.set_state_raw(grid)
+      except vestaboard.DuplicateContentError:
+        # Duplicate = board already shows this content. Count as vestaboard
+        # success (the user's goal is met) and fall through to _do_hold()
+        # so lower-priority queued messages cannot preempt it.
+        _health_mod.record_success(_health_mod.VESTABOARD_TARGET)
+        logger.warning('Duplicate content for %s — already on board, still holding.', message.name)
+      except vestaboard.BoardLockedError as e:
+        _health_mod.record_locked(_health_mod.VESTABOARD_TARGET)
+        with _current_hold_lock:
+          _current_hold_supersede_tag = ''
+          _current_hold_priority = None
+        logger.warning('Board locked: %s. Retrying in %ds.', e, _LOCK_RETRY_DELAY)
+        time.sleep(_LOCK_RETRY_DELAY)
+        # Re-enqueue if the message hasn't exceeded its timeout.
+        if time.monotonic() - message.scheduled_at <= message.timeout:
+          _queue.put(message)
+        continue
+      except Exception as e:
+        _health_mod.record_error(_health_mod.VESTABOARD_TARGET, str(e))
+        with _current_hold_lock:
+          _current_hold_supersede_tag = ''
+          _current_hold_priority = None
+        logger.error('Error sending to board: %s', e)
+        continue
+      else:
+        _health_mod.record_success(_health_mod.VESTABOARD_TARGET)
 
     # New message successfully sent (or DuplicateContentError fell through) —
     # track whether the board is now showing private content.
@@ -599,8 +624,10 @@ def worker() -> None:
         _tr: Any = _truncation,
         _hn: str = _health_name,
       ) -> None:
+        # Phase 1: fetch + render — attributed to the integration target.
         try:
           new_vars = getattr(_i, _f)()
+          _grid = vestaboard.render(_t, new_vars, _tr)
         except IntegrationDataUnavailableError as _e:
           if _hn:
             if _e.expected:
@@ -614,14 +641,22 @@ def worker() -> None:
           raise
         if _hn:
           _health_mod.record_success(_hn)
+
+        # Phase 2: send to the board — attributed to the vestaboard target.
         if _quiet_mod.is_quiet():
-          _grid = vestaboard.render(_t, new_vars, _tr)
           _quiet_mod.set_virtual_state(_grid)
+          return
+        try:
+          vestaboard.set_state_raw(_grid)
+        except vestaboard.DuplicateContentError:
+          _health_mod.record_success(_health_mod.VESTABOARD_TARGET)
+        except vestaboard.BoardLockedError:
+          _health_mod.record_locked(_health_mod.VESTABOARD_TARGET)
+        except Exception as _e:
+          _health_mod.record_error(_health_mod.VESTABOARD_TARGET, str(_e))
+          raise
         else:
-          try:
-            vestaboard.set_state(_t, new_vars, _tr)
-          except vestaboard.DuplicateContentError, IntegrationDataUnavailableError:
-            pass
+          _health_mod.record_success(_health_mod.VESTABOARD_TARGET)
 
       _refresh_fn = _do_refresh
 
