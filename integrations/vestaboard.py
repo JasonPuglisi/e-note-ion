@@ -314,16 +314,39 @@ def _await_post_gate() -> None:
 
 
 def get_state(color: VestaboardColor = VestaboardColor.BLACK) -> VestaboardState:
-  """Fetch and return the current board state."""
+  """Fetch and return the current board state.
+
+  Retries transparently on 429 and 5xx errors in _RETRYABLE_STATUS, sharing
+  the same retry budget as set_state_raw.
+  """
   _await_post_gate()
-  r = requests.get(_HOST, headers=_get_headers(), timeout=10)
-  if r.status_code == 404:
-    raise EmptyBoardError('board has no current message')
-  try:
-    r.raise_for_status()
-  except requests.HTTPError as e:
-    raise requests.HTTPError(f'Vestaboard API error: {e.response.status_code} {e.response.reason}') from None
-  return VestaboardState(r.json(), color)
+  for attempt in range(1 + _MAX_TRANSIENT_RETRIES):
+    r = requests.get(_HOST, headers=_get_headers(), timeout=10)
+    if r.status_code == 404:
+      raise EmptyBoardError('board has no current message')
+    if r.status_code in _RETRYABLE_STATUS:
+      if attempt < _MAX_TRANSIENT_RETRIES:
+        delay = _TRANSIENT_BACKOFF * 2**attempt
+        logger.warning(
+          'Vestaboard %d %s; retrying in %.0fs (attempt %d/%d)',
+          r.status_code,
+          r.reason,
+          delay,
+          attempt + 1,
+          _MAX_TRANSIENT_RETRIES,
+        )
+        time.sleep(delay)
+        continue
+      raise requests.HTTPError(
+        f'Vestaboard API error: {r.status_code} {r.reason} (exhausted {_MAX_TRANSIENT_RETRIES} retries)',
+        response=r,
+      )
+    try:
+      r.raise_for_status()
+    except requests.HTTPError as e:
+      raise requests.HTTPError(f'Vestaboard API error: {e.response.status_code} {e.response.reason}') from None
+    return VestaboardState(r.json(), color)
+  raise RuntimeError('unreachable')  # pragma: no cover
 
 
 # --- Encoding ---
@@ -567,8 +590,15 @@ def _build_grid(lines: list[str]) -> list[list[int]]:
 
 # --- Writing ---
 
-_RATE_LIMIT_RETRIES = 3  # retries after the initial attempt (4 total)
-_RATE_LIMIT_BACKOFF = 5.0  # base delay in seconds; doubles each attempt
+# Unified retry policy for transient Vestaboard failures. A single combined
+# budget covers both 429 (rate limit) and 5xx (server errors) — retrying is
+# the same mechanism in both cases, and keeping a single counter means the
+# worst-case blocking window is bounded regardless of which status a send
+# bounces on. Base delay 5s is intentionally larger than _MIN_POST_INTERVAL
+# so a retry is strictly more conservative than a normal next-send.
+_MAX_TRANSIENT_RETRIES = 3  # retries after the initial attempt (4 total)
+_TRANSIENT_BACKOFF = 5.0  # base delay in seconds; doubles each attempt
+_RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 
 
 class BoardLockedError(Exception):
@@ -607,28 +637,32 @@ def set_state_raw(grid: list[list[int]]) -> None:
   """Write a pre-rendered character code grid to the Vestaboard.
 
   Raises BoardLockedError on HTTP 423, DuplicateContentError on HTTP 409.
-  All other HTTP errors raise requests.exceptions.HTTPError.
+  Retries transparently on 429 and 5xx errors in _RETRYABLE_STATUS, using a
+  shared retry budget (see _MAX_TRANSIENT_RETRIES). All other HTTP errors
+  raise requests.exceptions.HTTPError.
   """
   _await_post_gate()
-  for attempt in range(1 + _RATE_LIMIT_RETRIES):
+  for attempt in range(1 + _MAX_TRANSIENT_RETRIES):
     r = requests.post(_HOST, json=grid, headers=_get_headers(), timeout=10)
     if r.status_code == 409:
       raise DuplicateContentError('board already shows this content')
     if r.status_code == 423:
       raise BoardLockedError('board is locked (rate-limited or quiet hours)')
-    if r.status_code == 429:
-      if attempt < _RATE_LIMIT_RETRIES:
-        delay = _RATE_LIMIT_BACKOFF * 2**attempt
+    if r.status_code in _RETRYABLE_STATUS:
+      if attempt < _MAX_TRANSIENT_RETRIES:
+        delay = _TRANSIENT_BACKOFF * 2**attempt
         logger.warning(
-          'Rate limited (429); retrying in %.0fs (attempt %d/%d)',
+          'Vestaboard %d %s; retrying in %.0fs (attempt %d/%d)',
+          r.status_code,
+          r.reason,
           delay,
           attempt + 1,
-          _RATE_LIMIT_RETRIES,
+          _MAX_TRANSIENT_RETRIES,
         )
         time.sleep(delay)
         continue
       raise requests.HTTPError(
-        f'Vestaboard API error: 429 Too Many Requests (exhausted {_RATE_LIMIT_RETRIES} retries)',
+        f'Vestaboard API error: {r.status_code} {r.reason} (exhausted {_MAX_TRANSIENT_RETRIES} retries)',
         response=r,
       )
     try:

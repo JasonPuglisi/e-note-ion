@@ -648,6 +648,7 @@ def test_set_state_retries_on_429_then_succeeds(monkeypatch: pytest.MonkeyPatch)
   monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
   rate_limited = MagicMock()
   rate_limited.status_code = 429
+  rate_limited.reason = 'Too Many Requests'
   ok = MagicMock()
   ok.status_code = 200
   ok.raise_for_status.return_value = None
@@ -657,7 +658,7 @@ def test_set_state_retries_on_429_then_succeeds(monkeypatch: pytest.MonkeyPatch)
   ):
     vb.set_state([{'format': ['HELLO']}], {})
   assert mock_post.call_count == 2
-  mock_sleep.assert_called_once_with(vb._RATE_LIMIT_BACKOFF)  # noqa: SLF001
+  mock_sleep.assert_called_once_with(vb._TRANSIENT_BACKOFF)  # noqa: SLF001
 
 
 def test_set_state_raises_after_exhausted_429_retries(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -666,13 +667,14 @@ def test_set_state_raises_after_exhausted_429_retries(monkeypatch: pytest.Monkey
   monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
   rate_limited = MagicMock()
   rate_limited.status_code = 429
+  rate_limited.reason = 'Too Many Requests'
   with (
     patch('integrations.vestaboard.requests.post', return_value=rate_limited) as mock_post,
     patch('integrations.vestaboard.time.sleep'),
   ):
     with pytest.raises(requests.HTTPError, match='429 Too Many Requests'):
       vb.set_state([{'format': ['HELLO']}], {})
-  assert mock_post.call_count == vb._RATE_LIMIT_RETRIES + 1  # noqa: SLF001
+  assert mock_post.call_count == vb._MAX_TRANSIENT_RETRIES + 1  # noqa: SLF001
 
 
 def test_set_state_logs_warning_on_429_retry(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
@@ -681,6 +683,7 @@ def test_set_state_logs_warning_on_429_retry(monkeypatch: pytest.MonkeyPatch, ca
   monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
   rate_limited = MagicMock()
   rate_limited.status_code = 429
+  rate_limited.reason = 'Too Many Requests'
   ok = MagicMock()
   ok.status_code = 200
   ok.raise_for_status.return_value = None
@@ -690,7 +693,7 @@ def test_set_state_logs_warning_on_429_retry(monkeypatch: pytest.MonkeyPatch, ca
     caplog.at_level(logging.WARNING, logger='integrations.vestaboard'),
   ):
     vb.set_state([{'format': ['HELLO']}], {})
-  assert any('Rate limited' in r.message for r in caplog.records)
+  assert any('Vestaboard 429' in r.message for r in caplog.records)
 
 
 # --- _expand_format (random selection) ---
@@ -850,9 +853,11 @@ def test_pacing_gate_failure_still_updates_timestamp(monkeypatch: pytest.MonkeyP
   import config as _config_mod
 
   monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  # Use 501 (non-retryable) so we test the pacing-on-failure path without
+  # 5xx retry backoff sleeps muddying the assertion.
   fail = MagicMock()
-  fail.status_code = 500
-  fail.reason = 'Internal Server Error'
+  fail.status_code = 501
+  fail.reason = 'Not Implemented'
   fail.raise_for_status.side_effect = requests.HTTPError(response=fail)
   ok = MagicMock()
   ok.status_code = 200
@@ -913,3 +918,227 @@ def test_pacing_gate_disabled_via_interval_zero(monkeypatch: pytest.MonkeyPatch)
     vb.set_state_raw(grid)
     vb.set_state_raw(grid)
   mock_sleep.assert_not_called()
+
+
+# --- 5xx retry and combined retry budget (#511) ---
+
+
+def _mock_resp(status: int, reason: str = '') -> MagicMock:
+  """Build a MagicMock response with the given status and a matching reason."""
+  m = MagicMock()
+  m.status_code = status
+  m.reason = reason or {
+    429: 'Too Many Requests',
+    500: 'Internal Server Error',
+    501: 'Not Implemented',
+    502: 'Bad Gateway',
+    503: 'Service Unavailable',
+    504: 'Gateway Timeout',
+    400: 'Bad Request',
+  }.get(status, 'Unknown')
+  if 200 <= status < 300:
+    m.raise_for_status.return_value = None
+  else:
+    m.raise_for_status.side_effect = requests.HTTPError(f'{status} {m.reason}', response=m)
+  return m
+
+
+def test_set_state_raw_retries_on_500_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  responses = [_mock_resp(500), _mock_resp(500), _mock_resp(200)]
+  grid = [[0] * vb.model.cols for _ in range(vb.model.rows)]
+  with (
+    patch('integrations.vestaboard.requests.post', side_effect=responses) as mock_post,
+    patch('integrations.vestaboard.time.sleep'),
+  ):
+    vb.set_state_raw(grid)
+  assert mock_post.call_count == 3
+
+
+def test_set_state_raw_retries_on_502_503_504(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Each of the 5xx codes in _RETRYABLE_STATUS triggers a retry."""
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  grid = [[0] * vb.model.cols for _ in range(vb.model.rows)]
+  for status in (502, 503, 504):
+    responses = [_mock_resp(status), _mock_resp(200)]
+    with (
+      patch('integrations.vestaboard.requests.post', side_effect=responses) as mock_post,
+      patch('integrations.vestaboard.time.sleep'),
+    ):
+      vb.set_state_raw(grid)
+    assert mock_post.call_count == 2, f'expected retry on {status}'
+
+
+def test_set_state_raw_exhausts_retries_on_persistent_500(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  grid = [[0] * vb.model.cols for _ in range(vb.model.rows)]
+  with (
+    patch('integrations.vestaboard.requests.post', return_value=_mock_resp(500)) as mock_post,
+    patch('integrations.vestaboard.time.sleep'),
+  ):
+    with pytest.raises(requests.HTTPError, match=r'500 Internal Server Error \(exhausted 3 retries\)'):
+      vb.set_state_raw(grid)
+  assert mock_post.call_count == vb._MAX_TRANSIENT_RETRIES + 1  # noqa: SLF001
+
+
+def test_set_state_raw_mixed_429_and_500_shares_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+  """429 and 5xx use the same retry budget — not separate counters."""
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  grid = [[0] * vb.model.cols for _ in range(vb.model.rows)]
+  # 4 attempts total (1 + 3 retries). Mix 429 and 500 until the last attempt succeeds.
+  responses = [_mock_resp(429), _mock_resp(500), _mock_resp(500), _mock_resp(200)]
+  with (
+    patch('integrations.vestaboard.requests.post', side_effect=responses) as mock_post,
+    patch('integrations.vestaboard.time.sleep'),
+  ):
+    vb.set_state_raw(grid)
+  assert mock_post.call_count == 4
+
+
+def test_set_state_raw_501_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+  """501 Not Implemented is permanent — do not retry."""
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  grid = [[0] * vb.model.cols for _ in range(vb.model.rows)]
+  with (
+    patch('integrations.vestaboard.requests.post', return_value=_mock_resp(501)) as mock_post,
+    patch('integrations.vestaboard.time.sleep'),
+  ):
+    with pytest.raises(requests.HTTPError, match='501'):
+      vb.set_state_raw(grid)
+  assert mock_post.call_count == 1
+
+
+def test_set_state_raw_4xx_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Non-retryable 4xx fails on the first attempt."""
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  grid = [[0] * vb.model.cols for _ in range(vb.model.rows)]
+  with (
+    patch('integrations.vestaboard.requests.post', return_value=_mock_resp(400)) as mock_post,
+    patch('integrations.vestaboard.time.sleep'),
+  ):
+    with pytest.raises(requests.HTTPError, match='400'):
+      vb.set_state_raw(grid)
+  assert mock_post.call_count == 1
+
+
+def test_set_state_raw_retry_backoff_schedule(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Exponential backoff: 5s, 10s, 20s."""
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  grid = [[0] * vb.model.cols for _ in range(vb.model.rows)]
+  with (
+    patch('integrations.vestaboard.requests.post', return_value=_mock_resp(500)),
+    patch('integrations.vestaboard.time.sleep') as mock_sleep,
+  ):
+    with pytest.raises(requests.HTTPError):
+      vb.set_state_raw(grid)
+  delays = [call.args[0] for call in mock_sleep.call_args_list]
+  assert delays == [5.0, 10.0, 20.0]
+
+
+def test_set_state_raw_409_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+  """409 Duplicate raises DuplicateContentError immediately."""
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  grid = [[0] * vb.model.cols for _ in range(vb.model.rows)]
+  dup = MagicMock()
+  dup.status_code = 409
+  with (
+    patch('integrations.vestaboard.requests.post', return_value=dup) as mock_post,
+    patch('integrations.vestaboard.time.sleep'),
+  ):
+    with pytest.raises(vb.DuplicateContentError):
+      vb.set_state_raw(grid)
+  assert mock_post.call_count == 1
+
+
+def test_set_state_raw_423_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+  """423 BoardLocked raises immediately — scheduler handles via re-enqueue."""
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  grid = [[0] * vb.model.cols for _ in range(vb.model.rows)]
+  locked = MagicMock()
+  locked.status_code = 423
+  with (
+    patch('integrations.vestaboard.requests.post', return_value=locked) as mock_post,
+    patch('integrations.vestaboard.time.sleep'),
+  ):
+    with pytest.raises(vb.BoardLockedError):
+      vb.set_state_raw(grid)
+  assert mock_post.call_count == 1
+
+
+# --- get_state retry ---
+
+
+def _mock_get_ok() -> MagicMock:
+  layout = [[0] * vb.model.cols for _ in range(vb.model.rows)]
+  m = MagicMock()
+  m.status_code = 200
+  m.json.return_value = {
+    'currentMessage': {
+      'id': 'abc',
+      'appeared': '2024-01-01T00:00:00Z',
+      'layout': json.dumps(layout),
+    }
+  }
+  m.raise_for_status.return_value = None
+  return m
+
+
+def test_get_state_retries_on_500_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  responses = [_mock_resp(500), _mock_get_ok()]
+  with (
+    patch('integrations.vestaboard.requests.get', side_effect=responses) as mock_get,
+    patch('integrations.vestaboard.time.sleep'),
+  ):
+    state = vb.get_state()
+  assert mock_get.call_count == 2
+  assert state.id == 'abc'
+
+
+def test_get_state_exhausts_retries_on_persistent_500(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  with (
+    patch('integrations.vestaboard.requests.get', return_value=_mock_resp(500)) as mock_get,
+    patch('integrations.vestaboard.time.sleep'),
+  ):
+    with pytest.raises(requests.HTTPError, match=r'500 Internal Server Error \(exhausted 3 retries\)'):
+      vb.get_state()
+  assert mock_get.call_count == vb._MAX_TRANSIENT_RETRIES + 1  # noqa: SLF001
+
+
+def test_get_state_404_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+  """404 raises EmptyBoardError immediately — no retries."""
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  empty = MagicMock()
+  empty.status_code = 404
+  with (
+    patch('integrations.vestaboard.requests.get', return_value=empty) as mock_get,
+    patch('integrations.vestaboard.time.sleep'),
+  ):
+    with pytest.raises(vb.EmptyBoardError):
+      vb.get_state()
+  assert mock_get.call_count == 1
