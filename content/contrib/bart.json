@@ -2,7 +2,7 @@
   "templates": {
     "departures": {
       "schedule": {
-        "cron": "*/5 7-9 * * mon-fri",
+        "cron": "*/5 7-8 * * mon-fri",
         "hold": 290,
         "timeout": 60,
         "refresh_interval": 60

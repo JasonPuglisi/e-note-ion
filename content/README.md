@@ -259,7 +259,7 @@ new integrations in overnight windows unless there's a specific reason
 | `11:45` daily | `unraid.status` | Hobbies | 3 | 300 s | 3600 s | Private; solo `:45` slot |
 | `:00` at 12/20 | `trakt.next_up` | Entertainment | 4 | 1200 s | 1800 s | Private; noon = plan for evening, 20:00 = settle in |
 | `21:00` daily | `morning_night.good_night` | Ambient | 4 | 300 s | 3600 s | Moon phase visual; queues behind weather |
-| `*/5` 07–09 Mon–Fri | `bart.departures` | Logistics | 8 | 290 s | 60 s | Refresh 60 s; dominates weekday mornings |
+| `*/5` 07–08 Mon–Fri | `bart.departures` | Logistics | 8 | 290 s | 60 s | Refresh 60 s; dominates weekday mornings |
 | `*/3` 07–23 daily | `trakt.watching` | Entertainment | 7 | 180 s | 120 s | Refresh 30 s; no-op when not watching |
 | `:45` at 12/20 | `youtube.live` | Entertainment | 4 | 300 s | 3600 s | Private; no-op when nothing live |
 | webhook only | `plex` (3 templates) | Entertainment | 8 | 14400 / 60 s | 30 s | Private; indefinite semantics (14400 s = 4 h safety ceiling); interrupts on state change |
