@@ -1013,6 +1013,110 @@ def test_worker_refires_interrupt_when_same_tag_message_queued_during_set_state(
   )
 
 
+def test_worker_refires_interrupt_when_distinct_tag_interrupt_message_queued_during_set_state() -> None:
+  # Regression: a webhook-driven message with interrupt=True AND a distinct
+  # supersede_tag that arrives during the prior message's set_state_raw used
+  # to be silently dropped — the worker's post-set_state _hold_interrupt.clear()
+  # only re-fired on same-tag supersession. Now the re-fire block also covers
+  # distinct-tag interrupt intent when the new hold is below the priority
+  # interrupt threshold (mirrors the webhook-server-side gate).
+  hello = _mod.QueuedMessage(
+    priority=7,
+    seq=0,
+    name='webhook.notion',
+    scheduled_at=time.monotonic(),
+    data={'templates': [{'format': ['HELLO']}], 'variables': {}, 'truncation': 'hard'},
+    hold=120,
+    timeout=120,
+    supersede_tag='notion.hello',
+  )
+  urgent = _mod.QueuedMessage(
+    priority=7,
+    seq=1,
+    name='webhook.notion',
+    scheduled_at=time.monotonic(),
+    data={'templates': [{'format': ['URGENT']}], 'variables': {}, 'truncation': 'hard'},
+    hold=120,
+    timeout=120,
+    supersede_tag='notion.alert',
+    interrupt=True,
+  )
+
+  interrupt_state_at_hold: list[bool] = []
+
+  def _fake_do_hold(m: Any, min_hold: Any, **kw: Any) -> None:
+    interrupt_state_at_hold.append(_mod._hold_interrupt.is_set())
+    raise KeyboardInterrupt()
+
+  def _fake_set_state(*_args: Any, **_kwargs: Any) -> None:
+    # Simulate the urgent alert arriving during the set_state API call for hello.
+    _mod._queue.put(urgent)
+
+  with (
+    patch.object(_mod, 'pop_valid_message', return_value=hello),
+    patch('integrations.vestaboard.set_state_raw', side_effect=_fake_set_state),
+    patch.object(_mod, '_do_hold', side_effect=_fake_do_hold),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+
+  assert interrupt_state_at_hold == [True], (
+    '_hold_interrupt must be re-fired when a distinct-tag interrupt=True message is queued during set_state'
+  )
+
+
+def test_worker_does_not_refire_interrupt_when_interrupt_message_priority_is_uninterruptible() -> None:
+  # Complement to the above: if the new hold is at or above the priority
+  # interrupt threshold (e.g. pri 8+, like a Plex now-playing), an
+  # unrelated interrupt=True message in the queue must NOT re-fire — the
+  # current hold should run its full duration, consistent with the
+  # webhook-server-side `_current_hold_is_interruptible` gate.
+  high_pri = _mod.QueuedMessage(
+    priority=_mod._INTERRUPT_PRIORITY_THRESHOLD,
+    seq=0,
+    name='webhook.plex',
+    scheduled_at=time.monotonic(),
+    data={'templates': [{'format': ['NOW PLAYING']}], 'variables': {}, 'truncation': 'hard'},
+    hold=14400,
+    timeout=30,
+    indefinite=True,
+    supersede_tag='plex',
+  )
+  urgent = _mod.QueuedMessage(
+    priority=7,
+    seq=1,
+    name='webhook.notion',
+    scheduled_at=time.monotonic(),
+    data={'templates': [{'format': ['URGENT']}], 'variables': {}, 'truncation': 'hard'},
+    hold=120,
+    timeout=120,
+    supersede_tag='notion.alert',
+    interrupt=True,
+  )
+
+  interrupt_state_at_hold: list[bool] = []
+
+  def _fake_do_hold(m: Any, min_hold: Any, **kw: Any) -> None:
+    interrupt_state_at_hold.append(_mod._hold_interrupt.is_set())
+    raise KeyboardInterrupt()
+
+  def _fake_set_state(*_args: Any, **_kwargs: Any) -> None:
+    _mod._queue.put(urgent)
+
+  with (
+    patch.object(_mod, 'pop_valid_message', return_value=high_pri),
+    patch('integrations.vestaboard.set_state_raw', side_effect=_fake_set_state),
+    patch.object(_mod, '_do_hold', side_effect=_fake_do_hold),
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+
+  assert interrupt_state_at_hold == [False], (
+    '_hold_interrupt must NOT be re-fired for an interrupt=True message '
+    'when the new hold is at/above the priority threshold'
+  )
+
+
 # --- Worker health attribution (phase split: fetch vs send) ---
 
 

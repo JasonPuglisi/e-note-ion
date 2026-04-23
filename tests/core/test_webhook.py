@@ -383,6 +383,7 @@ def test_handle_webhook_result_enqueues_message() -> None:
             name='test.webhook',
             indefinite=False,
             supersede_tag='',
+            interrupt=False,
           )
         finally:
           server.shutdown()

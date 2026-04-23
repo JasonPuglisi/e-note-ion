@@ -139,6 +139,7 @@ class QueuedMessage:
   timeout: int  # seconds message can wait in queue before being discarded
   indefinite: bool = False  # if True, hold runs until explicitly interrupted
   supersede_tag: str = ''  # if non-empty, enqueue() removes earlier same-tagged messages first
+  interrupt: bool = False  # if True, post-set_state re-fire block will re-arm _hold_interrupt to break the new hold
 
   def __lt__(self, other: 'QueuedMessage') -> bool:
     # PriorityQueue is a min-heap, so we invert priority comparison so that
@@ -182,6 +183,7 @@ def enqueue(
   name: str = '',
   indefinite: bool = False,
   supersede_tag: str = '',
+  interrupt: bool = False,
 ) -> None:
   global _counter
   with _counter_lock:
@@ -198,6 +200,7 @@ def enqueue(
     timeout=timeout,
     indefinite=indefinite,
     supersede_tag=supersede_tag,
+    interrupt=interrupt,
   )
 
   if supersede_tag:
@@ -662,15 +665,22 @@ def worker() -> None:
 
     # Clear any interrupt that fired before this hold began (e.g. the webhook
     # interrupt that preempted the previous hold and triggered enqueueing of
-    # this message) so it cannot exit the new hold instantly. But if a same-tag
-    # message arrived during the set_state API call above, re-fire the interrupt
-    # so _do_hold exits immediately and the worker processes the newer event.
+    # this message) so it cannot exit the new hold instantly. But if a newer
+    # message arrived during the set_state API call above that wants to cut
+    # through — either because it shares our supersede_tag, or because it
+    # carries its own interrupt=True intent and we (the new hold) are below
+    # the priority interrupt threshold — re-fire the interrupt so _do_hold
+    # exits immediately and the worker processes the newer event.
     _hold_interrupt.clear()
-    if message.supersede_tag:
-      with _queue.mutex:
-        if any(m.supersede_tag == message.supersede_tag for m in _queue.queue):
-          logger.debug('[hold] %s re-firing interrupt: same-tag message queued during set_state', message.name)
+    with _queue.mutex:
+      for m in _queue.queue:
+        same_tag = bool(message.supersede_tag) and m.supersede_tag == message.supersede_tag
+        interrupt_intent = m.interrupt and message.priority < _INTERRUPT_PRIORITY_THRESHOLD
+        if same_tag or interrupt_intent:
+          reason = 'same-tag' if same_tag else 'interrupt intent'
+          logger.debug('[hold] %s re-firing interrupt (%s): message queued during set_state', message.name, reason)
           _hold_interrupt.set()
+          break
     _do_hold(message, _get_min_hold(), refresh_fn=_refresh_fn, refresh_interval=refresh_interval)
     with _current_hold_lock:
       _current_hold_supersede_tag = ''
@@ -847,6 +857,7 @@ def _make_webhook_handler() -> type:
         name=result.name or f'webhook.{integration_name}',
         indefinite=result.indefinite,
         supersede_tag=result.supersede_tag,
+        interrupt=result.interrupt,
       )
       if result.interrupt:
         # Same-tag supersede always interrupts regardless of priority threshold —
