@@ -89,46 +89,86 @@ X-Webhook-Secret: <your-plaintext-secret>
    - **Method**: POST
    - **URL**: your webhook URL from step 2
    - **Headers**: `Content-Type: application/json`, `X-Webhook-Secret: <secret>`
-   - **Body** (JSON): see payload schema below
+   - **Body** (JSON): the payload the action posts must match the shape
+     described below. Add properties named `message` (title), `urgent`
+     (checkbox), and `tag` (select) to the triggering database so their
+     values are available to the request body.
 
 ## Payload schema
 
+The endpoint accepts Notion's **native page-properties payload** — the same
+nested shape that Notion's own API uses when describing page properties. The
+handler reads three properties by name under `data.properties`:
+
 ```json
 {
-  "message": "required — body text displayed on the board",
-  "urgent": false,
-  "tag": "notion"
+  "data": {
+    "properties": {
+      "message": { "title": [{ "plain_text": "..." }] },
+      "urgent":  { "checkbox": false },
+      "tag":     { "select": { "name": "reminders" } }
+    }
+  }
 }
 ```
 
-| Field | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `message` | string | Yes | — | Body text. Newlines (`\n`) produce multiple display lines. Color tag syntax (`[R]`, `[G]`, etc.) is not interpreted — brackets are stripped and the letter is kept. |
-| `urgent` | boolean | No | `false` | If `true`, interrupt the current hold immediately. |
-| `tag` | string | No | `"notion"` | Deduplication key. A new notification replaces any queued message with the same tag. Set to `""` to disable superseding. |
+This shape is chosen because the primary caller is a Notion database
+automation's **Send HTTP request** action, which posts the triggering page's
+properties in Notion's native nested format. No body composition is needed
+when configuring an automation from a database that has `message` (title),
+`urgent` (checkbox), and `tag` (select) properties.
 
-The `tag` value is automatically namespaced — a caller-supplied `"reminders"`
-becomes `"notion.reminders"` internally, preventing collisions with other
-integrations.
+| Property path | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `data.properties.message.title[].plain_text` | rich-text array (segments concatenated) | Yes | — | Body text. Newlines (`\n`) produce multiple display lines. Color tag syntax (`[R]`, `[G]`, etc.) is not interpreted — brackets are stripped and the letter is kept. |
+| `data.properties.urgent.checkbox` | boolean | No | `false` | If `true`, attempt to interrupt the current hold immediately. |
+| `data.properties.tag.select.name` | string | No | `"notion"` | Deduplication key. A new notification replaces any queued message with the same tag. Set to `""` to disable superseding. |
+
+The `tag.select.name` value is automatically namespaced — a caller-supplied
+`"reminders"` becomes `"notion.reminders"` internally, preventing collisions
+with other integrations.
+
+### Hand-crafted senders
+
+Non-Notion callers (iOS Shortcuts, other SaaS webhooks, programmatic scripts)
+must wrap values in the same nested shape. The handler silently responds
+`200 "Discarded"` — with no display side-effect — if `data.properties`
+is missing or `message.title[]` is empty.
 
 ### Example payloads
 
 Minimal:
 ```json
-{ "message": "Task completed: Q1 planning" }
+{
+  "data": {
+    "properties": {
+      "message": { "title": [{ "plain_text": "Task completed: Q1 planning" }] }
+    }
+  }
+}
 ```
 
 With newlines:
 ```json
-{ "message": "Task completed\nQ1 planning doc" }
+{
+  "data": {
+    "properties": {
+      "message": { "title": [{ "plain_text": "Task completed\nQ1 planning doc" }] }
+    }
+  }
+}
 ```
 
 Urgent with a custom dedup tag:
 ```json
 {
-  "message": "Deploy failed in production",
-  "urgent": true,
-  "tag": "deploy-alerts"
+  "data": {
+    "properties": {
+      "message": { "title": [{ "plain_text": "Deploy failed in production" }] },
+      "urgent":  { "checkbox": true },
+      "tag":     { "select": { "name": "deploy-alerts" } }
+    }
+  }
 }
 ```
 
