@@ -358,6 +358,14 @@ A setup table prints at session start showing which env vars are set or missing.
 The `.env` file is git-ignored — never commit it. CI has no `.env` file; secrets
 come from GitHub secrets env vars directly.
 
+When `integrations/<name>.py` is staged, the `staged-integration-tests`
+pre-commit hook automatically runs `tests/integrations/test_<name>_integration.py`.
+Without `.env`, the hook prints a hint and passes (graceful degradation); with
+`.env` set up, real API calls catch contract / output-format mismatches before
+they reach `main`. CI's integration job is advisory (`continue-on-error: true`),
+so this local hook is the primary guard against regressions reaching `main`
+through the integration test path.
+
 - Mark tests with `@pytest.mark.integration` and `@pytest.mark.require_env('VAR', ...)`
 - Tests skip automatically when required env vars are absent (no failures)
 - Required env vars per integration (real API keys only; other settings are
