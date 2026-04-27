@@ -47,7 +47,8 @@ def test_get_variables(require_env: None, monkeypatch: pytest.MonkeyPatch) -> No
   assert amount.startswith('$'), f'amount missing $ prefix: {amount!r}'
 
   delta = result['delta'][0][0]
-  assert '/' in delta, f'delta missing month separator: {delta!r}'
+  assert delta[0] in ('+', '-'), f'delta missing sign prefix: {delta!r}'
+  assert delta.endswith('%') or delta.endswith('$0'), f'delta missing % or $0 suffix: {delta!r}'
 
   ynab._cache = None
   ynab._resolved_budget_id = None
