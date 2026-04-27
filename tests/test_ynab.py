@@ -1,6 +1,7 @@
 """Unit tests for integrations/ynab.py."""
 
 import time
+from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -98,6 +99,26 @@ def test_fmt_dollars(milliunits: int, expected: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# _same_day_last_month
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+  'today,expected',
+  [
+    (date(2026, 4, 27), date(2026, 3, 27)),  # normal day
+    (date(2026, 3, 31), date(2026, 2, 28)),  # clamp to Feb 28 (non-leap)
+    (date(2024, 3, 31), date(2024, 2, 29)),  # clamp to Feb 29 (leap year)
+    (date(2026, 5, 31), date(2026, 4, 30)),  # clamp 31 -> 30
+    (date(2026, 1, 15), date(2025, 12, 15)),  # year rollover
+    (date(2024, 2, 29), date(2024, 1, 29)),  # leap day -> prior month
+  ],
+)
+def test_same_day_last_month(today: date, expected: date) -> None:
+  assert ynab._same_day_last_month(today) == expected
+
+
+# ---------------------------------------------------------------------------
 # _fmt_pct
 # ---------------------------------------------------------------------------
 
@@ -139,8 +160,8 @@ def test_get_variables_positive_delta(monkeypatch: pytest.MonkeyPatch) -> None:
 
   assert result['header'] == [['[G] NET WORTH']]
   assert result['amount'] == [['$150K']]
-  assert '/' in result['delta'][0][0]
   assert result['delta'][0][0].startswith('+')
+  assert result['delta'][0][0].endswith('%')
   ynab._cache = None
   ynab._resolved_budget_id = None
 
@@ -275,7 +296,7 @@ def test_api_error_serves_stale_cache(monkeypatch: pytest.MonkeyPatch) -> None:
   stale_value: dict = {
     'header': [['[G] NET WORTH']],
     'amount': [['$100K']],
-    'delta': [['+5% / MAR']],
+    'delta': [['+5%']],
   }
   ynab._cache = CacheEntry(stale_value)
   ynab._cache.cached_at = time.monotonic() - ynab._CACHE_TTL - 1
@@ -300,7 +321,7 @@ def test_txn_error_serves_stale_cache(monkeypatch: pytest.MonkeyPatch) -> None:
   stale_value: dict = {
     'header': [['[G] NET WORTH']],
     'amount': [['$50K']],
-    'delta': [['+2% / JAN']],
+    'delta': [['+2%']],
   }
   ynab._cache = CacheEntry(stale_value)
   ynab._cache.cached_at = time.monotonic() - ynab._CACHE_TTL - 1
@@ -337,7 +358,7 @@ def test_cache_hit_avoids_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
   cached_value: dict = {
     'header': [['[G] NET WORTH']],
     'amount': [['$100K']],
-    'delta': [['+3% / MAR']],
+    'delta': [['+3%']],
   }
   ynab._cache = CacheEntry(cached_value)
 

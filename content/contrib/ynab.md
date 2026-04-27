@@ -42,14 +42,14 @@ api_key = "your-personal-access-token"
 ```
 [G] NET WORTH
 $124,832
-+2.6% / MAR
++2.6%
 ```
 
 - Header color is data-driven: `[G]` green when month-over-month delta is
   non-negative, `[R]` red when negative (or when net worth itself is negative)
 - Net worth with commas for amounts under $10K; K/M/B suffix above that
   ($50.5K, $1.2M) — one decimal, `.0` dropped
-- Percent change with `+`/`-` prefix, three-letter month abbreviation
+- Percent change with `+`/`-` prefix
 - All amounts rounded to whole dollars (no cents)
 
 ## Net worth calculation
@@ -59,7 +59,9 @@ Net worth = sum of `balance` across all non-closed, non-deleted accounts
 straight sum gives the correct number.
 
 Monthly delta = sum of all non-deleted transaction `amount` values since the
-1st of the current month. Internal transfers cancel out (matching +/- entries).
+same calendar day one month ago (clamped to the last day of the prior month
+when today doesn't exist there — e.g. Mar 31 → Feb 28/29). Internal transfers
+cancel out (matching +/- entries).
 
 ## API details
 
@@ -70,8 +72,8 @@ Monthly delta = sum of all non-deleted transaction `amount` values since the
 
 **Endpoints:**
 - `GET /v1/budgets/{budget_id}/accounts` — all account balances (milliunits)
-- `GET /v1/budgets/{budget_id}/transactions?since_date=YYYY-MM-01` — current
-  month transactions for delta calculation
+- `GET /v1/budgets/{budget_id}/transactions?since_date=YYYY-MM-DD` —
+  transactions since the same calendar day one month ago, for delta calculation
 
 Amounts are in milliunits (1,000 milliunits = $1).
 

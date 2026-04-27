@@ -2,8 +2,9 @@
 #
 # YNAB (You Need A Budget) net worth tracker.
 #
-# Fetches all account balances and current-month transactions from the
-# YNAB API v1 to compute net worth and month-over-month percent change.
+# Fetches all account balances and transactions since the same calendar day
+# one month ago (clamped to last day for shorter months) from the YNAB API
+# v1 to compute net worth and month-over-month percent change.
 #
 # Required config.toml keys ([ynab]):
 #   api_key   — personal access token (free for all YNAB subscribers)
@@ -11,6 +12,7 @@
 # Optional config.toml keys:
 #   budget_id — budget UUID. Omit if you have only one budget (auto-detected).
 
+import calendar
 import logging
 from datetime import date
 
@@ -86,11 +88,30 @@ def _fmt_dollars(milliunits: int) -> str:
   return s
 
 
+def _same_day_last_month(today: date) -> date:
+  """Return the same calendar day one month ago, clamped to last valid day.
+
+  Examples:
+    date(2026, 4, 27) -> date(2026, 3, 27)
+    date(2026, 3, 31) -> date(2026, 2, 28)  # Feb has 28 days
+    date(2024, 3, 31) -> date(2024, 2, 29)  # leap year
+    date(2026, 5, 31) -> date(2026, 4, 30)
+    date(2026, 1, 15) -> date(2025, 12, 15)  # year rollover
+  """
+  year = today.year
+  month = today.month - 1
+  if month == 0:
+    month = 12
+    year -= 1
+  last_day = calendar.monthrange(year, month)[1]
+  return date(year, month, min(today.day, last_day))
+
+
 def _fmt_pct(delta: int, start: int) -> str:
   """Format month-over-month change as a percent string.
 
   Returns e.g. '+2.6%', '-0.3%', '+0%'. One decimal, drop .0.
-  Falls back to '+$0' when start-of-month net worth is zero.
+  Falls back to '+$0' when prior net worth is zero.
   """
   if start == 0:
     sign = '+' if delta >= 0 else '-'
@@ -183,14 +204,14 @@ def get_variables() -> dict[str, list[list[str]]]:
   # Sum all non-closed, non-deleted account balances (milliunits)
   net_worth = sum(a['balance'] for a in accounts_data if not a.get('closed') and not a.get('deleted'))
 
-  # Fetch current month transactions for delta
-  first_of_month = date.today().replace(day=1).isoformat()
+  # Fetch transactions since the same calendar day one month ago
+  lookback = _same_day_last_month(date.today()).isoformat()
   try:
     txn_resp = fetch_with_retry(
       'GET',
       f'{_BASE_URL}/budgets/{budget_id}/transactions',
       headers=hdrs,
-      params={'since_date': first_of_month},
+      params={'since_date': lookback},
       timeout=10,
     )
     txn_resp.raise_for_status()
@@ -202,20 +223,19 @@ def get_variables() -> dict[str, list[list[str]]]:
 
   transactions = txn_resp.json().get('data', {}).get('transactions', [])
 
-  # Monthly delta = sum of all non-deleted transaction amounts
-  monthly_delta = sum(t['amount'] for t in transactions if not t.get('deleted'))
+  # Period delta = sum of all non-deleted transaction amounts since lookback
+  period_delta = sum(t['amount'] for t in transactions if not t.get('deleted'))
 
-  # Start-of-month net worth = current - delta
-  start_of_month = net_worth - monthly_delta
+  # Net worth at lookback date = current - delta
+  prior_value = net_worth - period_delta
 
   # Format
-  color = '[G]' if monthly_delta >= 0 else '[R]'
-  if net_worth < 0 and monthly_delta >= 0:
+  color = '[G]' if period_delta >= 0 else '[R]'
+  if net_worth < 0 and period_delta >= 0:
     color = '[R]'
 
   amount_line = _fmt_dollars(net_worth)
-  month_abbr = date.today().strftime('%b').upper()
-  pct_line = f'{_fmt_pct(monthly_delta, start_of_month)} / {month_abbr}'
+  pct_line = _fmt_pct(period_delta, prior_value)
 
   result: dict[str, list[list[str]]] = {
     'header': [[f'{color} NET WORTH']],
