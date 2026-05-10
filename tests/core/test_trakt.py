@@ -1023,9 +1023,28 @@ def test_get_variables_watching_movie_returns_vars(
     result = trakt.get_variables_watching()
 
   assert result['status_line'] == [['[G] NOW PLAYING']]
+  # Title fits in one row; row 3 stays empty (no MOVIE label).
   assert result['show_name'] == [['INCEPTION']]
-  assert result['episode_ref'] == [['MOVIE']]
+  assert result['episode_ref'] == [['']]
   assert result['episode_title'] == [['']]
+
+
+def test_get_variables_watching_long_movie_title_wraps_to_two_rows(
+  config_with_tokens: Path,
+) -> None:
+  """Long movie titles wrap into rows 2-3 instead of being ellipsis-truncated."""
+  mock_response = MagicMock()
+  mock_response.status_code = 200
+  mock_response.json.return_value = {
+    'type': 'movie',
+    'movie': {'title': 'Eternal Sunshine'},
+  }
+
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_response):
+    result = trakt.get_variables_watching()
+
+  assert result['show_name'] == [['ETERNAL', 'SUNSHINE']]
+  assert result['episode_ref'] == [['']]
 
 
 def test_get_variables_watching_204_raises_unavailable(
