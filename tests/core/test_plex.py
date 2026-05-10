@@ -789,6 +789,17 @@ def test_handle_webhook_long_show_name_truncated_to_one_row() -> None:
   assert upper.startswith(show_name[:-3])
 
 
+def test_handle_webhook_long_movie_title_wraps_to_two_rows() -> None:
+  """Movie titles longer than one row wrap into rows 2-3 instead of being truncated."""
+  with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+    _plex.handle_webhook(_movie_payload('media.play', 'Eternal Sunshine'))
+    _fire_play_timer()
+  variables = mock_enqueue.call_args.kwargs['data']['variables']
+  assert variables['show_name'] == [['ETERNAL', 'SUNSHINE']]
+  # episode_line stays empty — its slot becomes line 4 and is dropped at render.
+  assert variables['episode_line'] == [['']]
+
+
 # ---------------------------------------------------------------------------
 # Config override
 # ---------------------------------------------------------------------------

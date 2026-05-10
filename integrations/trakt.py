@@ -560,22 +560,23 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
   if media_type == 'episode':
     ep = data['episode']
     show_name, season, number, ep_title = _canonicalize_episode(data['show'], ep)
+    show_name_rows = [show_name]
     episode_ref = _media.format_episode_ref(season, number)
     episode_title = _media.strip_leading_article_if_needed(ep_title.upper(), _vb.model.cols, f'{episode_ref} ')
   elif media_type == 'movie':
-    show_name = _vb.truncate_line(_canonicalize_movie(data['movie']).upper(), _vb.model.cols, 'ellipsis')
-    episode_ref = 'MOVIE'
+    show_name_rows = _media.wrap_title_to_rows(_canonicalize_movie(data['movie']).upper(), _vb.model.cols, 2)
+    episode_ref = ''
     episode_title = ''
   else:
     raise IntegrationDataUnavailableError(f'Unknown media type: {media_type!r}')
 
   result = {
     'status_line': [['[G] NOW PLAYING']],
-    'show_name': [[show_name]],
+    'show_name': [show_name_rows],
     'episode_ref': [[episode_ref]],
     'episode_title': [[episode_title]],
   }
-  logger.debug('Trakt: watching %s %r (%s)', media_type, show_name, episode_ref)
+  logger.debug('Trakt: watching %s %r (%s)', media_type, show_name_rows, episode_ref)
   with _watching_lock:
     _last_watching_vars = result
     _stop_pending = False

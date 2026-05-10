@@ -79,3 +79,55 @@ def test_strip_if_needed_no_prefix_behaves_like_strip_when_overflowing() -> None
 
 def test_strip_if_needed_no_prefix_fits_no_strip() -> None:
   assert media.strip_leading_article_if_needed('THE DISH', 15) == 'THE DISH'
+
+
+# --- wrap_title_to_rows ---
+
+
+def test_wrap_title_short_returns_single_row() -> None:
+  assert media.wrap_title_to_rows('INCEPTION', 15, 2) == ['INCEPTION']
+
+
+def test_wrap_title_exact_col_width_single_row() -> None:
+  assert media.wrap_title_to_rows('A' * 15, 15, 2) == ['A' * 15]
+
+
+def test_wrap_title_wraps_to_two_rows_on_word_boundary() -> None:
+  # 'ETERNAL SUNSHINE' = 16 chars, exceeds 15 → wraps
+  assert media.wrap_title_to_rows('ETERNAL SUNSHINE', 15, 2) == ['ETERNAL', 'SUNSHINE']
+
+
+def test_wrap_title_packs_multiple_words_per_row() -> None:
+  # Greedy packing: 'ONE TWO' (7) fits with 'THREE' (5) → 'ONE TWO THREE' (13)
+  assert media.wrap_title_to_rows('ONE TWO THREE FOUR FIVE SIX', 15, 2) == [
+    'ONE TWO THREE',
+    'FOUR FIVE SIX',
+  ]
+
+
+def test_wrap_title_overflows_two_rows_ellipsis_on_last_kept_row() -> None:
+  # Title needs >2 rows; second kept row gets hard-truncated to cols-3 + '...'
+  # 'WORDS WORDS WORDS WORDS WORDS WORDS' wraps to ['WORDS WORDS', 'WORDS WORDS', ...]
+  result = media.wrap_title_to_rows('WORDS WORDS WORDS WORDS WORDS WORDS', 15, 2)
+  assert len(result) == 2
+  assert result[0] == 'WORDS WORDS'
+  assert result[1].endswith('...')
+  assert len(result[1]) <= 15
+
+
+def test_wrap_title_single_word_too_long_hard_cuts() -> None:
+  # Single word longer than cols → hard-cut to one row, remainder dropped
+  assert media.wrap_title_to_rows('SUPERCALIFRAGILISTIC', 15, 2) == ['SUPERCALIFRAGIL']
+
+
+def test_wrap_title_three_rows_allowed() -> None:
+  # max_rows=3 allows 3 wrapped rows without ellipsis
+  assert media.wrap_title_to_rows('ONE TWO THREE FOUR FIVE SIX SEVEN EIGHT', 15, 3) == [
+    'ONE TWO THREE',
+    'FOUR FIVE SIX',
+    'SEVEN EIGHT',
+  ]
+
+
+def test_wrap_title_empty_string() -> None:
+  assert media.wrap_title_to_rows('', 15, 2) == ['']

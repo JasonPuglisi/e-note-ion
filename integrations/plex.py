@@ -305,9 +305,9 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
       # Build metadata.
       metadata = payload.get('Metadata')
       media_type = metadata.get('type') if metadata else None
-      show_name, episode_line = _build_metadata(metadata, media_type, event)
+      show_name_rows, episode_line = _build_metadata(metadata, media_type, event)
 
-      if not show_name:
+      if not show_name_rows:
         logger.debug('plex: discarding %s: no show_name (media_type=%r)', event, media_type)
         return None
 
@@ -315,7 +315,7 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
       play_data = {
         'templates': cfg['templates'],
         'variables': {
-          'show_name': [[show_name]],
+          'show_name': [show_name_rows],
           'episode_line': [[episode_line]],
         },
         'truncation': cfg['truncation'],
@@ -323,7 +323,7 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
       priority = cfg['priority']
       hold = cfg['hold']
       timeout = cfg['timeout']
-      captured_show_name = show_name  # closure needs the local value
+      captured_show_name = show_name_rows  # closure needs the local value
 
       def _enqueue_now_playing() -> None:
         global _pending_play_timer, _saved_stop_data
@@ -370,9 +370,9 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
       # Build metadata.
       metadata = payload.get('Metadata')
       media_type = metadata.get('type') if metadata else None
-      show_name, episode_line = _build_metadata(metadata, media_type, event)
+      show_name_rows, episode_line = _build_metadata(metadata, media_type, event)
 
-      if not show_name:
+      if not show_name_rows:
         logger.debug('plex: discarding %s: no show_name (media_type=%r)', event, media_type)
         return None
 
@@ -380,7 +380,7 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
       pause_data = {
         'templates': cfg['templates'],
         'variables': {
-          'show_name': [[show_name]],
+          'show_name': [show_name_rows],
           'episode_line': [[episode_line]],
         },
         'truncation': cfg['truncation'],
@@ -442,13 +442,13 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
       # Build metadata from the current stop event.
       metadata = payload.get('Metadata')
       media_type = metadata.get('type') if metadata else None
-      show_name, episode_line = _build_metadata(metadata, media_type, event)
+      show_name_rows, episode_line = _build_metadata(metadata, media_type, event)
 
       cfg = _load_template_config('stopped')
-      has_media = bool(show_name)
+      has_media = bool(show_name_rows)
       new_stop_data = {
         'templates': cfg['templates'],
-        'variables': {'show_name': [[show_name]], 'episode_line': [[episode_line]]} if has_media else {},
+        'variables': {'show_name': [show_name_rows], 'episode_line': [[episode_line]]} if has_media else {},
         'truncation': cfg['truncation'],
       }
 
@@ -503,10 +503,12 @@ def _build_metadata(
   metadata: dict[str, Any] | None,
   media_type: str | None,
   event: str,
-) -> tuple[str, str]:
-  """Parse metadata from a Plex payload and return (show_name, episode_line).
+) -> tuple[list[str], str]:
+  """Parse metadata from a Plex payload and return (show_name_rows, episode_line).
 
-  Returns ('', '') for non-video media or missing/malformed metadata.
+  show_name_rows is a list of display rows (1 row for episodes, up to 2 rows
+  for movies). Returns ([], '') for non-video media or missing/malformed
+  metadata.
   """
   if media_type == 'episode' and metadata:
     guids: list[dict[str, Any]] = metadata.get('Guid') or []
@@ -523,7 +525,7 @@ def _build_metadata(
       season=metadata.get('parentIndex'),
       episode=metadata.get('index'),
     )
-    show_name = _vb.truncate_line(raw_show.upper(), _vb.model.cols, 'ellipsis')
+    show_name_rows = [_vb.truncate_line(raw_show.upper(), _vb.model.cols, 'ellipsis')]
     episode_ref = _media.format_episode_ref(metadata['parentIndex'], metadata['index'])
     plex_ep_title = (metadata.get('title') or '').strip()
     episode_title = tmdb_ep_title or plex_ep_title
@@ -532,11 +534,11 @@ def _build_metadata(
   elif media_type == 'movie' and metadata:
     guids = metadata.get('Guid') or []
     raw_movie, _ = _canonicalize_plex_title(metadata['title'], guids, 'movie')
-    show_name = _vb.truncate_line(raw_movie.upper(), _vb.model.cols, 'ellipsis')
+    show_name_rows = _media.wrap_title_to_rows(raw_movie.upper(), _vb.model.cols, 2)
     episode_line = ''
   else:
     logger.debug('plex: no displayable metadata (type=%r)', media_type)
-    show_name = ''
+    show_name_rows = []
     episode_line = ''
 
-  return show_name, episode_line
+  return show_name_rows, episode_line

@@ -38,6 +38,10 @@ than the 180 s hold) means a queued `watching` message is discarded if it
 waits more than 2 minutes — stale now-playing data is worse than nothing.
 Polling stops at 23:00 to avoid unnecessary overnight API calls.
 
+For movies, the title word-wraps into rows 2–3 (with ellipsis on the second
+row only if it overflows). Episodes use row 3 for the season/episode
+reference and title as before.
+
 To override schedule fields without editing this file:
 
 ```toml

@@ -39,7 +39,7 @@
 import logging
 import time
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urljoin
 from xml.etree import ElementTree as ET  # nosec B405 — XML from authenticated Apple API
 
@@ -271,7 +271,9 @@ def _collect_candidates_ics(
       logger.warning('calendar: skipping URL %d — %s', i + 1, e)
       continue
 
-    cal = Calendar.from_ical(raw)
+    # icalendar 7.1 typed Component.from_ical as -> Component; for VCALENDAR
+    # data the runtime value is always a Calendar.
+    cal = cast(Calendar, Calendar.from_ical(raw))
     auto_color = _ics_calendar_color(cal)
     color_tag = configured_color or auto_color
 
@@ -329,7 +331,9 @@ def _get_caldav_calendars(
   # Filter to requested calendar names if specified.
   name_filter: set[str] | None = set(calendar_names) if calendar_names else None
 
-  for cal in all_cals:
+  # caldav 3.2 types get_calendars as Coroutine; the sync client returns the
+  # awaited value directly.
+  for cal in cast(list[Any], all_cals):
     cal_name = str(cal.name or '')
     if name_filter is not None and cal_name not in name_filter:
       continue

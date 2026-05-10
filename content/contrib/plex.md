@@ -185,7 +185,10 @@ S3E3 EPISODE TITLE
 - Row 1: color square (data-driven, see below) + `NOW PLAYING`
 - Row 2: Show name (for episodes) or movie title (for movies)
 - Row 3: Season/episode reference + episode title (e.g. `S3E3 BEEF`), truncated
-  with ellipsis if too long. For movies, row 3 is blank.
+  with ellipsis if too long. For movies, row 3 is used to wrap the title — long
+  movie titles word-wrap into rows 2–3 instead of being ellipsis-truncated, and
+  only get an ellipsis if they overflow both rows. Short movie titles leave row
+  3 blank.
 
 Color indicates playback state:
 
