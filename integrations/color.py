@@ -135,7 +135,7 @@ def _kmeans_dominant(pixels: list[tuple[float, float, float]]) -> tuple[float, f
     )
 
   # k-means++ initialization: spread starting centroids across the color space.
-  first = random.choice(pixels)  # nosec S311
+  first = random.choice(pixels)  # nosec S311 — k-means++ centroid init, not a security context
   centroids: list[tuple[float, float, float]] = [first]
 
   for _ in range(k - 1):
@@ -143,7 +143,7 @@ def _kmeans_dominant(pixels: list[tuple[float, float, float]]) -> tuple[float, f
     total = sum(dists)
     if total == 0:
       break
-    threshold = random.random() * total  # nosec S311
+    threshold = random.random() * total  # nosec S311 — weighted distance sampling, not a security context
     cumulative = 0.0
     for p, d in zip(pixels, dists):
       cumulative += d

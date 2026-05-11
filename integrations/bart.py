@@ -20,7 +20,7 @@ from typing import Any
 
 import requests
 
-import integrations.vestaboard as vestaboard
+import integrations.vestaboard as _vb
 from exceptions import IntegrationDataUnavailableError
 from integrations.http import CacheEntry, fetch_with_retry, user_agent
 
@@ -137,7 +137,7 @@ def _build_line(color_tag: str, estimates: list[dict[str, Any]]) -> str:
   parts: list[str] = []
   for est in estimates:
     t = _format_minutes(est['minutes'])
-    if vestaboard.display_len(base + ' '.join(parts + [t])) > vestaboard.model.cols:
+    if _vb.display_len(base + ' '.join(parts + [t])) > _vb.model.cols:
       break
     parts.append(t)
   return base + (' '.join(parts) if parts else '--')

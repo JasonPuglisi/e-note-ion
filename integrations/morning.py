@@ -61,7 +61,7 @@ def _random_grid(
   min_cells: int,
 ) -> tuple[str, str, str]:
   """Generate a random 7×3 scatter grid with a minimum cell count."""
-  cells = [random.random() < density for _ in range(_GRID_CELLS)]  # nosec B311
+  cells = [random.random() < density for _ in range(_GRID_CELLS)]  # nosec B311 — random visual scatter grid, not a security context
   filled = sum(cells)
   if filled < min_cells:
     empty = [i for i, c in enumerate(cells) if not c]

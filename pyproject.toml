@@ -60,6 +60,7 @@ dev = [
     "pre-commit>=4.5.1",
     "pyright>=1.1.408",
     "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
     "ruff>=0.15.2",
 ]
 
@@ -91,3 +92,20 @@ indent-style = "space"
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]  # pycodestyle errors, pyflakes, isort
+
+[tool.coverage.run]
+# Measure coverage on the project source — integrations + root-level modules.
+# Tests themselves are excluded; .venv is excluded by default.
+source = ["integrations", "scheduler", "config", "health", "public", "quiet", "exceptions"]
+
+[tool.coverage.report]
+# Report-only — no fail_under threshold yet. Establish a baseline first; add
+# a threshold once the number is known and intentional.
+show_missing = true
+skip_covered = false
+exclude_lines = [
+  "pragma: no cover",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]

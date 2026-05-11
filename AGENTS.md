@@ -6,6 +6,19 @@ columns). Each character can show one of 64 values: A–Z, 0–9, punctuation,
 colored squares, or ❤️ (Note) / ° (Flagship) at code 62. The display connects
 over Wi-Fi and is controlled via a Read/Write API key.
 
+## Skills
+
+On-demand skills live under `.agents/skills/<name>/SKILL.md`. They follow the
+[Agent Skills](https://agentskills.io) format (YAML frontmatter + markdown
+body) and are vendor-neutral — any agent that reads this file can discover
+them. Load a skill's body when the user's task matches its trigger; don't
+preload all of them.
+
+| Skill | Load when |
+|---|---|
+| [`health-review`](.agents/skills/health-review/SKILL.md) | User asks for a "health check", "audit", or "project review"; before a minor/major release; after a sprint of feature work. |
+| [`new-integration`](.agents/skills/new-integration/SKILL.md) | User wants to add a new integration (data source, webhook, content template). |
+
 ## Persona
 
 Act as a senior software engineer and information security practitioner working
@@ -16,7 +29,8 @@ on this project collaboratively with the user.
 - Prefer simple, minimal solutions; avoid over-engineering and premature
   abstraction
 - Design new integrations (`integrations/`) to be consistent with existing
-  patterns in structure, naming, and error handling
+  patterns in structure, naming, and error handling — see the `new-integration`
+  skill for the full walkthrough
 - Keep the scheduler, queue, and worker logic reliable — exceptions in
   background threads must be caught and logged, never silently swallowed
 
@@ -91,6 +105,9 @@ integrations/unraid.py      # Unraid server status (GraphQL API, local network)
 integrations/uptimerobot.py # UptimeRobot service outage alerts (REST API, free tier)
 integrations/ynab.py        # YNAB net worth tracker (REST API, personal access token)
 integrations/youtube.py     # YouTube live streams from subscriptions (RSS + Data API v3)
+.agents/skills/             # On-demand agent skills (vendor-neutral, agentskills.io format)
+  health-review/SKILL.md    # Periodic project health audit walkthrough
+  new-integration/SKILL.md  # Adding a new integration (code + content + tests + docs)
 content/
   README.md                 # Content author reference: JSON format, priority, schedule coordination
   DESIGN.md                 # Visual/design conventions: layout, color, tone, character set
@@ -158,143 +175,9 @@ Update the XML there when adding new Docker config fields (ports, volumes, env v
 The single-threaded worker ensures display messages never overlap — important
 for a physical split-flap device whose flaps need time to settle.
 
-## Content JSON Format
-
-```json
-{
-  "templates": {
-    "<template_name>": {
-      "schedule": {
-        "cron": "0 8 * * *",  // standard 5-field cron expression; omit when "webhook": true
-        "hold": 600,  // seconds to show before pulling next (safety ceiling for indefinite webhook holds)
-        "timeout": 600,  // seconds message can wait before discarding
-        "refresh_interval": 60  // optional: re-fetch integration data every N seconds during hold (min 30; integration templates only)
-      },
-      "priority": 5,           // integer 0–10; higher number = higher priority
-      "private": false,        // if true, hidden when public mode is enabled in config.toml
-      "truncation": "word",    // optional: "hard" (default), "word", "ellipsis"
-      "webhook": false,        // optional: true makes cron optional; template fires on webhook only
-      "templates": [
-        { "format": ["LINE ONE", "LINE {variable}"] }
-      ]
-    }
-  },
-  "variables": {
-    "<variable_name>": [
-      ["VALUE A LINE 1", "VALUE A LINE 2"],
-      ["VALUE B LINE 1", ...]
-    ]
-  }
-}
-```
-
-Each content file is named for its context (e.g. `bart.json`).
-`{variable}` placeholders are replaced at random from `variables` options; a
-standalone `{variable}` entry expands to all lines of the chosen option. Lines
-are word-wrapped to fit `model.cols`; excess rows are silently dropped.
-
-### Integration templates
-
-Templates can include `"integration": "<name>"` instead of (or alongside) a
-static `variables` dict. When the job fires, the worker calls
-`integrations.<name>.get_variables()`, which returns the same
-`dict[str, list[list[str]]]` structure as static variables. This allows
-dynamic data (e.g. real-time API responses) to populate `{variable}`
-placeholders in the format. The `variables` key is optional when an
-integration is present.
-
-Add `"integration_fn": "<function_name>"` to call a function other than
-`get_variables` on the integration module. This lets a single integration
-expose multiple data sources (e.g. Trakt's `get_variables_calendar` and
-`get_variables_watching`).
-
-Color squares can be embedded in format strings and integration output using
-short tags: `[R]` `[O]` `[Y]` `[G]` `[B]` `[V]` `[W]` `[K]` (red, orange,
-yellow, green, blue, violet, white, black). Each tag encodes to the
-corresponding Vestaboard color square code (63–70).
-
-### Webhook integrations
-
-Integrations can also receive real-time push events from external systems
-(Plex, iOS Shortcuts, etc.) via the optional HTTP webhook listener. To support
-webhooks, an integration implements:
-
-```python
-def handle_webhook(payload: dict[str, Any]) -> WebhookMessage | None:
-    ...
-```
-
-`payload` is the parsed JSON body of the POST request. Return `None` to discard
-the event (e.g. wrong event type). Return a `WebhookMessage` to enqueue a
-display message:
-
-```python
-from scheduler import WebhookMessage
-
-WebhookMessage(
-    data={...},            # same shape as cron-enqueued data (templates, variables, truncation)
-    priority=8,            # 0–10
-    hold=60,               # seconds to show (or safety ceiling when indefinite=True)
-    timeout=120,           # seconds before discarding if not yet shown
-    name='',               # optional: appears in logs (defaults to webhook.<integration>)
-    interrupt=False,       # True to cut the current hold short and show this immediately
-    indefinite=False,      # True to hold until explicitly interrupted (e.g. a stop event)
-    interrupt_only=False,  # True to fire _hold_interrupt without enqueueing (e.g. stop events)
-    supersede_tag='',      # if non-empty, removes earlier same-tagged messages from the queue before enqueueing
-)
-```
-
-Set `interrupt=True` for time-sensitive state changes (e.g. Plex pause/resume)
-that should preempt whatever is currently on the display.
-
-Set `indefinite=True` for playback-state messages that should stay on screen
-until a stop or resume event arrives, rather than timing out after `hold`
-seconds. The `hold` value acts as a safety ceiling in case the stop event is
-never received.
-
-Set `interrupt_only=True` for stop/end events that should clear the display
-immediately without enqueueing any new content. The `data`, `priority`, `hold`,
-and `timeout` fields are ignored when `interrupt_only=True`.
-
-Set `supersede_tag` to a non-empty string to have `enqueue()` automatically
-remove any earlier messages with the same tag before adding the new one. Use
-this when a new event (e.g. Plex track change) makes any queued message for
-the same integration stale — so only the latest state reaches the display.
-
-The webhook listener is activated by adding a `[webhook]` section to
-`config.toml` (see `config.example.toml`). It binds to `127.0.0.1:8080` by
-default. Authentication is handled entirely via **named credentials** defined
-in `[webhook.credentials.<name>]` sections — each scoped to one or more
-integrations via the `webhooks` list. Credentials for diving, health, message-admin,
-notion, plex, and scheduler are auto-generated on first startup if absent (check
-the log for the plaintext secret to copy into your sender). Endpoints:
-`POST /webhook/<integration>` for webhook events, `GET /health` for the
-health monitoring endpoint (returns JSON, 200 when healthy, 503 when
-degraded/errored — see README for response format). Credential secret
-accepted as `X-Webhook-Secret: <secret>` header (preferred) or
-`?secret=<secret>` query parameter (for senders like Plex that cannot set
-custom headers). All
-`handle_webhook` implementations must accept `credential_name: str | None = None`
-as a keyword argument.
-
-Webhook integrations respect the `private` flag from their JSON template
-definition and `config.toml` overrides automatically — the scheduler resolves
-the effective value during content loading and applies it in the worker. No
-integration-level code is needed to propagate the flag.
-
-When adding a new webhook-capable integration, also add its name to
-`_KNOWN_INTEGRATIONS` in `scheduler.py`. If the integration should auto-generate
-a credential on first startup, also add it to `_WEBHOOK_AUTOGEN` in `scheduler.py`.
-
-### Integration dependencies
-
-Add any packages required by a new integration to `pyproject.toml`
-`dependencies` (the base list). All deps are installed unconditionally —
-this keeps the Docker image simple, and Docker is the primary deployment
-target. If an integration is loaded and its deps are missing (e.g. a
-source-install user skipped them), `_get_integration()` will catch the
-`ImportError` and raise a `RuntimeError` with an install hint; the worker
-logs it and skips that message rather than crashing.
+For the full content JSON format spec, see `content/README.md`. For the
+integration module conventions and webhook patterns, see the `new-integration`
+skill.
 
 ## Environment
 
@@ -305,10 +188,12 @@ logs it and skips that message rather than crashing.
 - Python version managed via `.python-version` (uv)
 - Dependencies managed with `uv` / `pyproject.toml`
 - Dev tools: `ruff` (lint + format), `pyright` (type checking), `bandit`
-  (security linting), `pip-audit` (dependency CVE scanning), `pre-commit`
+  (security linting), `pip-audit` (dependency CVE scanning), `pytest-cov`
+  (coverage reporting), `pre-commit`
 - Run checks: `uv run ruff check .`, `uv run ruff format --check .`,
   `uv run pyright`, `uv run bandit -c pyproject.toml -r .`, `uv run pip-audit`,
-  `uv run pre-commit run pretty-format-json --all-files`, `uv run pytest`
+  `uv run pre-commit run pretty-format-json --all-files`,
+  `uv run pytest --cov=integrations --cov=. --cov-report=term-missing`
 - Install hooks (once after cloning): `uv run pre-commit install`
 - Tests live in `tests/`; use `pytest` with `unittest.mock` for HTTP calls
 
@@ -339,7 +224,8 @@ PR labels (apply one or more):
 
 - PRs that introduce new logic **must** include corresponding tests in `tests/`
 - Use `pytest`; mock HTTP calls with `unittest.mock`
-- CI runs `uv run pytest` — tests must pass before merge
+- CI runs `uv run pytest --cov=integrations --cov=. --cov-report=term-missing`
+  — tests must pass before merge; coverage is reported but not gated
 - When working on existing code that lacks tests, add retroactive coverage as
   part of the same PR where feasible
 - When a change affects output format or data shape, grep all test directories
@@ -403,31 +289,11 @@ through the integration test path.
 
 ### Periodic health review
 
-At natural breakpoints (before a minor/major release, after a sprint of feature
-work), run through this checklist. Open issues for gaps found; fix trivial things
-inline. When something slips through, ask why it wasn't caught and add a
-prevention here — not just a one-off fix. See #65 for extended notes.
-
-1. **Test coverage** — gaps in unit tests; retroactive coverage for untested logic
-2. **Code patterns** — consistency across integrations (structure, naming, error handling)
-3. **Dependency health** — `uv run pip-audit`; flag any CVEs
-4. **Security posture** — timeouts on all HTTP calls; secrets not logged; `# nosec` justifications valid
-5. **Docs drift** — README / AGENTS.md / sidecar docs accurate and not duplicating each other
-6. **Stale comments** — no unresolved TODO/FIXME in source
-7. **CI/CD hygiene** — job permissions minimal; step names accurate; post-merge `main` runs passing clean
-8. **Branch ruleset integrity** — required status check names match actual CI job names in `ci.yml`:
-   ```
-   gh api repos/JasonPuglisi/e-note-ion/rulesets/13082160 --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'
-   ```
-9. **Integration test hygiene** — advisory CI job passing on `main`; GitHub environment secrets/vars match the lists above and in `ci.yml`; new integrations have `test_<name>_integration.py` and env vars in `tests/integrations/conftest.py`
-   - **`TRAKT_ACCESS_TOKEN` expires every ~90 days** — if the Trakt integration tests start failing with an auth error, copy the current `access_token` from `config.toml` (kept fresh by the prod refresh flow) into the `integration` environment secret
-   - **`GOOGLE_REFRESH_TOKEN`**: In Production mode (recommended), refresh tokens do not expire. In Testing mode, they expire after 7 days (Google-imposed constraint). The YouTube integration test obtains a fresh access token via refresh at runtime.
-10. **Issue hygiene**:
-    - Every open issue has at least one label and a milestone; no untriaged issues
-    - Blocking relationships explicit ("Blocked by #X" in body)
-    - Tracking issues have sub-issues linked (`gh api repos/JasonPuglisi/e-note-ion/issues/<n>/sub_issues`)
-    - Stale or superseded issues closed with a note
-    - Milestone assignments reflect current priorities (move issues between Next/Later as needed)
+Triggered by user request, before a minor/major release, or after a sprint of
+feature work. The full checklist + process lives in the `health-review` skill
+(`.agents/skills/health-review/SKILL.md`) — load it when running an audit. Past
+reviews have surfaced drift in code patterns, docs, dependency CVEs, and the
+issue tracker; the skill captures the prevention rules added in response.
 
 ### Planning before implementation
 
@@ -435,7 +301,9 @@ All non-trivial work follows a plan-then-execute cycle:
 
 1. **Create or identify a GitHub issue.** Assign to JasonPuglisi with a
    milestone. Read all existing comments before proceeding — blockers, prior
-   decisions, and context live there.
+   decisions, and context live there. Prefer GitHub's native **issue
+   dependencies** (Add dependency via the issue UI / `gh api`) over free-text
+   "Blocked by #N" — they update automatically and surface in the UI.
 2. **Post an implementation plan as a comment.** Cover: files and functions to
    change, approach with rationale, edge cases, open questions, and a
    **## Tests** section listing new and updated tests. Do this before any code.
@@ -455,19 +323,29 @@ step may be skipped — use judgement.
    real API before committing — unit test mocks cannot catch API contract
    mismatches. Use `config.toml` with real credentials and confirm the
    integration returns the expected output.
-4. If release-worthy (see below), bump `version` in `pyproject.toml` **in the
-   same commit as the source change** — never a follow-up PR. Rule of thumb:
-   if any `.py` or `.json` file is staged, check whether a bump is needed. Always stage
-   `uv.lock` alongside `pyproject.toml` to avoid pre-commit stash conflicts.
-5. Commit with `Co-Authored-By: Claude <model> <noreply@anthropic.com>`
-   (use your current model name, e.g. `Opus 4.6` or `Sonnet 4.6`;
+4. **Bundle opportunistic cleanups while already in-flight.** If you're already
+   making changes in a PR, take the opportunity to:
+   - Run `uv lock --upgrade` and pull in any clean dep updates (regardless of
+     whether a CVE forces it — see Maintenance § Dependency posture below)
+   - Address any small drift you notice in the files you're already touching
+   - Roll any blocking CVE fix into the same PR rather than spinning up a
+     separate small PR for it
+   The aim is fewer PRs that each carry meaningful change, not one-line PRs
+   that fragment the history.
+5. If release-worthy (see Release Strategy below), bump `version` in
+   `pyproject.toml` **in the same commit as the source change** — never a
+   follow-up PR. Rule of thumb: if any `.py` or `.json` file is staged, check
+   whether a bump is needed. Always stage `uv.lock` alongside `pyproject.toml`
+   to avoid pre-commit stash conflicts.
+6. Commit with `Co-Authored-By: Claude <model> <noreply@anthropic.com>`
+   (use your current model name, e.g. `Opus 4.7` or `Sonnet 4.6`;
    commits are auto-signed via `commit.gpgsign = true` in global git config)
-6. Verify signing succeeded: `git log -1 --show-signature` must show a valid signature before pushing
-7. `git push -u origin feat/description`
-8. `gh pr create --label <label> --assignee JasonPuglisi`
-9. Enable auto-merge: `gh pr merge --squash --delete-branch --auto`
-10. Wait for merge: `gh pr checks <number> --watch`; once all pass and the PR merges, proceed
-11. After merge: `git checkout main && git pull && git branch -d feat/description`;
+7. Verify signing succeeded: `git log -1 --show-signature` must show a valid signature before pushing
+8. `git push -u origin feat/description`
+9. `gh pr create --label <label> --assignee JasonPuglisi`
+10. Enable auto-merge: `gh pr merge --squash --delete-branch --auto`
+11. Wait for merge: `gh pr checks <number> --watch`; once all pass and the PR merges, proceed
+12. After merge: `git checkout main && git pull && git branch -d feat/description`;
     get merge SHA via `git rev-parse HEAD`; run `gh run list --branch main --commit <sha>`
     and watch all in-progress runs to completion (`gh run watch <id>`). This step is
     non-negotiable — run it even when PR checks looked clean.
@@ -475,13 +353,13 @@ step may be skipped — use judgement.
     "Analyze (actions)", "Analyze (python)", and "CodeQL" checks (GitHub's built-in
     code scanning — runs automatically, not defined in `ci.yml`).
     Advisory integration job may fail (missing secrets or API issue) — note but not a blocker.
-12. Keep `README.md` and `AGENTS.md` up to date as part of the same PR —
-    new env vars, CLI flags, content format fields, project structure changes,
-    and workflow changes should all be reflected before merge. When adding or
-    renaming a template in `content/contrib/`, update both the template mapping
-    table and the schedule map in `content/README.md` (enforced by CI via
-    `test_schedule_lint.py`)
-13. For any TODOs identified during work, create a GitHub issue assigned to
+13. Keep `README.md` and `AGENTS.md` (and any affected skill files) up to date
+    as part of the same PR — new env vars, CLI flags, content format fields,
+    project structure changes, and workflow changes should all be reflected
+    before merge. When adding or renaming a template in `content/contrib/`,
+    update both the template mapping table and the schedule map in
+    `content/README.md` (enforced by CI via `test_schedule_lint.py`)
+14. For any TODOs identified during work, create a GitHub issue assigned to
     JasonPuglisi with an appropriate milestone; reference the issue number in
     commit messages and PRs
 
@@ -498,6 +376,7 @@ PR contains **release-worthy** changes:
 | `Dockerfile` changes | Docs-only changes |
 | Security fixes | Repo config / tooling changes |
 |  | Test-only changes (`tests/`) |
+|  | Skill / agent doc changes (`.agents/skills/`) |
 
 Semver rules (strict post-1.0):
 - **Patch** (`x.y.z+1`): bug fixes, dependency updates, security fixes
@@ -533,7 +412,13 @@ Dependencies and pinned versions should be kept current:
   gh api repos/JasonPuglisi/e-note-ion/code-scanning/alerts --jq '.[] | select(.state=="open") | {rule: .rule.id, severity: .rule.severity, path: .most_recent_instance.location.path}'
   gh api repos/JasonPuglisi/e-note-ion/dependabot/alerts --jq '.[] | select(.state=="open") | {pkg: .security_vulnerability.package.name, severity: .security_advisory.severity, summary: .security_advisory.summary}'
   ```
-- **Dependabot PRs** (automated, weekly): review and merge PRs for pip
+- **Dependency posture**: be **opportunistic about upgrading**, regardless of
+  whether a CVE forces it. When already touching `pyproject.toml` or `uv.lock`
+  in any PR, run `uv lock --upgrade` and bundle the upgrades. Classification
+  (runtime vs dev) does not gate the upgrade decision — newer is preferred,
+  full stop. Verify with `uv run pytest` and `uv run pip-audit` before
+  committing.
+- **Dependabot PRs** (automated, weekly): review and merge PRs for `uv`
   dependencies and GitHub Actions SHA/version bumps; these are the primary
   update mechanism for both
 - **Pre-commit hooks**: run `uv run pre-commit autoupdate` monthly to update
@@ -560,7 +445,8 @@ and verify those channels during periodic health reviews.
 
 Every `content/contrib/<name>.json` must have a companion `content/contrib/<name>.md`.
 Use `content/contrib/TEMPLATE.md` as the starting point. After adding a new integration
-doc, add a row to the table in `content/README.md`.
+doc, add a row to the table in `content/README.md`. The full integration-authoring
+walkthrough lives in the `new-integration` skill.
 
 ## Content Design
 
@@ -582,13 +468,18 @@ template output, consult and follow both content docs:
 - Target 80 columns; up to 120 is acceptable when breaking would be awkward;
   past 120 only as a last resort
 - All `requests` calls must include `timeout=`
-- Suppress bandit findings with `# nosec BXXX` (include rule ID); never
-  suppress blindly
+- Suppress bandit findings with `# nosec BXXX — justification` (always include
+  rule ID AND a short reason); never suppress blindly
 - Integration modules must import `config` inside functions (not at module
   level) using the alias `import config as _config_mod` — consistent with
   `_public_mod` / `_quiet_mod` in `scheduler.py`. This keeps integrations
   importable in tests without a loaded config file.
+- Integration modules consistently alias shared modules: `import
+  integrations.vestaboard as _vb`, `import integrations.media as _media`,
+  `import scheduler as _sched`. Underscore-prefix the alias.
 - Runtime state modules (`public.py`, `quiet.py`) follow a symmetric API:
   `set_<name>(bool)` / `is_<name>()` with state persisted as a flat key under
   `[scheduler]` in `config.toml`. New runtime state modules should follow the
   same pattern.
+</content>
+</invoke>

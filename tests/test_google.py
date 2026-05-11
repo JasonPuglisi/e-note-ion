@@ -188,3 +188,107 @@ def test_ensure_authenticated_starts_thread_once() -> None:
     google._ensure_authenticated('scope')
     google._ensure_authenticated('scope')
     assert mock_thread.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# preflight — direct coverage (also exercised indirectly via youtube.preflight)
+# ---------------------------------------------------------------------------
+
+
+def test_preflight_with_no_token_starts_auth_flow(monkeypatch: pytest.MonkeyPatch) -> None:
+  """No stored access_token → preflight kicks off the device-code auth flow."""
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'google': {'client_id': 'x', 'client_secret': 'y'}})
+  with patch('integrations.google._ensure_authenticated') as mock_ensure:
+    google.preflight('test-scope')
+  mock_ensure.assert_called_once_with('test-scope')
+
+
+def test_preflight_with_valid_token_does_nothing() -> None:
+  """Token present and not near expiry → no auth flow, no refresh."""
+  with (
+    patch('integrations.google._ensure_authenticated') as mock_ensure,
+    patch('integrations.google._refresh_token') as mock_refresh,
+  ):
+    google.preflight('test-scope')  # autouse fixture sets expires_at = now + 3600
+  mock_ensure.assert_not_called()
+  mock_refresh.assert_not_called()
+
+
+def test_preflight_refreshes_near_expiry_token(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Token expiring in <300s → preflight proactively refreshes."""
+  import config as _config_mod
+
+  monkeypatch.setattr(
+    _config_mod,
+    '_config',
+    {
+      'google': {
+        'client_id': 'x',
+        'client_secret': 'y',
+        'access_token': 'old',
+        'refresh_token': 'r',
+        'expires_at': int(time.time()) + 60,  # 60s from expiry
+      }
+    },
+  )
+  with patch('integrations.google._refresh_token') as mock_refresh:
+    google.preflight('test-scope')
+  mock_refresh.assert_called_once()
+
+
+def test_preflight_refresh_failure_clears_tokens_and_starts_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Refresh fails → tokens cleared, auth flow restarted."""
+  import config as _config_mod
+
+  monkeypatch.setattr(
+    _config_mod,
+    '_config',
+    {
+      'google': {
+        'client_id': 'x',
+        'client_secret': 'y',
+        'access_token': 'old',
+        'refresh_token': 'r',
+        'expires_at': int(time.time()) + 60,
+      }
+    },
+  )
+  with (
+    patch(
+      'integrations.google._refresh_token',
+      side_effect=requests.HTTPError('refresh failed'),
+    ),
+    patch('integrations.google._clear_tokens') as mock_clear,
+    patch('integrations.google._ensure_authenticated') as mock_ensure,
+  ):
+    google.preflight('test-scope')
+  mock_clear.assert_called_once()
+  mock_ensure.assert_called_once_with('test-scope')
+
+
+def test_preflight_malformed_expires_at_returns_silently(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Non-integer expires_at (corrupt config) → bail out, don't crash."""
+  import config as _config_mod
+
+  monkeypatch.setattr(
+    _config_mod,
+    '_config',
+    {
+      'google': {
+        'client_id': 'x',
+        'client_secret': 'y',
+        'access_token': 'old',
+        'refresh_token': 'r',
+        'expires_at': 'not-a-number',
+      }
+    },
+  )
+  with (
+    patch('integrations.google._refresh_token') as mock_refresh,
+    patch('integrations.google._ensure_authenticated') as mock_ensure,
+  ):
+    google.preflight('test-scope')
+  mock_refresh.assert_not_called()
+  mock_ensure.assert_not_called()
