@@ -24,3 +24,9 @@ content/user/*
 
 # Runtime data (health event log, etc. — persisted via Docker volume)
 data/
+
+# Coverage tool output (pytest-cov)
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
