@@ -41,15 +41,21 @@ jobs:
         run: uv run bandit -c pyproject.toml -r .
 
       - name: pip-audit
-        # CVE-2026-4539: pygments ReDoS, dev-only, no fix available
-        # CVE-2026-3219: pip in build env, dev-only, no fix available
-        run: uv run pip-audit --ignore-vuln CVE-2026-4539 --ignore-vuln CVE-2026-3219
+        run: uv run pip-audit
 
       - name: Pretty-format JSON
         run: uv run pre-commit run pretty-format-json --all-files
 
-      - name: Run tests
-        run: uv run pytest
+      - name: Run tests with coverage
+        run: uv run pytest --cov --cov-report=term --cov-report=xml
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          retention-days: 7
 
   # Required by the main branch ruleset. If you rename this job, update the
   # ruleset at https://github.com/JasonPuglisi/e-note-ion/rules/13082160

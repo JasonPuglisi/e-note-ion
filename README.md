@@ -312,5 +312,9 @@ Required keys:
 | `DIVING_LON` | Station longitude |
 | `YNAB_API_KEY` | [app.ynab.com/settings/developer](https://app.ynab.com/settings/developer) → Personal Access Token |
 | `YNAB_BUDGET_ID` | Budget UUID from the YNAB web app URL |
+| `UPTIMEROBOT_API_KEY` | [uptimerobot.com/dashboard.php#mySettings](https://uptimerobot.com/dashboard.php#mySettings) → API Settings → Main API Key |
+| `GOOGLE_CLIENT_ID` | [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials) → OAuth 2.0 Client ID (TV/limited input device) |
+| `GOOGLE_CLIENT_SECRET` | Same OAuth client as above |
+| `GOOGLE_REFRESH_TOKEN` | Run YouTube auth flow once and copy from `config.toml` (Production OAuth mode → no expiry; Testing → 7-day) |
 
 `.env` is git-ignored — never commit it.

@@ -8,8 +8,11 @@ updates:
     # treats every .txt file in the repo as a pip requirements file and
     # chokes parsing LICENSE.txt. Exclude it explicitly until the upstream
     # fix (PR #14197) ships.
+    # NOTE: paths are repo-root-relative — leading slash is rejected by
+    # Dependabot's config validator (the waylay-sdk-py example with leading
+    # slash is wrong; ours uses the bare path).
     exclude-paths:
-      - "/LICENSE.txt"
+      - "LICENSE.txt"
     groups:
       all:
         patterns: ["*"]
