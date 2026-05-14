@@ -2419,7 +2419,7 @@ def test_known_integrations_covers_all_integration_modules() -> None:
   from pathlib import Path
 
   integrations_dir = Path(importlib.import_module('integrations').__file__).parent  # type: ignore[arg-type]
-  _util_modules = {'__init__', 'vestaboard', 'http', 'color', 'google', 'media', 'tmdb'}
+  _util_modules = {'__init__', 'vestaboard', 'http', 'color', 'google', 'media', 'tmdb', 'calendar_schedule'}
   modules = {p.stem for p in integrations_dir.glob('*.py') if p.stem not in _util_modules}
   missing = modules - _mod._KNOWN_INTEGRATIONS
   assert not missing, f'Integrations missing from _KNOWN_INTEGRATIONS: {missing}'
@@ -2814,3 +2814,125 @@ def test_board_showing_private_set_true_on_private_send() -> None:
     with pytest.raises(KeyboardInterrupt):
       _mod.worker()
   assert _mod._board_showing_private is True
+
+
+# --- _make_gated_enqueue ---
+
+
+def test_gated_enqueue_calls_through_when_open() -> None:
+  with (
+    patch('integrations.calendar_schedule.is_open', return_value=True),
+    patch.object(_mod, 'enqueue') as mock_enq,
+  ):
+    gated = _mod._make_gated_enqueue('bart.departures', 'bart')
+    gated(5, {'foo': 1}, 60, 60, 'contrib.bart.departures')
+  mock_enq.assert_called_once_with(5, {'foo': 1}, 60, 60, 'contrib.bart.departures')
+
+
+def test_gated_enqueue_drops_when_closed(caplog: pytest.LogCaptureFixture) -> None:
+  with (
+    patch('integrations.calendar_schedule.is_open', return_value=False),
+    patch.object(_mod, 'enqueue') as mock_enq,
+  ):
+    gated = _mod._make_gated_enqueue('bart.departures', 'bart')
+    with caplog.at_level('DEBUG'):
+      gated(5, {'foo': 1}, 60, 60, 'contrib.bart.departures')
+  mock_enq.assert_not_called()
+  assert 'suppressed by calendar_schedule' in caplog.text
+
+
+def test_load_file_registers_gated_enqueue(sched: BackgroundScheduler, tmp_path: Path) -> None:
+  """Cron jobs registered by _load_file go through the gate, not enqueue() directly."""
+  f = tmp_path / 'mytest.json'
+  f.write_text(json.dumps(_make_content()))
+  _mod._load_file(sched, f)
+  jobs = sched.get_jobs()
+  assert len(jobs) == 1
+  # The wrapped function is a closure named _gated, not the bare enqueue.
+  assert jobs[0].func is not _mod.enqueue
+  assert jobs[0].func.__name__ == '_gated'
+
+
+# --- _validate_calendar_schedule ---
+
+
+def test_validate_calendar_schedule_warns_on_unknown_entry(
+  sched: BackgroundScheduler,
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  caplog: pytest.LogCaptureFixture,
+) -> None:
+  import config as _config_mod
+
+  monkeypatch.setattr(
+    _config_mod,
+    '_config',
+    {'scheduler': {'calendar_schedule': {'gated_templates': ['nonexistent']}}},
+  )
+  user_dir = tmp_path / 'content' / 'user'
+  user_dir.mkdir(parents=True)
+  _make_file(user_dir, 'mytest.json')
+  monkeypatch.chdir(tmp_path)
+  with caplog.at_level('WARNING'):
+    _mod.load_content(sched, content_enabled=None)
+  assert 'gated_templates entry' in caplog.text
+  assert "'nonexistent'" in caplog.text
+
+
+def test_validate_calendar_schedule_accepts_stem_match(
+  sched: BackgroundScheduler,
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  caplog: pytest.LogCaptureFixture,
+) -> None:
+  import config as _config_mod
+
+  monkeypatch.setattr(
+    _config_mod,
+    '_config',
+    {'scheduler': {'calendar_schedule': {'gated_templates': ['mytest']}}},
+  )
+  user_dir = tmp_path / 'content' / 'user'
+  user_dir.mkdir(parents=True)
+  _make_file(user_dir, 'mytest.json')
+  monkeypatch.chdir(tmp_path)
+  with caplog.at_level('WARNING'):
+    _mod.load_content(sched, content_enabled=None)
+  assert 'gated_templates entry' not in caplog.text
+
+
+def test_validate_calendar_schedule_accepts_template_id_match(
+  sched: BackgroundScheduler,
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  caplog: pytest.LogCaptureFixture,
+) -> None:
+  import config as _config_mod
+
+  monkeypatch.setattr(
+    _config_mod,
+    '_config',
+    {'scheduler': {'calendar_schedule': {'gated_templates': ['mytest.tmpl']}}},
+  )
+  user_dir = tmp_path / 'content' / 'user'
+  user_dir.mkdir(parents=True)
+  _make_file(user_dir, 'mytest.json')
+  monkeypatch.chdir(tmp_path)
+  with caplog.at_level('WARNING'):
+    _mod.load_content(sched, content_enabled=None)
+  assert 'gated_templates entry' not in caplog.text
+
+
+def test_validate_calendar_schedule_no_op_when_section_absent(
+  sched: BackgroundScheduler,
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  caplog: pytest.LogCaptureFixture,
+) -> None:
+  user_dir = tmp_path / 'content' / 'user'
+  user_dir.mkdir(parents=True)
+  _make_file(user_dir, 'mytest.json')
+  monkeypatch.chdir(tmp_path)
+  with caplog.at_level('WARNING'):
+    _mod.load_content(sched, content_enabled=None)
+  assert 'gated_templates' not in caplog.text

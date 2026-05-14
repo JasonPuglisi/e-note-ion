@@ -134,6 +134,27 @@ Key `[scheduler]` settings:
 | `timezone` | system TZ | IANA timezone for cron job scheduling (e.g. `"America/Los_Angeles"`) |
 | `min_hold` | `60` | Minimum seconds any message stays on display before a high-priority (≥8) queued message can interrupt it. Set to `0` to disable (not recommended for physical displays). |
 
+### Calendar-driven gating
+
+Optionally let calendar events open or close template gates at runtime. When the
+gate is closed, the cron continues to fire but the enqueue is silently dropped
+until a covering event reopens it. The motivating use case: "show BART only on
+days I commute" — list `bart.departures` in `gated_templates`, then mark commute
+days on a calendar event with `vestaboard:bart.departures` in the description.
+
+Reuses the calendars already configured under `[calendar]` (both ICS and CalDAV).
+In any event description, write `vestaboard:<token>` keywords (one per line,
+case-insensitive). The token is a file stem (`bart`) or fully-qualified template
+id (`bart.departures`); prefix with `!` to deny instead of allow. Deny wins on
+conflict. Webhook and refresh enqueues are not gated — only cron firings are.
+
+```toml
+[scheduler.calendar_schedule]
+gated_templates = ["bart.departures"]   # closed by default; calendar opens
+```
+
+See `config.example.toml` for the full keyword grammar and edge cases.
+
 ## Health monitoring
 
 When the [webhook listener](#configuration) is enabled, a health endpoint is
