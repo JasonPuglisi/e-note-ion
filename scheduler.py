@@ -1106,6 +1106,31 @@ def _validate_template(name: str, template: dict[str, Any]) -> None:
     raise ValueError(f'{name}: integration_fn must be a string, got {integration_fn!r}')
 
 
+def _make_gated_enqueue(template_id: str, stem: str) -> Callable[..., None]:
+  """Wrap enqueue() with a calendar_schedule gate check.
+
+  The returned callable has the same signature as enqueue(). When the gate
+  is closed (calendar-driven override or [scheduler.calendar_schedule].gated_templates
+  default), the cron fire is silently dropped after a debug log.
+  """
+
+  def _gated(
+    priority: int,
+    data: dict[str, Any],
+    hold: int,
+    timeout: int,
+    name: str = '',
+  ) -> None:
+    import integrations.calendar_schedule as _cs
+
+    if not _cs.is_open(template_id, stem):
+      logger.debug('cron %s suppressed by calendar_schedule', name)
+      return
+    enqueue(priority, data, hold, timeout, name)
+
+  return _gated
+
+
 def _load_file(
   scheduler: BackgroundScheduler,
   content_file: Path,
@@ -1217,8 +1242,13 @@ def _load_file(
       data['refresh_interval'] = ri
     elif 'refresh_interval' in data:
       del data['refresh_interval']
+    # The gated-enqueue closure consults calendar_schedule before forwarding to
+    # enqueue(). Webhook-triggered and refresh-triggered enqueues bypass this
+    # entirely — only cron firings go through the gate.
+    template_id = f'{content_file.stem}.{template_name}'
+    gated = _make_gated_enqueue(template_id, content_file.stem)
     scheduler.add_job(
-      enqueue,
+      gated,
       trigger='cron',
       args=[priority, data, effective['hold'], effective['timeout'], job_id],
       id=job_id,
@@ -1305,6 +1335,46 @@ def load_content(
     found = user_stems | contrib_stems
     for stem in sorted(content_enabled - found):
       logger.warning('content file not found for enabled stem %r — check [scheduler] enabled in config.toml', stem)
+
+  _validate_calendar_schedule(scheduler)
+
+
+def _validate_calendar_schedule(scheduler: BackgroundScheduler) -> None:
+  """Warn about gated_templates entries that don't match any loaded template.
+
+  Each entry must be either a file stem (e.g. 'bart') or a fully-qualified
+  template id ('bart.departures'). Bare template names without a stem are
+  rejected — silent ambiguity in keyword-driven config is a footgun.
+  """
+  cs_cfg = _config_mod._config.get('scheduler', {}).get('calendar_schedule', {})
+  if not isinstance(cs_cfg, dict) or not cs_cfg:
+    return
+  raw = cs_cfg.get('gated_templates', [])
+  if not isinstance(raw, list):
+    logger.warning('calendar_schedule.gated_templates must be a list, got %r', raw)
+    return
+
+  loaded_stems: set[str] = set()
+  loaded_template_ids: set[str] = set()
+  for job in scheduler.get_jobs():
+    # job.id is '<dir>.<stem>.<template_name>' (e.g. 'contrib.bart.departures').
+    parts = job.id.split('.', 2)
+    if len(parts) == 3:
+      _, stem, template_name = parts
+      loaded_stems.add(stem)
+      loaded_template_ids.add(f'{stem}.{template_name}')
+
+  for entry in raw:
+    if not isinstance(entry, str):
+      logger.warning('calendar_schedule.gated_templates entry must be a string, got %r', entry)
+      continue
+    if entry in loaded_stems or entry in loaded_template_ids:
+      continue
+    logger.warning(
+      'calendar_schedule.gated_templates entry %r does not match any loaded '
+      'file stem or template id — entries must be "<stem>" or "<stem>.<template>"',
+      entry,
+    )
 
 
 def _validate_startup(config_path: Path) -> None:

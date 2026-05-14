@@ -87,6 +87,7 @@ integrations/http.py        # Shared HTTP helper with retry logic
 integrations/weather.py     # Current weather via Open-Meteo (no API key required)
 integrations/morning.py     # Morning weather visual grid (optional; falls back to sunrise)
 integrations/calendar.py    # Today's calendar events (ICS feeds + iCloud CalDAV)
+integrations/calendar_schedule.py # Calendar-driven gating for cron-triggered enqueues (vestaboard: keywords)
 integrations/bart.py        # BART real-time departures integration
 integrations/discogs.py     # Daily vinyl suggestion from Discogs collection
 integrations/google.py      # Shared Google OAuth 2.0 device code flow (used by youtube)

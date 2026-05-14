@@ -37,6 +37,34 @@
 # displays — flaps need time to settle). Default: 60.
 # min_hold = 60
 
+# ── Calendar-driven gating (optional) ──────────────────────────────────────────
+# Let calendar events open or close template gates. When the gate is closed for
+# a template, its cron continues to fire but the enqueue is silently dropped
+# until the gate reopens. Reuses the calendars configured under [calendar]
+# (both ICS and CalDAV) — no extra calendar setup.
+#
+# In the event description, write keywords (one per line, case-insensitive):
+#   vestaboard:bart                — open all templates in bart.json
+#   vestaboard:bart.departures     — open just bart.departures
+#   vestaboard:!discogs            — close all templates in discogs.json
+#   vestaboard:!youtube.live       — close just youtube.live
+#
+# Use cases:
+#   - "Show BART only on commute days" — list bart.departures in
+#     gated_templates, then mark commute days on a calendar event with
+#     "vestaboard:bart.departures" in the description.
+#   - "Suppress vinyl spin during focus blocks" — drop a focus event with
+#     "vestaboard:!discogs.morning_spin" in the description.
+#
+# Conflict resolution: deny wins. Specific template_id overrides win over
+# stem-level. Webhook and refresh enqueues are not gated — only cron firings.
+#
+# [scheduler.calendar_schedule]
+# # File stems or fully-qualified template ids that are closed by default.
+# # Unlisted templates remain open by default and can only be closed via a
+# # vestaboard:!name event.
+# gated_templates = ["bart.departures"]
+
 # ── Schedule overrides ─────────────────────────────────────────────────────────
 # Override schedule fields or visibility for any named template without editing
 # JSON. Section name: [<integration>.schedules.<template-name>]. All fields are
