@@ -957,6 +957,30 @@ def test_get_variables_calendar_skips_past_entries(
   assert result['episode_ref'] == [['S2E5']]
 
 
+def test_get_variables_calendar_missing_season_drops_prefix(
+  config_with_tokens: Path,
+) -> None:
+  """When upstream metadata has no season key, episode_ref becomes 'E<n>'."""
+  response = [
+    {
+      'first_aired': '2099-09-16T01:00:00.000Z',
+      'episode': {
+        'number': 5,
+        'title': 'The One With The Test',
+      },
+      'show': {'title': 'Great Show'},
+    }
+  ]
+  mock_response = MagicMock()
+  mock_response.status_code = 200
+  mock_response.json.return_value = response
+
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_response):
+    result = trakt.get_variables_calendar()
+
+  assert result['episode_ref'] == [['E5']]
+
+
 def test_get_variables_calendar_http_error_raised(
   config_with_tokens: Path,
 ) -> None:

@@ -2,6 +2,8 @@
 #
 # Shared media title utilities used by Plex and Trakt integrations.
 
+import integrations.vestaboard as _vb
+
 _LEADING_ARTICLES = ('THE ', 'AN ', 'A ')
 
 
@@ -20,8 +22,14 @@ def strip_leading_article_if_needed(title: str, max_width: int, prefix: str = ''
   return strip_leading_article(title)
 
 
-def format_episode_ref(season: int, episode: int) -> str:
-  """Return a compact episode ref, e.g. S9E8 (no zero-padding)."""
+def format_episode_ref(season: int | None, episode: int) -> str:
+  """Return a compact episode ref, e.g. S9E8 (no zero-padding).
+
+  When season is None, returns just E<n> — used when upstream metadata
+  lacks season info. Season 0 (specials) renders normally as S0E<n>.
+  """
+  if season is None:
+    return f'E{episode}'
   return f'S{season}E{episode}'
 
 
@@ -59,5 +67,5 @@ def wrap_title_to_rows(title: str, cols: int, max_rows: int) -> list[str]:
     rows.append(' '.join(current))
   if len(rows) > max_rows:
     rows = rows[:max_rows]
-    rows[-1] = rows[-1][: cols - 3].rstrip() + '...'
+    rows[-1] = _vb.trim_for_ellipsis(rows[-1][: cols - 3]) + '...'
   return rows

@@ -760,6 +760,16 @@ def test_handle_webhook_episode_keeps_article_when_it_fits() -> None:
   assert mock_enqueue.call_args.kwargs['data']['variables']['episode_line'] == [['S2E1 A NEW HOPE']]
 
 
+def test_handle_webhook_episode_missing_parent_index_drops_season() -> None:
+  """When Plex omits parentIndex, episode_line drops 'S<n>' and shows only E<n>."""
+  payload = _episode_payload('media.play', title='Pilot')
+  del payload['Metadata']['parentIndex']
+  with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+    _plex.handle_webhook(payload)
+    _fire_play_timer()
+  assert mock_enqueue.call_args.kwargs['data']['variables']['episode_line'] == [['E1 PILOT']]
+
+
 def test_handle_webhook_show_name_preserves_article() -> None:
   """Show names are NOT article-stripped — "THE BEAR" stays "THE BEAR"."""
   with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):

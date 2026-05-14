@@ -329,18 +329,19 @@ def _ensure_authenticated() -> None:
 def _canonicalize_episode(
   show_data: dict[str, Any],
   ep_data: dict[str, Any],
-) -> tuple[str, int, int, str]:
+) -> tuple[str, int | None, int, str]:
   """Return (show_name, season, number, ep_title) canonicalized via TMDb if configured.
 
   Uses the show's TMDb ID for the canonical title and the episode's TVDb ID to
   resolve the correct TMDb season/episode numbers (important for anime, where
   Trakt uses TVDb single-season ordering). Falls back to Trakt data if TMDb is
-  unconfigured or any lookup fails.
+  unconfigured or any lookup fails. Season may be None when upstream metadata
+  lacks season info — callers pass it through to format_episode_ref unchanged.
   """
   import integrations.tmdb as _tmdb
 
   title = show_data['title']
-  season: int = ep_data['season']
+  season: int | None = ep_data.get('season')
   number: int = ep_data['number']
   ep_title: str = ep_data.get('title') or ''
 

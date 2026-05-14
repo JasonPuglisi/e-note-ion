@@ -526,7 +526,7 @@ def _build_metadata(
       episode=metadata.get('index'),
     )
     show_name_rows = [_vb.truncate_line(raw_show.upper(), _vb.model.cols, 'ellipsis')]
-    episode_ref = _media.format_episode_ref(metadata['parentIndex'], metadata['index'])
+    episode_ref = _media.format_episode_ref(metadata.get('parentIndex'), metadata['index'])
     plex_ep_title = (metadata.get('title') or '').strip()
     episode_title = tmdb_ep_title or plex_ep_title
     episode_detail = _media.strip_leading_article_if_needed(episode_title.upper(), _vb.model.cols, f'{episode_ref} ')
