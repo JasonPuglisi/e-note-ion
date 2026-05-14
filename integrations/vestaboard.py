@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 _HOST = 'https://rw.vestaboard.com'
 
 
-def _get_headers() -> dict[str, str]:
+def _get_headers() -> dict[str, str | bytes]:
   """Return the auth headers for the Vestaboard API.
 
   Imports config inside the function so the module can be imported without a
@@ -343,8 +343,8 @@ def get_state(color: VestaboardColor = VestaboardColor.BLACK) -> VestaboardState
       )
     try:
       r.raise_for_status()
-    except requests.HTTPError as e:
-      raise requests.HTTPError(f'Vestaboard API error: {e.response.status_code} {e.response.reason}') from None
+    except requests.HTTPError:
+      raise requests.HTTPError(f'Vestaboard API error: {r.status_code} {r.reason}') from None
     return VestaboardState(r.json(), color)
   raise RuntimeError('unreachable')  # pragma: no cover
 
@@ -667,8 +667,8 @@ def set_state_raw(grid: list[list[int]]) -> None:
       )
     try:
       r.raise_for_status()
-    except requests.HTTPError as e:
-      raise requests.HTTPError(f'Vestaboard API error: {e.response.status_code} {e.response.reason}') from None
+    except requests.HTTPError:
+      raise requests.HTTPError(f'Vestaboard API error: {r.status_code} {r.reason}') from None
     return
 
 

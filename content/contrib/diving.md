@@ -62,8 +62,11 @@ ndbc_station_id = "46014"
 # longitude = -121.9
 
 # Unit system: "imperial" (ft, °F, default) or "metric" (m, °C).
-# Wind is always displayed in knots regardless of this setting.
 # units = "imperial"
+
+# Wind display unit: "knots" (default), "mph", or "kmh". Condition scoring
+# always uses knots internally — only the displayed wind value changes.
+# wind_units = "knots"
 
 # Date of the most recent dive — written by the webhook, or set manually.
 # Format: YYYY-MM-DD. The last_dive template shows once this is present.
@@ -76,6 +79,7 @@ ndbc_station_id = "46014"
 | `latitude` | Yes (if no NDBC) | Decimal latitude for Open-Meteo fallback |
 | `longitude` | Yes (if no NDBC) | Decimal longitude for Open-Meteo fallback |
 | `units` | No | `"imperial"` (default) or `"metric"` |
+| `wind_units` | No | `"knots"` (default), `"mph"`, or `"kmh"` — display only |
 | `last_dived_on` | No | Most recent dive date (`YYYY-MM-DD`); written by webhook |
 
 ## Webhook setup
@@ -138,18 +142,20 @@ with your webhook URL and the plaintext secret from the scheduler log.
 The header color square reflects subjective dive condition quality based on
 wave height and wind speed. The worst of the two determines the rating, with
 a period modifier that bumps marginal conditions to poor when waves are short
-and choppy (period / wave height < 2).
+and choppy (period / wave height < 1.5).
 
 | Color | Wave height | Wind speed |
 |---|---|---|
-| 🟩 Green | ≤ 2 ft | ≤ 10 kt |
-| 🟨 Yellow | ≤ 4 ft | ≤ 20 kt |
-| 🟥 Red | > 4 ft | > 20 kt |
+| 🟩 Green | ≤ 3 ft | ≤ 12 kt |
+| 🟨 Yellow | ≤ 5 ft | ≤ 20 kt |
+| 🟥 Red | > 5 ft | > 20 kt |
 
-Thresholds are based on recreational dive operator consensus. Conditions that
-are yellow by height and wind but have a period-to-height ratio below 2 are
-shown as red (e.g. 3 ft waves at 5s period). Yellow is shown when key data
-fields are unavailable.
+Thresholds are based on recreational dive operator consensus: 3 ft is the
+beginner-friendly upper bound, 5 ft is the typical op-cancel zone, and 20 kt
+matches the NWS Small Craft Advisory lower bound. Conditions that are yellow
+by height and wind but have a period-to-height ratio below 1.5 are shown as
+red (e.g. 3 ft waves at 4s period). Yellow is shown when key data fields are
+unavailable.
 
 ## Keeping data current
 

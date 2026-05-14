@@ -186,7 +186,7 @@ def get_variables() -> dict[str, list[list[str]]]:
     release = releases[index]
 
   except requests.RequestException as e:
-    if isinstance(e, requests.HTTPError):
+    if isinstance(e, requests.HTTPError) and e.response is not None:
       msg = f'Discogs API error: {e.response.status_code} {e.response.reason}'
     else:
       msg = str(e)

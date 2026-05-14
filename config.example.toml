@@ -142,8 +142,11 @@ token = "your-discogs-personal-access-token"
 # longitude = -121.9
 
 # Unit system: "imperial" (ft, °F, default) or "metric" (m, °C).
-# Wind is always displayed in knots regardless of this setting.
 # units = "imperial"
+
+# Wind display unit: "knots" (default), "mph", or "kmh". Condition scoring
+# always uses knots internally — only the displayed wind value changes.
+# wind_units = "knots"
 
 # Date of the most recent dive — written by the diving webhook, or
 # set manually. Format: YYYY-MM-DD. Shows daily at 10am when present.
