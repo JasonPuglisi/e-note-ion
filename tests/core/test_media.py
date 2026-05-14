@@ -17,6 +17,16 @@ def test_format_episode_ref_single_digit_each() -> None:
   assert media.format_episode_ref(1, 1) == 'S1E1'
 
 
+def test_format_episode_ref_missing_season_drops_prefix() -> None:
+  # When upstream metadata has no season info, render as E<n> only.
+  assert media.format_episode_ref(None, 5) == 'E5'
+
+
+def test_format_episode_ref_season_zero_renders_normally() -> None:
+  # Season 0 is the universal "Specials" designator — it's real data.
+  assert media.format_episode_ref(0, 5) == 'S0E5'
+
+
 # --- strip_leading_article ---
 
 
@@ -113,6 +123,17 @@ def test_wrap_title_overflows_two_rows_ellipsis_on_last_kept_row() -> None:
   assert result[0] == 'WORDS WORDS'
   assert result[1].endswith('...')
   assert len(result[1]) <= 15
+
+
+def test_wrap_title_overflow_strips_trailing_separator_before_ellipsis() -> None:
+  # When the final kept row's truncation point lands on a separator, the
+  # separator should be stripped so the ellipsis reads cleanly.
+  # cols=10, max_rows=1, so first row is truncated to 7 chars + '...'.
+  # 'FOO - BAR BAZ QUX' truncated to 7 chars = 'FOO - B' → strip trailing
+  # 'B' is kept, but try a phrase where the cut lands right after ' - '.
+  # 'FOO -  EXTRA STUFF' → first 7 chars = 'FOO -  ' → strip to 'FOO' → 'FOO...'
+  result = media.wrap_title_to_rows('FOO -  EXTRA STUFF MORE', 10, 1)
+  assert result == ['FOO...']
 
 
 def test_wrap_title_single_word_too_long_hard_cuts() -> None:

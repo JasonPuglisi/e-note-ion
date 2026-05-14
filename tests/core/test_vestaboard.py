@@ -162,6 +162,45 @@ def test_truncate_ellipsis_strips_trailing_space() -> None:
   assert vb.truncate_line('HELLO WORLD', 9, 'ellipsis') == 'HELLO...'
 
 
+def test_truncate_ellipsis_strips_trailing_hyphen() -> None:
+  # 'FOO - BAR' truncated to 8 chars (5+3): hard-cut to 'FOO - ' → strip ' - '
+  assert vb.truncate_line('FOO - BAR EXTRA', 8, 'ellipsis') == 'FOO...'
+
+
+def test_truncate_ellipsis_strips_trailing_colon() -> None:
+  # 'FOO: BAR' truncated to 8 chars (5+3): hard-cut to 'FOO: ' → strip ': '
+  assert vb.truncate_line('FOO: BAR EXTRA', 8, 'ellipsis') == 'FOO...'
+
+
+def test_truncate_ellipsis_strips_trailing_comma() -> None:
+  assert vb.truncate_line('FOO, BAR EXTRA', 8, 'ellipsis') == 'FOO...'
+
+
+def test_truncate_ellipsis_strips_trailing_semicolon() -> None:
+  assert vb.truncate_line('FOO; BAR EXTRA', 8, 'ellipsis') == 'FOO...'
+
+
+def test_truncate_ellipsis_strips_trailing_em_dash() -> None:
+  # em-dash counts as one display char
+  assert vb.truncate_line('FOO—BAR EXTRA', 7, 'ellipsis') == 'FOO...'
+
+
+def test_truncate_ellipsis_strips_trailing_apostrophe() -> None:
+  # Cut lands after a closing apostrophe — strip it so '...' reads cleanly.
+  # target=9 (12-3): keeps "SAID 'HI'", trim drops trailing apostrophe.
+  assert vb.truncate_line("SAID 'HI' AGAIN", 12, 'ellipsis') == "SAID 'HI..."
+
+
+def test_truncate_ellipsis_strips_trailing_double_quote() -> None:
+  assert vb.truncate_line('SAID "HI" AGAIN', 12, 'ellipsis') == 'SAID "HI...'
+
+
+def test_truncate_ellipsis_preserves_period() -> None:
+  # Period is intentionally excluded from the trim set so abbreviations like
+  # 'U.S.' aren't mangled. Result keeps the period; user sees four dots total.
+  assert vb.truncate_line('U.S. ARMY GUYS', 7, 'ellipsis') == 'U.S....'
+
+
 def test_truncate_ellipsis_no_word_backtrack() -> None:
   # ellipsis must NOT backtrack to the word boundary — result is longer than word cut
   word_result = vb.truncate_line('HELLO WORLD', 10, 'word')

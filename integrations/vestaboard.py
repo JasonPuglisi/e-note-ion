@@ -469,6 +469,20 @@ def display_len(text: str) -> int:
   return count
 
 
+# Trailing chars stripped before appending '...' on ellipsis truncation.
+# Includes separator punctuation (hyphen, colon, comma, semicolon, en/em dash),
+# quotes (a cut after a closing quote reads as '... '... '), and whitespace.
+# Sentence terminators (. ! ?) are intentionally excluded — stripping them
+# would mangle valid abbreviations like 'U.S.', and a finished sentence
+# followed by truncation is rare in this codebase's content formats.
+_ELLIPSIS_TRIM_CHARS = ' \t-:,;\'"–—'
+
+
+def trim_for_ellipsis(s: str) -> str:
+  """Strip trailing whitespace and separator punctuation before appending '...'."""
+  return s.rstrip(_ELLIPSIS_TRIM_CHARS)
+
+
 def truncate_line(
   text: str,
   max_cols: int,
@@ -503,7 +517,7 @@ def truncate_line(
     i += consumed
     count += tok_display
   if strategy == 'ellipsis':
-    return ''.join(result).rstrip() + '...'
+    return trim_for_ellipsis(''.join(result)) + '...'
   if strategy == 'hard' or last_word_end < 0:
     return ''.join(result)
   # If the loop exited right at a word boundary (next char is a space or end
