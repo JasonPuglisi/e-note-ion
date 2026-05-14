@@ -179,11 +179,9 @@ def _geocode(city_query: str, country_code: str | None) -> tuple[float, float, s
     raise IntegrationDataUnavailableError(f'Weather: geocoding request failed — {e}') from None
   try:
     r.raise_for_status()
-  except requests.HTTPError as e:
-    logger.warning('Weather: geocoding error %d %s', e.response.status_code, e.response.reason)
-    raise IntegrationDataUnavailableError(
-      f'Weather geocoding error: {e.response.status_code} {e.response.reason}'
-    ) from None
+  except requests.HTTPError:
+    logger.warning('Weather: geocoding error %d %s', r.status_code, r.reason)
+    raise IntegrationDataUnavailableError(f'Weather geocoding error: {r.status_code} {r.reason}') from None
 
   results = r.json().get('results', [])
   if not results:

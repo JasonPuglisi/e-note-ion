@@ -28,7 +28,9 @@
 #
 # Optional config.toml keys:
 #   units         — "imperial" (ft, °F, default) or "metric" (m, °C).
-#                   Wind is always displayed in knots regardless of this setting.
+#   wind_units    — "knots" (default), "mph", or "kmh". Controls only the
+#                   displayed wind value; condition scoring stays in knots
+#                   internally (the thresholds are anchored to marine norms).
 #   last_dived_on — YYYY-MM-DD date of the most recent dive, written by the
 #                   webhook handler. Can also be set manually.
 
@@ -54,15 +56,19 @@ _CACHE_TTL = 3600
 _cache: CacheEntry | None = None
 
 # Condition scoring thresholds based on recreational dive operator consensus.
-# Wave height in feet, wind speed in knots.
-_WAVE_GREEN_FT = 2.0
-_WAVE_YELLOW_FT = 4.0
-_WIND_GREEN_KT = 10.0
+# Wave height in feet, wind speed in knots. Wave green ≤ 3 ft matches the
+# beginner-friendly upper bound; yellow ≤ 5 ft is the typical op-cancel zone.
+# Wind green ≤ 12 kt accommodates routine "easy day" anecdotes; yellow ≤ 20 kt
+# is anchored to the NWS Small Craft Advisory lower bound.
+_WAVE_GREEN_FT = 3.0
+_WAVE_YELLOW_FT = 5.0
+_WIND_GREEN_KT = 12.0
 _WIND_YELLOW_KT = 20.0
 
 # Period-to-height ratio below which a choppy sea bumps the rating one step
-# worse (e.g. 3 ft waves at 5s period: ratio 1.7 < 2.0 → bump to red).
-_PERIOD_RATIO_THRESHOLD = 2.0
+# worse (e.g. 3 ft waves at 4s period: ratio 1.33 < 1.5 → bump). Aligned with
+# the "uncomfortable choppy" cutoff in NJ Scuba's period heuristic.
+_PERIOD_RATIO_THRESHOLD = 1.5
 
 _CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
 
@@ -75,12 +81,13 @@ def _degrees_to_cardinal(deg: float) -> str:
 def _fmt_wave(m: float, units: str) -> str:
   """Format wave/swell height with unit suffix.
 
-  Uses one decimal place below 10 and no decimal at or above 10 to keep the
-  string within 6 characters (e.g. '9.9FT', '10FT', '1.2M', '10M').
+  Imperial rounds to whole feet — sub-foot precision sits below NDBC's ±0.2 m
+  (~0.7 ft) accuracy spec and just adds noise on a split-flap display.
+  Metric keeps one decimal below 10 m, since 1 m of resolution is meaningful
+  where 1 ft isn't (a meter is ~3.3 ft).
   """
   if units == 'imperial':
-    ft = m * 3.28084
-    return f'{ft:.0f}FT' if ft >= 10 else f'{ft:.1f}FT'
+    return f'{round(m * 3.28084)}FT'
   return f'{m:.0f}M' if m >= 10 else f'{m:.1f}M'
 
 
@@ -91,9 +98,18 @@ def _fmt_temp(c: float, units: str) -> str:
   return f'{round(c)}C'
 
 
-def _fmt_wind_kt(ms: float) -> str:
-  """Convert m/s wind speed to knots and format with KT suffix."""
-  return f'{round(ms * 1.94384)}KT'
+# Multiplier from m/s and display suffix for each supported wind_units value.
+_WIND_UNITS: dict[str, tuple[float, str]] = {
+  'knots': (1.94384, 'KT'),
+  'mph': (2.23694, 'MPH'),
+  'kmh': (3.6, 'KMH'),
+}
+
+
+def _fmt_wind(ms: float, wind_units: str) -> str:
+  """Convert m/s wind speed to the configured unit and format with a suffix."""
+  multiplier, suffix = _WIND_UNITS[wind_units]
+  return f'{round(ms * multiplier)}{suffix}'
 
 
 def _condition_color(
@@ -265,6 +281,10 @@ def get_variables() -> dict[str, list[list[str]]]:
 
   station_id = _config_mod.get_optional('diving', 'ndbc_station_id')
   units = _config_mod.get_optional('diving', 'units') or 'imperial'
+  wind_units = _config_mod.get_optional('diving', 'wind_units') or 'knots'
+  if wind_units not in _WIND_UNITS:
+    logger.warning('Dive conditions: unknown wind_units %r — falling back to knots', wind_units)
+    wind_units = 'knots'
 
   if _cache is not None and _cache.is_valid(_CACHE_TTL):
     logger.debug('Dive conditions: cache hit')
@@ -299,8 +319,8 @@ def get_variables() -> dict[str, list[list[str]]]:
   period = f'{round(data["period_s"])}S' if data['period_s'] is not None else '--'
   swell = f'SWELL {wave} {period}'
 
-  # Wind row: speed in knots and cardinal direction.
-  wind_spd = _fmt_wind_kt(data['wind_speed_ms']) if data['wind_speed_ms'] is not None else '--'
+  # Wind row: speed in configured unit and cardinal direction.
+  wind_spd = _fmt_wind(data['wind_speed_ms'], wind_units) if data['wind_speed_ms'] is not None else '--'
   wind_dir = _degrees_to_cardinal(data['wind_dir_deg']) if data['wind_dir_deg'] is not None else '--'
   wind = f'WIND {wind_spd} {wind_dir}'
 

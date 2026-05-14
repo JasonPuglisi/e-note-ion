@@ -112,8 +112,8 @@ def _refresh_token() -> None:
   )
   try:
     r.raise_for_status()
-  except requests.HTTPError as e:
-    raise requests.HTTPError(f'Trakt token refresh failed: {e.response.status_code} {e.response.reason}') from None
+  except requests.HTTPError:
+    raise requests.HTTPError(f'Trakt token refresh failed: {r.status_code} {r.reason}') from None
   _store_tokens(r.json())
   logger.debug('Trakt: token refreshed successfully')
 
@@ -437,7 +437,7 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
       r = fetch_with_retry('GET', url, headers=_request_headers(token, client_id), timeout=10)
     r.raise_for_status()
   except requests.RequestException as e:
-    if isinstance(e, requests.HTTPError):
+    if isinstance(e, requests.HTTPError) and e.response is not None:
       msg = f'Trakt calendar API error: {e.response.status_code} {e.response.reason}'
     else:
       msg = str(e)
@@ -549,10 +549,8 @@ def get_variables_watching() -> dict[str, list[list[str]]]:
 
   try:
     r.raise_for_status()
-  except requests.HTTPError as e:
-    raise IntegrationDataUnavailableError(
-      f'Trakt watching API error: {e.response.status_code} {e.response.reason}'
-    ) from None
+  except requests.HTTPError:
+    raise IntegrationDataUnavailableError(f'Trakt watching API error: {r.status_code} {r.reason}') from None
 
   data = r.json()
   media_type = data.get('type')
@@ -611,7 +609,7 @@ def get_variables_next_up() -> dict[str, list[list[str]]]:
       r = fetch_with_retry('GET', watched_url, headers=_request_headers(token, client_id), timeout=10)
     r.raise_for_status()
   except requests.RequestException as e:
-    if isinstance(e, requests.HTTPError):
+    if isinstance(e, requests.HTTPError) and e.response is not None:
       msg = f'Trakt watched/shows API error: {e.response.status_code} {e.response.reason}'
     else:
       msg = str(e)
@@ -634,7 +632,7 @@ def get_variables_next_up() -> dict[str, list[list[str]]]:
         r2 = fetch_with_retry('GET', progress_url, headers=_request_headers(token, client_id), timeout=10)
       r2.raise_for_status()
     except requests.RequestException as e:
-      if isinstance(e, requests.HTTPError):
+      if isinstance(e, requests.HTTPError) and e.response is not None:
         msg = f'Trakt progress API error: {e.response.status_code} {e.response.reason}'
       else:
         msg = str(e)

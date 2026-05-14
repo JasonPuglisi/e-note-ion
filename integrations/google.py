@@ -81,8 +81,8 @@ def _refresh_token() -> None:
   )
   try:
     r.raise_for_status()
-  except requests.HTTPError as e:
-    raise requests.HTTPError(f'Google token refresh failed: {e.response.status_code} {e.response.reason}') from None
+  except requests.HTTPError:
+    raise requests.HTTPError(f'Google token refresh failed: {r.status_code} {r.reason}') from None
   _store_tokens(r.json())
   logger.debug('Google: token refreshed successfully')
 

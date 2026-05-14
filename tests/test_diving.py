@@ -63,9 +63,12 @@ def test_degrees_to_cardinal(deg: float, expected: str) -> None:
 @pytest.mark.parametrize(
   'meters,units,expected',
   [
-    (0.5, 'imperial', '1.6FT'),
-    (1.5, 'imperial', '4.9FT'),
-    (3.05, 'imperial', '10FT'),  # >= 10ft → no decimal
+    # Imperial rounds to whole feet — sub-foot precision is noise on the buoy.
+    (0.5, 'imperial', '2FT'),  # 1.64 ft → 2
+    (1.5, 'imperial', '5FT'),  # 4.92 ft → 5
+    (3.05, 'imperial', '10FT'),  # 10.00 ft → 10
+    (0.1, 'imperial', '0FT'),  # 0.33 ft → 0 — confirmed acceptable
+    # Metric keeps one decimal below 10 m — 1 m would be too coarse.
     (0.5, 'metric', '0.5M'),
     (9.5, 'metric', '9.5M'),
     (10.0, 'metric', '10M'),  # >= 10m → no decimal
@@ -94,20 +97,33 @@ def test_fmt_temp(celsius: float, units: str, expected: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# _fmt_wind_kt
+# _fmt_wind
 # ---------------------------------------------------------------------------
 
 
-def test_fmt_wind_kt_converts_from_ms() -> None:
-  # 5.144 m/s ≈ 10 kt
-  result = dc._fmt_wind_kt(5.144)
-  assert result == '10KT'
-
-
-def test_fmt_wind_kt_rounds() -> None:
-  result = dc._fmt_wind_kt(10.0)
-  assert result.endswith('KT')
-  assert result[:-2].isdigit()
+@pytest.mark.parametrize(
+  'ms,wind_units,expected',
+  [
+    # calm (1 m/s)
+    (1.0, 'knots', '2KT'),
+    (1.0, 'mph', '2MPH'),
+    (1.0, 'kmh', '4KMH'),
+    # breezy (5 m/s)
+    (5.0, 'knots', '10KT'),
+    (5.0, 'mph', '11MPH'),
+    (5.0, 'kmh', '18KMH'),
+    # blustery (10 m/s)
+    (10.0, 'knots', '19KT'),
+    (10.0, 'mph', '22MPH'),
+    (10.0, 'kmh', '36KMH'),
+    # gale (20 m/s)
+    (20.0, 'knots', '39KT'),
+    (20.0, 'mph', '45MPH'),
+    (20.0, 'kmh', '72KMH'),
+  ],
+)
+def test_fmt_wind(ms: float, wind_units: str, expected: str) -> None:
+  assert dc._fmt_wind(ms, wind_units) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -120,35 +136,48 @@ def test_fmt_wind_kt_rounds() -> None:
   [
     # Both clearly green
     (0.3, 2.0, 14.0, '[G]'),  # 1ft wave, 4kt wind
-    # Wave marginal, wind green → yellow
-    (0.9, 2.0, 14.0, '[Y]'),  # 3ft wave, 4kt wind
-    # Wind marginal, wave green → yellow
+    # Wave marginal (>3ft), wind green → yellow
+    (1.1, 2.0, 14.0, '[Y]'),  # 3.6ft wave, 4kt wind
+    # Wind marginal (>12kt), wave green → yellow
     (0.3, 7.7, 14.0, '[Y]'),  # 1ft wave, 15kt wind
     # Both marginal → yellow
-    (0.9, 7.7, 14.0, '[Y]'),  # 3ft wave, 15kt wind
-    # Wave red → red
-    (1.8, 2.0, 14.0, '[R]'),  # 6ft wave, 4kt wind
-    # Wind red → red
+    (1.1, 7.7, 14.0, '[Y]'),  # 3.6ft wave, 15kt wind
+    # Wave red (>5ft) → red
+    (1.8, 2.0, 14.0, '[R]'),  # 5.9ft wave, 4kt wind
+    # Wind red (>20kt) → red
     (0.3, 12.9, 14.0, '[R]'),  # 1ft wave, 25kt wind
     # Both red → red
     (1.8, 12.9, 14.0, '[R]'),
     # Period modifier: green wave+wind but choppy period → yellow
-    # 0.45m ≈ 1.5ft; period 2.0s; ratio 2.0/1.5 = 1.33 < 2.0 → bump green→yellow
+    # 0.45m ≈ 1.5ft; period 2.0s; ratio 2.0/1.5 = 1.33 < 1.5 → bump green→yellow
     (0.45, 2.0, 2.0, '[Y]'),
     # Period modifier: yellow → red
-    # 0.9m ≈ 3ft; period 5s; ratio 5/3 ≈ 1.67 < 2.0 → bump yellow→red
-    (0.9, 2.0, 5.0, '[R]'),
+    # 1.1m ≈ 3.6ft; period 5s; ratio 5/3.6 ≈ 1.39 < 1.5 → bump yellow→red
+    (1.1, 2.0, 5.0, '[R]'),
     # Period modifier: already red → stays red (no over-bump)
     (1.8, 2.0, 2.0, '[R]'),
-    # Period ratio exactly at threshold (= 2.0) → no bump
-    # 0.60m ≈ 1.97ft; period 4s; ratio 4/1.97 ≈ 2.03, not < 2.0 → no bump (green)
-    (0.60, 2.0, 4.0, '[G]'),
+    # Period ratio exactly at threshold (= 1.5) → no bump
+    # 0.60m ≈ 1.97ft; period 3s; ratio 3/1.97 ≈ 1.52, not < 1.5 → no bump (green)
+    (0.60, 2.0, 3.0, '[G]'),
     # Missing wave data → yellow
     (None, 5.0, 14.0, '[Y]'),
     # Missing wind data → yellow
     (0.5, None, 14.0, '[Y]'),
     # Missing period → no modifier applied
     (0.3, 2.0, None, '[G]'),
+    # Validation rows from the threshold-change plan (regression coverage):
+    # 0.85m ≈ 2.8ft, 12s, 8kt — typical "easy" day under new thresholds
+    # (would have been yellow under the old 2ft wave threshold).
+    (0.85, 4.1, 12.0, '[G]'),
+    # 0.9m ≈ 2.95ft, 12s, 11.7kt — both axes near the new green ceiling
+    # (would have been yellow under both old 2ft and old 10kt thresholds).
+    (0.9, 6.0, 12.0, '[G]'),
+    # 1.5m ≈ 4.9ft, 8s, 15kt — bumpy but fine; ratio 1.63 > 1.5 → no bump.
+    (1.5, 7.7, 8.0, '[Y]'),
+    # 1.5m ≈ 4.9ft, 6s, 15kt — short-period chop; ratio 1.22 < 1.5 → Y→R.
+    (1.5, 7.7, 6.0, '[R]'),
+    # 1.8m ≈ 5.9ft regardless of period — wave alone is red.
+    (1.8, 2.0, 14.0, '[R]'),
   ],
 )
 def test_condition_color(
@@ -305,7 +334,7 @@ def test_cache_hit_avoids_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
 
   monkeypatch.setattr(_config_mod, '_config', _patched_config())
 
-  cached_value: dict = {'header': [['[G] WATER 55F']], 'swell': [['SWELL 1.5FT 14S']], 'wind': [['WIND 10KT W']]}
+  cached_value: dict = {'header': [['[G] WATER 55F']], 'swell': [['SWELL 5FT 14S']], 'wind': [['WIND 10KT W']]}
   dc._cache = dc.CacheEntry(cached_value)  # type: ignore[attr-defined]
 
   with patch('integrations.diving.fetch_with_retry') as mock_fetch:
@@ -342,7 +371,7 @@ def test_expired_cache_fetches_fresh(monkeypatch: pytest.MonkeyPatch) -> None:
 
   monkeypatch.setattr(_config_mod, '_config', _patched_config())
 
-  stale_value: dict = {'header': [['[G] WATER 55F']], 'swell': [['SWELL 1.5FT 14S']], 'wind': [['WIND 10KT W']]}
+  stale_value: dict = {'header': [['[G] WATER 55F']], 'swell': [['SWELL 5FT 14S']], 'wind': [['WIND 10KT W']]}
   dc._cache = dc.CacheEntry(stale_value)  # type: ignore[attr-defined]
   # Force the cache to appear expired.
   dc._cache.cached_at = time.monotonic() - dc._CACHE_TTL - 1
@@ -367,7 +396,7 @@ def test_stale_cache_served_on_fetch_failure(monkeypatch: pytest.MonkeyPatch) ->
 
   monkeypatch.setattr(_config_mod, '_config', _patched_config())
 
-  stale_value: dict = {'header': [['[Y] WATER 55F']], 'swell': [['SWELL 1.5FT 14S']], 'wind': [['WIND 10KT W']]}
+  stale_value: dict = {'header': [['[Y] WATER 55F']], 'swell': [['SWELL 5FT 14S']], 'wind': [['WIND 10KT W']]}
   dc._cache = dc.CacheEntry(stale_value)  # type: ignore[attr-defined]
   dc._cache.cached_at = time.monotonic() - dc._CACHE_TTL - 1
 
@@ -481,22 +510,78 @@ def test_get_variables_missing_data_shows_placeholder(monkeypatch: pytest.Monkey
   dc._cache = None
 
 
-def test_get_variables_wind_always_in_knots(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_variables_wind_units_default_is_knots(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  for units in ('imperial', 'metric'):
-    monkeypatch.setattr(_config_mod, '_config', _patched_config(units=units))
-    dc._cache = None
+  monkeypatch.setattr(_config_mod, '_config', _patched_config())
+  dc._cache = None
 
-    mock_resp = MagicMock()
-    mock_resp.text = _NDBC_SAMPLE
-    mock_resp.raise_for_status = MagicMock()
+  mock_resp = MagicMock()
+  mock_resp.text = _NDBC_SAMPLE
+  mock_resp.raise_for_status = MagicMock()
 
+  with patch('integrations.diving.fetch_with_retry', return_value=mock_resp):
+    result = dc.get_variables()
+
+  assert 'KT' in result['wind'][0][0]
+  dc._cache = None
+
+
+@pytest.mark.parametrize(
+  'wind_units,suffix',
+  [
+    ('mph', 'MPH'),
+    ('kmh', 'KMH'),
+  ],
+)
+def test_get_variables_uses_configured_wind_units(
+  monkeypatch: pytest.MonkeyPatch, wind_units: str, suffix: str
+) -> None:
+  import config as _config_mod
+
+  monkeypatch.setattr(
+    _config_mod,
+    '_config',
+    {'diving': {'ndbc_station_id': '46042', 'units': 'imperial', 'wind_units': wind_units}},
+  )
+  dc._cache = None
+
+  mock_resp = MagicMock()
+  mock_resp.text = _NDBC_SAMPLE
+  mock_resp.raise_for_status = MagicMock()
+
+  with patch('integrations.diving.fetch_with_retry', return_value=mock_resp):
+    result = dc.get_variables()
+
+  assert suffix in result['wind'][0][0]
+  dc._cache = None
+
+
+def test_get_variables_invalid_wind_units_falls_back(
+  monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+  import logging
+
+  import config as _config_mod
+
+  monkeypatch.setattr(
+    _config_mod,
+    '_config',
+    {'diving': {'ndbc_station_id': '46042', 'units': 'imperial', 'wind_units': 'furlongs'}},
+  )
+  dc._cache = None
+
+  mock_resp = MagicMock()
+  mock_resp.text = _NDBC_SAMPLE
+  mock_resp.raise_for_status = MagicMock()
+
+  with caplog.at_level(logging.WARNING, logger='integrations.diving'):
     with patch('integrations.diving.fetch_with_retry', return_value=mock_resp):
       result = dc.get_variables()
 
-    assert 'KT' in result['wind'][0][0], f'wind should be in KT for units={units}'
-    dc._cache = None
+  assert 'KT' in result['wind'][0][0]
+  assert any('unknown wind_units' in r.message for r in caplog.records)
+  dc._cache = None
 
 
 def test_get_variables_missing_lat_lon_raises(monkeypatch: pytest.MonkeyPatch) -> None:
