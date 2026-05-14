@@ -95,9 +95,15 @@ When a calendar color is present (auto-detected or configured), each event
 line is prefixed with the corresponding Vestaboard color square:
 
 ```
-[B] 14:30 TEAM MEETING
+[B] 30M TEAM MEETING
 [G] PROJECT DEADLINE
 ```
+
+Timed events show a relative-time bucket instead of an absolute clock time:
+`NOW` for in-progress or imminent events (within 2.5 minutes), `{N}M` for
+events less than an hour away (rounded to the nearest 5 minutes), and `{N}H`
+for events an hour or more away (rounded to the nearest hour). All-day events
+have no time prefix.
 
 The nearest Vestaboard color is chosen by Euclidean distance in RGB space from
 the calendar's hex color value.

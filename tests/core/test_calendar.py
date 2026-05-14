@@ -142,8 +142,9 @@ def test_get_variables_returns_events_key(ical_config_ics: None) -> None:
   assert len(result['events'][0]) >= 1
 
 
-def test_get_variables_24h_time_format(ical_config_ics: None) -> None:
-  # Event at 14:30 UTC on the same day as _FIXED_NOW (noon UTC).
+def test_get_variables_no_absolute_time(ical_config_ics: None) -> None:
+  """Timed events render relative buckets, not HH:MM clock times."""
+  # Event at 14:30 UTC on the same day as _FIXED_NOW (noon UTC) — 2h30m ahead.
   start = _FIXED_NOW.replace(hour=14, minute=30, second=0, microsecond=0)
   end = start + timedelta(hours=1)
   ics = _make_ics([{'SUMMARY': 'DENTIST', 'DTSTART': start, 'DTEND': end}])
@@ -154,8 +155,92 @@ def test_get_variables_24h_time_format(ical_config_ics: None) -> None:
         result = calendar.get_variables()
 
   lines = result['events'][0]
-  assert any('14:30' in line for line in lines), f'Expected 14:30 in lines: {lines}'
+  assert not any('14:30' in line for line in lines), f'No HH:MM expected: {lines}'
   assert not any('AM' in line or 'PM' in line for line in lines)
+  # 2h30m → round-to-nearest-hour banker's; with half-up rounding → 3H.
+  assert any('3H' in line for line in lines), f'Expected 3H bucket: {lines}'
+
+
+def test_get_variables_relative_time_in_event_line(ical_config_ics: None) -> None:
+  """End-to-end: an event 2h ahead renders as '2H' in the line."""
+  ics = _make_ics([_future_event('DENTIST', hours_ahead=2)])
+  with patch('integrations.calendar._fetch_ics_bytes', return_value=ics):
+    with patch('integrations.calendar._display_tz', return_value=_UTC):
+      with patch('integrations.calendar._get_now', return_value=_FIXED_NOW):
+        result = calendar.get_variables()
+  lines = result['events'][0]
+  assert any('2H DENTIST' in line for line in lines), f'Expected "2H DENTIST": {lines}'
+
+
+# ── _format_time_bucket ────────────────────────────────────────────────────────
+
+
+def test_format_time_bucket_now_in_progress() -> None:
+  """Event currently in progress → NOW."""
+  start = _FIXED_NOW - timedelta(minutes=30)
+  end = _FIXED_NOW + timedelta(minutes=30)
+  assert calendar._format_time_bucket(start, _FIXED_NOW, end) == 'NOW'
+
+
+def test_format_time_bucket_now_point_event_no_end() -> None:
+  """Point event (no DTEND) with start <= now → NOW."""
+  start = _FIXED_NOW - timedelta(minutes=1)
+  assert calendar._format_time_bucket(start, _FIXED_NOW, None) == 'NOW'
+
+
+def test_format_time_bucket_now_imminent() -> None:
+  """Event 1 minute away → NOW (within 2.5min window)."""
+  start = _FIXED_NOW + timedelta(minutes=1)
+  end = start + timedelta(hours=1)
+  assert calendar._format_time_bucket(start, _FIXED_NOW, end) == 'NOW'
+
+
+def test_format_time_bucket_now_at_boundary() -> None:
+  """Event exactly 2.5 minutes away → NOW."""
+  start = _FIXED_NOW + timedelta(minutes=2, seconds=30)
+  end = start + timedelta(hours=1)
+  assert calendar._format_time_bucket(start, _FIXED_NOW, end) == 'NOW'
+
+
+@pytest.mark.parametrize(
+  'minutes_ahead,expected',
+  [
+    (3, '5M'),
+    (5, '5M'),
+    (7, '5M'),
+    (8, '10M'),
+    (12, '10M'),
+    (27, '25M'),
+    (28, '30M'),
+    (30, '30M'),
+    (57, '55M'),
+  ],
+)
+def test_format_time_bucket_minutes_5min_rounding(minutes_ahead: int, expected: str) -> None:
+  """Minute bucket rounds to nearest 5 between (2.5, 57.5) minutes."""
+  start = _FIXED_NOW + timedelta(minutes=minutes_ahead)
+  end = start + timedelta(hours=1)
+  assert calendar._format_time_bucket(start, _FIXED_NOW, end) == expected
+
+
+@pytest.mark.parametrize(
+  'minutes_ahead,expected',
+  [
+    (58, '1H'),
+    (60, '1H'),
+    (89, '1H'),
+    (90, '2H'),
+    (119, '2H'),
+    (120, '2H'),
+    (150, '3H'),
+    (240, '4H'),
+  ],
+)
+def test_format_time_bucket_hour_rounding(minutes_ahead: int, expected: str) -> None:
+  """Hour bucket rounds to nearest hour at >= 57.5 minutes."""
+  start = _FIXED_NOW + timedelta(minutes=minutes_ahead)
+  end = start + timedelta(hours=2)
+  assert calendar._format_time_bucket(start, _FIXED_NOW, end) == expected
 
 
 def test_get_variables_all_day_no_time_prefix(ical_config_ics: None) -> None:

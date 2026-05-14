@@ -210,10 +210,31 @@ def _event_end(component: Component, tz: Any, start: datetime) -> datetime | Non
   return None
 
 
-def _format_event(component: Component, tz: Any, color_tag: str | None) -> str | None:
+def _format_time_bucket(start: datetime, now: datetime, end: datetime | None) -> str:
+  """Return a relative-time bucket label for a timed event.
+
+  Buckets:
+    NOW   — event is in progress (start <= now < end, or end is None and
+            start <= now), or starts within 2.5 minutes.
+    {N}M  — starts in (2.5, 57.5) minutes, rounded to the nearest 5 (5M..55M).
+    {N}H  — starts in >= 57.5 minutes, rounded to the nearest hour.
+  """
+  if start <= now and (end is None or end > now):
+    return 'NOW'
+  total_min = (start - now).total_seconds() / 60
+  if total_min <= 2.5:
+    return 'NOW'
+  rounded_5 = int(total_min / 5 + 0.5) * 5
+  if rounded_5 < 60:
+    return f'{rounded_5}M'
+  return f'{int(total_min / 60 + 0.5)}H'
+
+
+def _format_event(component: Component, tz: Any, now: datetime, color_tag: str | None) -> str | None:
   """Format a VEVENT component as a single display line, or None to skip.
 
-  Timed events: '[TAG ]HH:MM TITLE'
+  Timed events: '[TAG ]BUCKET TITLE' where BUCKET is a relative-time label
+  ('NOW', '5M', '30M', '1H', '4H', ...). See `_format_time_bucket`.
   All-day events: '[TAG ]TITLE'
 
   Returns None if the event has no SUMMARY or is CANCELLED.
@@ -231,7 +252,8 @@ def _format_event(component: Component, tz: Any, color_tag: str | None) -> str |
     return f'{prefix}{title}'
 
   start = _event_start(component, tz)
-  return f'{prefix}{start.strftime("%H:%M")} {title}'
+  end = _event_end(component, tz, start)
+  return f'{prefix}{_format_time_bucket(start, now, end)} {title}'
 
 
 # ── ICS mode ───────────────────────────────────────────────────────────────────
@@ -749,7 +771,7 @@ def _sort_and_format(
       if end is not None and end < now:
         continue
 
-    line = _format_event(component, tz, color_tag)
+    line = _format_event(component, tz, now, color_tag)
     if line is not None:
       lines.append(line)
 
