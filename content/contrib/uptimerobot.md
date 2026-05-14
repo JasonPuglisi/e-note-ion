@@ -51,20 +51,34 @@ within the free tier limit.
 ```
 [R] OUTAGE
 API.EXAMPLE.COM
-DOWN 14 MIN
+DOWN 15 MINUTES
 ```
 
 - Row 1: `[R]` red square + `OUTAGE`
-- Row 2: Friendly name of the monitor that has been down longest (truncated
-  with ellipsis if needed)
-- Row 3: Elapsed downtime since first detection
+- Row 2: Friendly name of the monitor whose outage started earliest
+  (truncated with ellipsis if needed)
+- Row 3: Elapsed downtime, sourced from the UptimeRobot API's latest down
+  log so it reflects the true outage start (survives restarts)
+
+Duration formatting uses a single unit, rounded down, with coarser steps as
+the outage ages — keeps the display readable and reduces flap updates:
+
+| Elapsed | Output |
+|---|---|
+| `< 60 s` | `0 MINUTES` |
+| `1–9 min` | `N MINUTE` / `N MINUTES` (per-minute) |
+| `10–59 min` | `N MINUTES` rounded down to nearest 5 |
+| `1–23 hr` | `N HOUR` / `N HOURS` |
+| `≥ 24 hr` | `N DAY` / `N DAYS` |
 
 When all monitors recover, the template is silently skipped and normal
 content resumes on the next cycle.
 
 ## API details
 
-**Endpoint:** `POST https://api.uptimerobot.com/v2/getMonitors`
+**Endpoint:** `POST https://api.uptimerobot.com/v2/getMonitors` with
+`logs=1, logs_limit=1` so the latest log entry per monitor (used to derive
+true outage start) is included.
 **Auth:** API key sent as a form parameter in the POST body.
 **Rate limit:** 10 req/min (free plan); 5000 req/min (Pro plan).
 

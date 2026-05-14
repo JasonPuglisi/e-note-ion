@@ -38,30 +38,62 @@ _DOWN_STATUSES = frozenset({_STATUS_SEEMS_DOWN, _STATUS_DOWN})
 _CACHE_TTL = 30
 _cache: CacheEntry | None = None
 
-# Tracks when each monitor was first observed as down (monotonic clock).
-# Used to compute elapsed downtime for the display. Ephemeral — lost on
-# restart; duration resets to 0 on the next detection.
+# Fallback: tracks first-observation time (wall clock) for down monitors when
+# the API's log data is missing or unparseable. Normally the API provides the
+# actual outage start via logs[0].datetime, which survives restarts.
 _first_seen_down: dict[int, float] = {}
+
+# UptimeRobot log entry types.
+_LOG_TYPE_DOWN = 1
 
 
 def _fmt_duration(seconds: int) -> str:
-  """Format a duration in seconds for display (fits 15-col Note row)."""
+  """Format an outage duration for display.
+
+  Single-unit, rounded-down. Steps coarsen as duration grows to keep the
+  display readable and reduce flap updates on long outages:
+    < 60 s         → '0 MINUTES'
+    < 10 min       → 'N MINUTE' / 'N MINUTES' (per-minute)
+    < 60 min       → 'N MINUTES' rounded down to nearest 5
+    < 24 hr        → 'N HOUR' / 'N HOURS' (rounded down)
+    >= 24 hr       → 'N DAY' / 'N DAYS' (rounded down)
+  Longest output 'N MINUTES' fits 15-col Note with 'DOWN ' prefix.
+  """
   if seconds < 0:
     seconds = 0
   if seconds < 60:
-    return f'{seconds} SEC'
-  if seconds < 3600:
-    return f'{seconds // 60} MIN'
-  hours = seconds // 3600
+    return '0 MINUTES'
+  mins = seconds // 60
+  if mins < 10:
+    return '1 MINUTE' if mins == 1 else f'{mins} MINUTES'
+  if mins < 60:
+    return f'{(mins // 5) * 5} MINUTES'
+  hours = mins // 60
   if hours < 24:
-    mins = (seconds % 3600) // 60
-    return f'{hours}H {mins}M' if mins else f'{hours} HR'
+    return '1 HOUR' if hours == 1 else f'{hours} HOURS'
   days = hours // 24
-  return f'{days} DAY' if days == 1 else f'{days} DAYS'
+  return '1 DAY' if days == 1 else f'{days} DAYS'
+
+
+def _outage_start(monitor: dict[str, Any], mid: int, now: float) -> float:
+  """Return the Unix timestamp when this monitor's current outage began.
+
+  Prefers the most recent type=1 log entry's `datetime` field (true start,
+  survives process restarts). Falls back to first-observation time when the
+  API omits logs or the entry is unparseable.
+  """
+  logs = monitor.get('logs') or []
+  if logs and logs[0].get('type') == _LOG_TYPE_DOWN:
+    dt = logs[0].get('datetime')
+    if isinstance(dt, (int, float)) and dt > 0:
+      return float(dt)
+  if mid not in _first_seen_down:
+    _first_seen_down[mid] = now
+  return _first_seen_down[mid]
 
 
 def _fetch_monitors() -> list[dict[str, Any]]:
-  """Fetch all monitors from the UptimeRobot API.
+  """Fetch all monitors (with latest log) from the UptimeRobot API.
 
   Returns the list of monitor dicts from the response. Raises
   IntegrationDataUnavailableError on API errors.
@@ -74,7 +106,12 @@ def _fetch_monitors() -> list[dict[str, Any]]:
     r = fetch_with_retry(
       'POST',
       _API_URL,
-      data={'api_key': api_key, 'format': 'json'},
+      data={
+        'api_key': api_key,
+        'format': 'json',
+        'logs': '1',
+        'logs_limit': '1',
+      },
       timeout=10,
     )
     r.raise_for_status()
@@ -103,33 +140,32 @@ def get_variables() -> dict[str, list[list[str]]]:
     return _cache.value
 
   monitors = _fetch_monitors()
+  now = time.time()
 
-  # Find monitors in down state.
-  current_down: dict[int, str] = {}
+  # Find monitors in down state and resolve outage start for each.
+  down_starts: dict[int, float] = {}
+  down_names: dict[int, str] = {}
   for m in monitors:
-    status = m.get('status', 0)
-    if status in _DOWN_STATUSES:
-      current_down[int(m['id'])] = str(m.get('friendly_name', '')).strip()
+    if m.get('status', 0) not in _DOWN_STATUSES:
+      continue
+    mid = int(m['id'])
+    down_names[mid] = str(m.get('friendly_name', '')).strip()
+    down_starts[mid] = _outage_start(m, mid, now)
 
-  if not current_down:
-    # All monitors up — clean up tracking state.
+  if not down_names:
+    # All monitors up — clean up fallback tracking state.
     _first_seen_down.clear()
     raise IntegrationDataUnavailableError('UptimeRobot: all monitors up', expected=True)
 
-  # Track first-seen time for newly down monitors.
-  now = time.monotonic()
-  for mid in current_down:
-    if mid not in _first_seen_down:
-      _first_seen_down[mid] = now
-  # Clean up monitors that recovered.
+  # Clean up fallback entries for monitors that recovered.
   for mid in list(_first_seen_down):
-    if mid not in current_down:
+    if mid not in down_names:
       del _first_seen_down[mid]
 
-  # Show the monitor that has been down the longest.
-  longest_id = min(_first_seen_down, key=lambda k: _first_seen_down[k])
-  display_name = _vb.truncate_line(current_down[longest_id].upper(), _vb.model.cols, 'ellipsis')
-  duration = int(now - _first_seen_down[longest_id])
+  # Show the monitor whose outage started earliest.
+  longest_id = min(down_starts, key=lambda k: down_starts[k])
+  display_name = _vb.truncate_line(down_names[longest_id].upper(), _vb.model.cols, 'ellipsis')
+  duration = int(now - down_starts[longest_id])
 
   result: dict[str, list[list[str]]] = {
     'monitor': [[display_name]],
