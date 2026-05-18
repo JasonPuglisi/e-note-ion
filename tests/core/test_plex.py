@@ -1039,18 +1039,19 @@ def _episode_payload_with_imdb_guid(imdb_id: str, show: str = 'Jujutsu Kaisen') 
 
 
 def test_handle_webhook_episode_uses_tmdb_episode_title(monkeypatch: pytest.MonkeyPatch) -> None:
-  """TMDb episode title is used instead of Plex's native episode title."""
+  """TMDb episode title and canonical S/E replace Plex's native metadata."""
   monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
   monkeypatch.setattr(_tmdb, 'find_episode_by_tvdb_id', lambda tvdb_id: (1, 51, 'Perfect Preparation', 95479, 6827061))
+  # No type-6 episode group — fall back to TMDb base S/E (1, 51).
+  monkeypatch.setattr(_tmdb, 'get_episode_group_position', lambda show_id, ep_id: None)
   monkeypatch.setattr(_tmdb, 'get_show_title', lambda show_id: 'Jujutsu Kaisen')
 
   with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
     _plex.handle_webhook(_episode_payload_with_guid(tvdb_id=11547510, show='JUJUTSU KAISEN'))
     _fire_play_timer()
 
-  # S/E ref is always from Plex metadata (parentIndex=1, index=3 in the fixture);
-  # only the episode title comes from TMDb.
-  assert mock_enqueue.call_args.kwargs['data']['variables']['episode_line'] == [['S1E3 PERFECT PREPARATION']]
+  # S/E now comes from TMDb (canonical), not Plex's parentIndex/index.
+  assert mock_enqueue.call_args.kwargs['data']['variables']['episode_line'] == [['S1E51 PERFECT PREPARATION']]
 
 
 def test_handle_webhook_episode_falls_back_to_plex_title_when_no_tmdb_ep_title(
@@ -1060,6 +1061,7 @@ def test_handle_webhook_episode_falls_back_to_plex_title_when_no_tmdb_ep_title(
   monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
   # empty string title from TMDb (episode exists but title not yet filled in)
   monkeypatch.setattr(_tmdb, 'find_episode_by_tvdb_id', lambda tvdb_id: (1, 3, '', 40290, 99001))
+  monkeypatch.setattr(_tmdb, 'get_episode_group_position', lambda show_id, ep_id: None)
   monkeypatch.setattr(_tmdb, 'get_show_title', lambda show_id: 'MasterChef')
 
   with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
@@ -1071,7 +1073,7 @@ def test_handle_webhook_episode_falls_back_to_plex_title_when_no_tmdb_ep_title(
 
 
 def test_handle_webhook_episode_uses_imdb_fallback_when_no_tvdb_guid(monkeypatch: pytest.MonkeyPatch) -> None:
-  """When no tvdb:// guid is present, imdb:// is tried and the TMDb title is used."""
+  """When no tvdb:// guid is present, imdb:// is tried and TMDb canonical S/E is used."""
   monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
   imdb_calls: list[str] = []
 
@@ -1081,6 +1083,7 @@ def test_handle_webhook_episode_uses_imdb_fallback_when_no_tvdb_guid(monkeypatch
 
   monkeypatch.setattr(_tmdb, 'find_episode_by_tvdb_id', lambda tvdb_id: None)
   monkeypatch.setattr(_tmdb, 'find_episode_by_imdb_id', _mock_find_imdb)
+  monkeypatch.setattr(_tmdb, 'get_episode_group_position', lambda show_id, ep_id: None)
   monkeypatch.setattr(_tmdb, 'get_show_title', lambda show_id: 'Jujutsu Kaisen')
 
   with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
@@ -1089,7 +1092,8 @@ def test_handle_webhook_episode_uses_imdb_fallback_when_no_tvdb_guid(monkeypatch
 
   assert imdb_calls == ['tt39370459']
   assert mock_enqueue.call_args.kwargs['data']['variables']['show_name'] == [['JUJUTSU KAISEN']]
-  assert mock_enqueue.call_args.kwargs['data']['variables']['episode_line'] == [['S3E4 PERFECT PREPARATION']]
+  # S/E from TMDb canonical (1, 51), not Plex parentIndex=3/index=4.
+  assert mock_enqueue.call_args.kwargs['data']['variables']['episode_line'] == [['S1E51 PERFECT PREPARATION']]
 
 
 def test_handle_webhook_episode_falls_back_when_no_tvdb_and_no_imdb_guid(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1184,3 +1188,63 @@ def test_handle_webhook_episode_uses_episode_group_fallback_when_base_lookup_fai
   # "A" leading article stripped; "an" preserved mid-title
   ep_line = mock_enqueue.call_args.kwargs['data']['variables']['episode_line']
   assert ep_line == [['S2E7 GRAVESTONE AND AN AUTUMNAL JOURNEY']]
+
+
+def test_handle_webhook_episode_tvdb_uses_episode_group_for_broadcast_season(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  """For anime with TVDb flat numbering, TMDb type-6 group remaps S/E to broadcast season.
+
+  Mirrors the Re:Zero scenario: Plex sends parentIndex=1, index=73 (flat TVDb
+  numbering); TMDb's base data also flat-files the episode at S1E73; the
+  type-6 episode group splits it into Season 4 episode 7 of the real
+  broadcast. Display must render the broadcast S/E, not the flat one.
+  """
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_tmdb, 'find_episode_by_tvdb_id', lambda tvdb_id: (1, 73, 'Episode 73', 65942, 7130064))
+  monkeypatch.setattr(_tmdb, 'get_episode_group_position', lambda show_id, ep_id: (4, 7))
+  monkeypatch.setattr(_tmdb, 'get_show_title', lambda show_id: 'Re:ZERO')
+
+  payload = {
+    'event': 'media.play',
+    'Metadata': {
+      'type': 'episode',
+      'grandparentTitle': 'Re:ZERO',
+      'parentIndex': 1,
+      'index': 73,
+      'title': 'Episode 73',
+      'Guid': [{'id': 'tvdb://11714309'}],
+    },
+  }
+  with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+    _plex.handle_webhook(payload)
+    _fire_play_timer()
+
+  ep_line = mock_enqueue.call_args.kwargs['data']['variables']['episode_line']
+  assert ep_line == [['S4E7 EPISODE 73']]
+
+
+def test_handle_webhook_episode_no_guid_no_tmdb_resolution_keeps_plex_se(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  """When TMDb resolves nothing, fall back to Plex's parentIndex/index for S/E."""
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_tmdb, 'find_episode_by_imdb_id', lambda imdb_id: None)
+  monkeypatch.setattr(_tmdb, 'search_show_by_title', lambda title: None)
+
+  payload = {
+    'event': 'media.play',
+    'Metadata': {
+      'type': 'episode',
+      'grandparentTitle': 'Some Show',
+      'parentIndex': 2,
+      'index': 5,
+      'title': 'Pilot',
+      'Guid': [{'id': 'tmdb://12345'}],  # only tmdb://, no tvdb:// or imdb://
+    },
+  }
+  with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+    _plex.handle_webhook(payload)
+    _fire_play_timer()
+
+  assert mock_enqueue.call_args.kwargs['data']['variables']['episode_line'] == [['S2E5 PILOT']]

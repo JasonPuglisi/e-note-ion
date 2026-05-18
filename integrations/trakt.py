@@ -458,7 +458,13 @@ def get_variables_calendar() -> dict[str, list[list[str]]]:
   if not future_entries:
     raise IntegrationDataUnavailableError('No upcoming episodes in calendar window', expected=True)
 
-  future_entries.sort(key=lambda e: e['first_aired'])
+  # Tiebreaker: when first_aired matches, prefer canonical (season != 0) over
+  # Season 0 specials. Anime shows like Re:Zero list parallel "Break Time"
+  # companion shorts in S0 with the same air date as the canonical broadcast
+  # episode; the specials carry no tvdb/imdb IDs and can't be canonicalized,
+  # so they'd render as 'S0Ex' if they win the sort. Specials still surface
+  # when they're the only entry in the window.
+  future_entries.sort(key=lambda e: (e['first_aired'], e['episode'].get('season') == 0))
   entry = future_entries[0]
 
   ep = entry['episode']
@@ -644,6 +650,18 @@ def get_variables_next_up() -> dict[str, list[list[str]]]:
 
     ep = r2.json().get('next_episode')
     if ep is not None:
+      # Skip Season 0 specials that lack tvdb/imdb episode IDs needed for
+      # canonicalization. Without them the special would render as raw 'S0Ex'.
+      # See _canonicalize_episode for the lookup chain; this mirrors the
+      # calendar's preference for canonical episodes over specials.
+      if ep.get('season') == 0:
+        ep_ids = ep.get('ids') or {}
+        if not ep_ids.get('tvdb') and not ep_ids.get('imdb'):
+          logger.debug(
+            'Trakt: next-up for %s is un-canonicalizable S0 special — skipping',
+            entry['show']['title'],
+          )
+          continue
       # Skip episodes that haven't aired yet — the user can't watch them.
       first_aired = ep.get('first_aired')
       if not first_aired:

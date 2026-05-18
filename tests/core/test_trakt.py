@@ -957,6 +957,77 @@ def test_get_variables_calendar_skips_past_entries(
   assert result['episode_ref'] == [['S2E5']]
 
 
+def test_get_variables_calendar_prefers_canonical_over_special_on_tie(
+  config_with_tokens: Path,
+) -> None:
+  """When two entries share first_aired, the canonical (season != 0) wins.
+
+  Reproduces the Re:Zero scenario: Trakt's calendar returns both an S0 special
+  and the canonical S1 episode for the same air date. The special carries no
+  tvdb/imdb episode IDs and would render as 'S0Ex', so the tiebreaker must
+  prefer the canonical entry.
+  """
+  response = [
+    {
+      'first_aired': '2099-09-16T01:00:00.000Z',
+      'episode': {
+        'season': 0,
+        'number': 73,
+        'title': 'Break Time',
+        'ids': {'tvdb': None, 'imdb': None, 'tmdb': 7284163},
+      },
+      'show': {'title': 'Re:Zero'},
+    },
+    {
+      'first_aired': '2099-09-16T01:00:00.000Z',
+      'episode': {
+        'season': 1,
+        'number': 73,
+        'title': 'Episode 73',
+        'ids': {'tvdb': 11714309, 'imdb': 'tt41799460', 'tmdb': 7130064},
+      },
+      'show': {'title': 'Re:Zero'},
+    },
+  ]
+  mock_response = MagicMock()
+  mock_response.status_code = 200
+  mock_response.json.return_value = response
+
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_response):
+    result = trakt.get_variables_calendar()
+
+  # Canonical S1 wins regardless of Trakt's array order; canonicalization is
+  # untouched by TMDb mocks in this test, so episode_ref stays at S1E73.
+  assert result['episode_ref'] == [['S1E73']]
+  assert result['episode_title'] == [['EPISODE 73']]
+
+
+def test_get_variables_calendar_falls_through_to_special_when_only_entry(
+  config_with_tokens: Path,
+) -> None:
+  """If only an S0 special is in the window, it still surfaces (no regression)."""
+  response = [
+    {
+      'first_aired': '2099-09-16T01:00:00.000Z',
+      'episode': {
+        'season': 0,
+        'number': 12,
+        'title': 'Halloween Special',
+        'ids': {'tvdb': None, 'imdb': None},
+      },
+      'show': {'title': 'Specials Only'},
+    },
+  ]
+  mock_response = MagicMock()
+  mock_response.status_code = 200
+  mock_response.json.return_value = response
+
+  with patch('integrations.trakt.fetch_with_retry', return_value=mock_response):
+    result = trakt.get_variables_calendar()
+
+  assert result['episode_ref'] == [['S0E12']]
+
+
 def test_get_variables_calendar_missing_season_drops_prefix(
   config_with_tokens: Path,
 ) -> None:
@@ -1555,6 +1626,57 @@ def test_get_variables_next_up_skips_no_air_date(config_with_tokens: Path) -> No
     result = trakt.get_variables_next_up()
 
   assert result['show_name'] == [['THE WIRE']]
+
+
+def test_get_variables_next_up_skips_uncanonicalizable_s0_special(config_with_tokens: Path) -> None:
+  """A Season 0 next_episode with no tvdb/imdb IDs is skipped to the next show.
+
+  Mirrors the calendar's preference for canonical episodes over un-canonicalizable
+  specials. Without the skip, the special would render as raw 'S0Ex'.
+  """
+  watched = _mock_watched_ok(_WATCHED_SHOWS_RESPONSE)
+  progress_s0_special = _mock_progress_ok(
+    {
+      'next_episode': {
+        'season': 0,
+        'number': 12,
+        'title': 'Break Time',
+        'first_aired': '2000-01-01T00:00:00.000Z',
+        'ids': {'tvdb': None, 'imdb': None, 'tmdb': 7284163},
+      }
+    }
+  )
+  progress_canonical = _mock_progress_ok(_PROGRESS_WITH_NEXT)
+
+  with patch('integrations.trakt.fetch_with_retry', side_effect=[watched, progress_s0_special, progress_canonical]):
+    result = trakt.get_variables_next_up()
+
+  assert result['show_name'] == [['THE WIRE']]
+  assert result['episode_ref'] == [['S3E1']]
+
+
+def test_get_variables_next_up_keeps_s0_special_with_tvdb_id(config_with_tokens: Path) -> None:
+  """A Season 0 next_episode WITH a tvdb id passes through (TMDb can canonicalize)."""
+  watched = _mock_watched_ok([_WATCHED_SHOWS_RESPONSE[0]])
+  progress_s0_with_tvdb = _mock_progress_ok(
+    {
+      'next_episode': {
+        'season': 0,
+        'number': 5,
+        'title': 'Pilot Special',
+        'first_aired': '2000-01-01T00:00:00.000Z',
+        'ids': {'tvdb': 12345, 'imdb': None, 'tmdb': 67890},
+      }
+    }
+  )
+
+  with patch('integrations.trakt.fetch_with_retry', side_effect=[watched, progress_s0_with_tvdb]):
+    result = trakt.get_variables_next_up()
+
+  # No TMDb mock — _canonicalize_episode preserves Trakt S/E, so this still
+  # renders as S0E5; the point is the entry was NOT skipped.
+  assert result['show_name'] == [['BREAKING BAD']]
+  assert result['episode_ref'] == [['S0E5']]
 
 
 def test_get_variables_next_up_all_unaired_raises_unavailable(config_with_tokens: Path) -> None:
