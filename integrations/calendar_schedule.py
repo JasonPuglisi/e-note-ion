@@ -161,6 +161,9 @@ def _refresh(now: datetime | None = None) -> None:
   tz = _config_mod.get_timezone()
   if now is None:
     now = _cal._get_now(tz)
+  # Promote None to local tzinfo so downstream event helpers produce aware
+  # datetimes — matches the convention in calendar.get_variables.
+  tz = tz or now.tzinfo
 
   events = _fetch_active_events(now, tz)
   resolved = _resolve_overrides(events)

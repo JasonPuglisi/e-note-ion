@@ -316,3 +316,48 @@ def test_recurring_weekday_only_today() -> None:
   today_evening = _NOW.replace(hour=10, minute=0)
   ev = _make_event(description='vestaboard:bart.departures', start=today_morning, end=today_evening)
   assert cs._resolve_overrides([ev]) == {'bart.departures': True}
+
+
+# ── tz=None config + all-day CalDAV event (regression for #556) ───────────────
+
+
+def test_refresh_resolves_all_day_caldav_event_with_unset_timezone(
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  # Regression: when [scheduler].timezone is unset, get_timezone() returns
+  # None. _refresh must promote tz to now.tzinfo before downstream event
+  # helpers run, or _is_active_now compares naive (constructed from
+  # tzinfo=None) against aware now and raises TypeError.
+  import config as _config_mod
+  import integrations.calendar as _cal
+
+  monkeypatch.setattr(
+    _config_mod,
+    '_config',
+    {
+      'scheduler': {'calendar_schedule': {'gated_templates': []}},
+      'calendar': {
+        'caldav_url': 'https://example.com/',
+        'username': 'u',
+        'password': 'p',
+      },
+    },
+  )
+  # get_timezone() returns None for unset [scheduler].timezone.
+  assert _config_mod.get_timezone() is None
+
+  # Multi-day all-day event spanning yesterday → tomorrow (covers today).
+  ev = _make_event(
+    description='vestaboard:bart.departures',
+    start=_NOW - timedelta(days=1),
+    end=_NOW + timedelta(days=1),
+    all_day=True,
+  )
+  monkeypatch.setattr(_cal, '_collect_candidates_caldav', lambda *a, **kw: [(ev, None, 0)])
+
+  # Pass an aware now (matching what _get_now produces in production) so the
+  # promotion `tz = tz or now.tzinfo` has a concrete tzinfo to fall back on.
+  cs._refresh(now=_NOW)
+
+  with cs._cache_lock:
+    assert dict(cs._cache) == {'bart.departures': True}
