@@ -17,13 +17,20 @@ repos:
       - id: bandit
         args: ["-c", "pyproject.toml"]
 
-  - repo: https://github.com/pypa/pip-audit
-    rev: v2.10.0
-    hooks:
-      - id: pip-audit
-
   - repo: local
     hooks:
+      - id: pip-audit
+        name: pip-audit
+        # Audit the project's locked dependencies (same as CI's `uv run
+        # pip-audit`), not pip-audit's own isolated pre-commit sandbox. The
+        # upstream pypa/pip-audit hook audits that sandbox, which falsely
+        # tripped on a pip CVE in the sandbox's own pip and blocked every
+        # local commit. pip-audit's version is pinned via the dev dependency.
+        entry: uv run pip-audit
+        language: system
+        pass_filenames: false
+        always_run: true
+
       - id: pyright
         name: pyright
         entry: uv run pyright

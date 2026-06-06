@@ -340,23 +340,23 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "apscheduler", specifier = ">=3.11.2" },
-    { name = "argon2-cffi", specifier = ">=23.1.0" },
-    { name = "caldav", specifier = ">=1.4.0" },
-    { name = "icalendar", specifier = ">=7.0.0" },
-    { name = "pillow", specifier = ">=12.0.0" },
-    { name = "recurring-ical-events", specifier = ">=3.8.0" },
-    { name = "requests", specifier = ">=2.33.0" },
+    { name = "argon2-cffi", specifier = ">=25.1.0" },
+    { name = "caldav", specifier = ">=3.2.1" },
+    { name = "icalendar", specifier = ">=7.1.2" },
+    { name = "pillow", specifier = ">=12.2.0" },
+    { name = "recurring-ical-events", specifier = ">=3.8.2" },
+    { name = "requests", specifier = ">=2.34.2" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "bandit", specifier = ">=1.9.3" },
+    { name = "bandit", specifier = ">=1.9.4" },
     { name = "pip-audit", specifier = ">=2.10.0" },
-    { name = "pre-commit", specifier = ">=4.5.1" },
-    { name = "pyright", specifier = ">=1.1.408" },
+    { name = "pre-commit", specifier = ">=4.6.0" },
+    { name = "pyright", specifier = ">=1.1.410" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
-    { name = "ruff", specifier = ">=0.15.2" },
+    { name = "ruff", specifier = ">=0.15.16" },
 ]
 
 [[package]]

@@ -24,12 +24,12 @@ classifiers = [
 ]
 dependencies = [
     "apscheduler>=3.11.2",
-    "argon2-cffi>=23.1.0",
-    "caldav>=1.4.0",
-    "icalendar>=7.0.0",
-    "Pillow>=12.0.0",
-    "recurring-ical-events>=3.8.0",
-    "requests>=2.33.0",
+    "argon2-cffi>=25.1.0",
+    "caldav>=3.2.1",
+    "icalendar>=7.1.2",
+    "Pillow>=12.2.0",
+    "recurring-ical-events>=3.8.2",
+    "requests>=2.34.2",
 ]
 
 [project.scripts]
@@ -55,13 +55,13 @@ include = ["integrations*"]
 
 [dependency-groups]
 dev = [
-    "bandit>=1.9.3",
+    "bandit>=1.9.4",
     "pip-audit>=2.10.0",
-    "pre-commit>=4.5.1",
-    "pyright>=1.1.408",
+    "pre-commit>=4.6.0",
+    "pyright>=1.1.410",
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
-    "ruff>=0.15.2",
+    "ruff>=0.15.16",
 ]
 
 [tool.bandit]
