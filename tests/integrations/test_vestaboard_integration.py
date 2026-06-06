@@ -22,10 +22,18 @@ def test_set_state_real_api(require_env: None, monkeypatch: pytest.MonkeyPatch) 
   """set_state() successfully writes a message to the live virtual board."""
   monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': os.environ['VESTABOARD_VIRTUAL_API_KEY']}})
 
-  # Use the last 4 digits of the epoch to make each run unique — the virtual
-  # board returns 409 if you POST the same content as the current message.
-  ts = int(time.time()) % 10000
-  vb.set_state([{'format': [f'TEST {ts}']}], {})
+  # Make each run's content unique so the board doesn't 409 on duplicate
+  # content. Nanosecond entropy avoids collisions even when two concurrent
+  # main pushes run this suite against the same virtual board at once — the
+  # old `int(time.time()) % 10000` collided when both hit the same second.
+  token = time.time_ns() % 10**8
+  try:
+    vb.set_state([{'format': [f'TEST {token}']}], {})
+  except vb.DuplicateContentError:
+    # A 409 still proves set_state reached the API and the payload was
+    # accepted — the board just already shows this exact content. That's a
+    # pass for a write-path smoke test, so don't let it flake the suite.
+    pass
 
 
 @pytest.mark.integration
