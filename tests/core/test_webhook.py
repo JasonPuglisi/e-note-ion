@@ -51,6 +51,17 @@ def _start_test_server() -> tuple[HTTPServer, int]:
   return server, port
 
 
+def _stop_test_server(server: HTTPServer) -> None:
+  """Stop the serve_forever loop and close the listening socket.
+
+  shutdown() alone leaves the listening socket open, which surfaces as a
+  ResourceWarning when the server is garbage-collected; server_close()
+  releases it. Always pair them in teardown.
+  """
+  server.shutdown()
+  server.server_close()
+
+
 def _post(
   port: int,
   path: str,
@@ -181,7 +192,7 @@ def test_valid_secret_returns_200() -> None:
         status, _ = _post(port, '/webhook/bart')
         assert status == 200
       finally:
-        server.shutdown()
+        _stop_test_server(server)
 
 
 def test_wrong_secret_returns_401() -> None:
@@ -191,7 +202,7 @@ def test_wrong_secret_returns_401() -> None:
     assert status == 401
     assert 'Unauthorized' in body
   finally:
-    server.shutdown()
+    _stop_test_server(server)
 
 
 def test_missing_secret_returns_401() -> None:
@@ -212,7 +223,7 @@ def test_missing_secret_returns_401() -> None:
     resp = conn.getresponse()
     assert resp.status == 401
   finally:
-    server.shutdown()
+    _stop_test_server(server)
 
 
 def test_query_param_secret_accepted() -> None:
@@ -235,7 +246,7 @@ def test_query_param_secret_accepted() -> None:
         resp = conn.getresponse()
         assert resp.status == 200
       finally:
-        server.shutdown()
+        _stop_test_server(server)
 
 
 def test_query_param_wrong_secret_returns_401() -> None:
@@ -252,7 +263,7 @@ def test_query_param_wrong_secret_returns_401() -> None:
     resp = conn.getresponse()
     assert resp.status == 401
   finally:
-    server.shutdown()
+    _stop_test_server(server)
 
 
 def test_header_takes_precedence_over_query_param() -> None:
@@ -280,7 +291,7 @@ def test_header_takes_precedence_over_query_param() -> None:
         resp = conn.getresponse()
         assert resp.status == 200
       finally:
-        server.shutdown()
+        _stop_test_server(server)
 
 
 # ---------------------------------------------------------------------------
@@ -295,7 +306,7 @@ def test_unknown_integration_returns_404() -> None:
       status, _ = _post(port, '/webhook/notareal')
       assert status == 404
     finally:
-      server.shutdown()
+      _stop_test_server(server)
 
 
 def test_bad_path_returns_404() -> None:
@@ -305,7 +316,7 @@ def test_bad_path_returns_404() -> None:
     status, _ = _post(port, '/notwebhook/bart')
     assert status == 404
   finally:
-    server.shutdown()
+    _stop_test_server(server)
 
 
 def test_get_non_health_path_returns_404() -> None:
@@ -317,7 +328,7 @@ def test_get_non_health_path_returns_404() -> None:
     resp = conn.getresponse()
     assert resp.status == 404
   finally:
-    server.shutdown()
+    _stop_test_server(server)
 
 
 def test_integration_without_handle_webhook_returns_404() -> None:
@@ -331,7 +342,7 @@ def test_integration_without_handle_webhook_returns_404() -> None:
         assert status == 404
         assert 'does not support webhooks' in body
       finally:
-        server.shutdown()
+        _stop_test_server(server)
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +364,7 @@ def test_handle_webhook_none_returns_200_no_enqueue() -> None:
           assert 'Discarded' in body
           mock_enqueue.assert_not_called()
         finally:
-          server.shutdown()
+          _stop_test_server(server)
 
 
 def test_handle_webhook_result_enqueues_message() -> None:
@@ -386,7 +397,7 @@ def test_handle_webhook_result_enqueues_message() -> None:
             interrupt=False,
           )
         finally:
-          server.shutdown()
+          _stop_test_server(server)
 
 
 def test_enqueue_uses_default_name_when_blank() -> None:
@@ -410,7 +421,7 @@ def test_enqueue_uses_default_name_when_blank() -> None:
           call_kwargs = mock_enqueue.call_args.kwargs
           assert call_kwargs['name'] == 'webhook.bart'
         finally:
-          server.shutdown()
+          _stop_test_server(server)
 
 
 # ---------------------------------------------------------------------------
@@ -438,7 +449,7 @@ def test_interrupt_false_does_not_set_event() -> None:
           time.sleep(0.05)  # allow handler thread to complete
           assert not _mod._hold_interrupt.is_set()
         finally:
-          server.shutdown()
+          _stop_test_server(server)
 
 
 def test_interrupt_true_sets_hold_interrupt_event() -> None:
@@ -461,7 +472,7 @@ def test_interrupt_true_sets_hold_interrupt_event() -> None:
           time.sleep(0.05)  # allow handler thread to complete
           assert _mod._hold_interrupt.is_set()
         finally:
-          server.shutdown()
+          _stop_test_server(server)
 
 
 def test_interrupt_only_sets_hold_interrupt_without_enqueue() -> None:
@@ -487,7 +498,7 @@ def test_interrupt_only_sets_hold_interrupt_without_enqueue() -> None:
           mock_enqueue.assert_not_called()
           assert _mod._hold_interrupt.is_set()
         finally:
-          server.shutdown()
+          _stop_test_server(server)
 
 
 def test_interrupt_blocked_when_current_hold_is_high_priority() -> None:
@@ -516,7 +527,7 @@ def test_interrupt_blocked_when_current_hold_is_high_priority() -> None:
           time.sleep(0.05)
           assert not _mod._hold_interrupt.is_set()
         finally:
-          server.shutdown()
+          _stop_test_server(server)
 
 
 def test_interrupt_bypasses_threshold_when_same_supersede_tag() -> None:
@@ -549,7 +560,7 @@ def test_interrupt_bypasses_threshold_when_same_supersede_tag() -> None:
           time.sleep(0.05)
           assert _mod._hold_interrupt.is_set()
         finally:
-          server.shutdown()
+          _stop_test_server(server)
 
 
 def test_interrupt_blocked_for_different_tag_high_priority_hold() -> None:
@@ -578,7 +589,7 @@ def test_interrupt_blocked_for_different_tag_high_priority_hold() -> None:
           time.sleep(0.05)
           assert not _mod._hold_interrupt.is_set()
         finally:
-          server.shutdown()
+          _stop_test_server(server)
 
 
 def test_interrupt_allowed_when_current_hold_is_low_priority() -> None:
@@ -605,7 +616,7 @@ def test_interrupt_allowed_when_current_hold_is_low_priority() -> None:
           time.sleep(0.05)
           assert _mod._hold_interrupt.is_set()
         finally:
-          server.shutdown()
+          _stop_test_server(server)
 
 
 def test_interrupt_only_blocked_when_current_hold_is_high_priority() -> None:
@@ -635,7 +646,7 @@ def test_interrupt_only_blocked_when_current_hold_is_high_priority() -> None:
           mock_enqueue.assert_not_called()
           assert not _mod._hold_interrupt.is_set()
         finally:
-          server.shutdown()
+          _stop_test_server(server)
 
 
 def test_interrupt_only_allowed_when_current_hold_is_low_priority() -> None:
@@ -665,7 +676,7 @@ def test_interrupt_only_allowed_when_current_hold_is_low_priority() -> None:
           mock_enqueue.assert_not_called()
           assert _mod._hold_interrupt.is_set()
         finally:
-          server.shutdown()
+          _stop_test_server(server)
 
 
 def test_webhook_normal_indefinite_enqueues_with_indefinite_flag() -> None:
@@ -693,7 +704,7 @@ def test_webhook_normal_indefinite_enqueues_with_indefinite_flag() -> None:
           call_kwargs = mock_enqueue.call_args.kwargs
           assert call_kwargs['indefinite'] is True
         finally:
-          server.shutdown()
+          _stop_test_server(server)
 
 
 # ---------------------------------------------------------------------------
@@ -720,7 +731,7 @@ def test_malformed_json_returns_400() -> None:
       resp = conn.getresponse()
       assert resp.status == 400
     finally:
-      server.shutdown()
+      _stop_test_server(server)
 
 
 def test_handle_webhook_exception_returns_500_server_survives() -> None:
@@ -737,7 +748,7 @@ def test_handle_webhook_exception_returns_500_server_survives() -> None:
         status2, _ = _post(port, '/webhook/bart')
         assert status2 == 500  # still responding (integration still throws)
       finally:
-        server.shutdown()
+        _stop_test_server(server)
 
 
 # ---------------------------------------------------------------------------
@@ -885,7 +896,7 @@ def test_multipart_payload_field_is_parsed_as_json() -> None:
         call_args = mock_mod.handle_webhook.call_args
         assert call_args.args[0].get('event') == 'media.play'
       finally:
-        server.shutdown()
+        _stop_test_server(server)
 
 
 def test_multipart_missing_payload_field_returns_400() -> None:
@@ -908,7 +919,7 @@ def test_multipart_missing_payload_field_returns_400() -> None:
       resp = conn.getresponse()
       assert resp.status == 400
     finally:
-      server.shutdown()
+      _stop_test_server(server)
 
 
 def test_multipart_invalid_json_in_payload_returns_400() -> None:
@@ -918,7 +929,7 @@ def test_multipart_invalid_json_in_payload_returns_400() -> None:
       status, _ = _post_multipart(port, '/webhook/plex', 'not json{')
       assert status == 400
     finally:
-      server.shutdown()
+      _stop_test_server(server)
 
 
 # ---------------------------------------------------------------------------
@@ -947,7 +958,7 @@ def test_named_credential_authenticates_scoped_endpoint() -> None:
         status, _ = _post(port, '/webhook/message', secret=friend_secret)
         assert status == 200
       finally:
-        server.shutdown()
+        _stop_test_server(server)
 
 
 def test_named_credential_rejected_for_wrong_endpoint() -> None:
@@ -967,7 +978,7 @@ def test_named_credential_rejected_for_wrong_endpoint() -> None:
       status, _ = _post(port, '/webhook/notion', secret=friend_secret)
       assert status == 401
     finally:
-      server.shutdown()
+      _stop_test_server(server)
 
 
 def test_unknown_credential_secret_returns_401() -> None:
@@ -986,7 +997,7 @@ def test_unknown_credential_secret_returns_401() -> None:
       status, _ = _post(port, '/webhook/message', secret='wrong-secret')
       assert status == 401
     finally:
-      server.shutdown()
+      _stop_test_server(server)
 
 
 def test_credential_name_passed_to_handle_webhook() -> None:
@@ -1013,7 +1024,7 @@ def test_credential_name_passed_to_handle_webhook() -> None:
           _, kwargs = mock_hw.call_args
           assert kwargs.get('credential_name') == 'alice'
         finally:
-          server.shutdown()
+          _stop_test_server(server)
 
 
 # ---------------------------------------------------------------------------
@@ -1088,7 +1099,7 @@ def test_health_endpoint_returns_200_when_healthy() -> None:
       assert data['vestaboard'] is not None
       assert 'vestaboard' not in data['integrations']
     finally:
-      server.shutdown()
+      _stop_test_server(server)
       _health_mod.reset()
 
 
@@ -1111,7 +1122,7 @@ def test_health_endpoint_returns_503_when_vestaboard_errored() -> None:
       assert data['vestaboard']['status'] == 'error'
       assert data['integrations']['weather']['status'] == 'healthy'
     finally:
-      server.shutdown()
+      _stop_test_server(server)
       _health_mod.reset()
 
 
@@ -1130,7 +1141,7 @@ def test_health_endpoint_returns_503_when_unhealthy() -> None:
       data = json.loads(body)
       assert data['status'] == 'error'
     finally:
-      server.shutdown()
+      _stop_test_server(server)
       _health_mod.reset()
 
 
@@ -1145,7 +1156,7 @@ def test_health_endpoint_401_without_secret() -> None:
       status, _ = _get(port, '/health', secret='')
       assert status == 401
     finally:
-      server.shutdown()
+      _stop_test_server(server)
       _health_mod.reset()
 
 
@@ -1160,7 +1171,7 @@ def test_health_endpoint_401_wrong_secret() -> None:
       status, _ = _get(port, '/health', secret='wrong-secret')
       assert status == 401
     finally:
-      server.shutdown()
+      _stop_test_server(server)
       _health_mod.reset()
 
 
@@ -1171,7 +1182,7 @@ def test_health_endpoint_404_wrong_path() -> None:
       status, _ = _get(port, '/notfound', secret='')
       assert status == 404
     finally:
-      server.shutdown()
+      _stop_test_server(server)
 
 
 @pytest.mark.skipif(_CRED_HASH is None, reason='argon2-cffi not installed')
@@ -1187,7 +1198,7 @@ def test_health_endpoint_query_param_auth() -> None:
       data = json.loads(body)
       assert data['status'] == 'healthy'
     finally:
-      server.shutdown()
+      _stop_test_server(server)
       _health_mod.reset()
 
 
@@ -1211,7 +1222,7 @@ def test_head_health_returns_200_no_body() -> None:
       assert headers['content-type'] == 'application/json'
       assert int(headers['content-length']) > 0
     finally:
-      server.shutdown()
+      _stop_test_server(server)
       _health_mod.reset()
 
 
@@ -1228,7 +1239,7 @@ def test_head_health_returns_503_when_unhealthy() -> None:
       status, _ = _head(port, '/health')
       assert status == 503
     finally:
-      server.shutdown()
+      _stop_test_server(server)
       _health_mod.reset()
 
 
@@ -1243,5 +1254,5 @@ def test_head_health_401_without_secret() -> None:
       status, _ = _head(port, '/health', secret='')
       assert status == 401
     finally:
-      server.shutdown()
+      _stop_test_server(server)
       _health_mod.reset()

@@ -385,6 +385,32 @@ Semver rules (strict post-1.0):
 - **Major** (`x+1.0.0`): breaking changes to content JSON, CLI, config.toml
   keys, or Docker env vars
 
+### Dependency updates and releases
+
+Runtime dependency changes (including transitive deps that change in
+`uv.lock`) are release-worthy for a concrete reason: the Docker image is the
+only consumer that needs a release to pick them up. The image is built with
+`uv sync --frozen --no-dev`, baking in the locked **runtime closure**, and is
+rebuilt only when a release is cut (a `version` bump). Without a bump, Docker
+users stay on whatever was locked at the last release — including missed
+dependency CVE fixes. (PyPI installs resolve the `>=` floors fresh, so they
+already get newest-compatible deps without a release; a release is only needed
+on PyPI to publish tightened floors.)
+
+Rules:
+- **Runtime-closure change** — a runtime dep in `[project.dependencies]` or
+  any of its transitive deps in `uv.lock` → **bump patch and release.** Always
+  release for a dependency **security** fix in the runtime closure.
+- **Dev-only change** — anything under `[dependency-groups] dev` and its
+  dev-only transitives (ruff, pyright, pytest, bandit, pip-audit, etc.) →
+  **no release.** `--no-dev` keeps these out of the image and they don't affect
+  PyPI consumers. (A pip CVE surfaced via the pip-audit dev tool, for example,
+  never ships in the runtime image.)
+- **Dependabot grouped PRs** mix both. If the PR's `uv.lock` diff touches the
+  runtime closure, bump patch on merge; if it's purely dev, merge without a
+  bump. Routine runtime bumps may be batched into a periodic roll-up patch
+  release rather than one release per PR — but never sit on a security fix.
+
 Two types of milestones are used:
 
 - **Batch milestones** (e.g. "Batch 1", "Batch 2") — numbered work queues
