@@ -11,6 +11,7 @@ import logging
 import threading
 
 import config as _config_mod
+import homebridge as _homebridge_mod
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,9 @@ def set_public(value: bool) -> None:
     logger.info('Public mode %s', 'activated' if value else 'deactivated')
     if value:
       _changed.set()
+  # Notify HomeBridge outside the lock (network I/O) and only on a real
+  # transition (the no-op case returned above).
+  _homebridge_mod.notify_mode_change('public', value)
 
 
 def is_public() -> bool:

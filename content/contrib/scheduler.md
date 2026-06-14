@@ -240,6 +240,15 @@ be delayed in low-power mode.
 All automations should have **Notify When Run** deselected so they run
 silently.
 
+## Apple Home (HomeBridge)
+
+Both modes can also be exposed as native **Apple Home** switches via HomeBridge,
+giving manual toggles, Siri control, and Home automations alongside the iOS
+Shortcuts path above. The scheduler exposes a read-side `GET /state` endpoint
+(current `quiet`/`public` state plus board content) for switch sync and an
+optional `[homebridge]` push so the switches update instantly on a mode change.
+See [`docs/homebridge.md`](../../docs/homebridge.md) for the full setup.
+
 ## Interaction with hardware quiet hours
 
 If the Vestaboard's hardware quiet hours overlap with software quiet mode,

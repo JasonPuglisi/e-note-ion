@@ -262,6 +262,38 @@ def render_grid(
   return '\n'.join(lines)
 
 
+# Single-letter codes for color squares, used by render_grid_text for a
+# column-aligned, ANSI-free preview (one character per tile).
+_COLOR_LETTERS: dict[int, str] = {63: 'R', 64: 'O', 65: 'Y', 66: 'G', 67: 'B', 68: 'V', 69: 'W', 70: 'K'}
+
+
+def render_grid_text(grid: list[list[int]]) -> str:
+  """Render a character-code grid as plain, ANSI-free text (no border).
+
+  One character per tile so rows stay column-aligned: letters/digits/punctuation
+  map to their characters, blanks to spaces, color squares to a single letter
+  (R/O/Y/G/B/V/W/K), code 71 (filled) to '#', and code 62 to the model glyph
+  ('°' on the Flagship, '❤' on the Note). Intended for machine-readable output
+  such as the /state endpoint, where ANSI escapes are undesirable.
+  """
+  rows: list[str] = []
+  for row in grid:
+    cells: list[str] = []
+    for code in row:
+      if code in _COLOR_LETTERS:
+        cells.append(_COLOR_LETTERS[code])
+      elif code == 71:
+        cells.append('#')
+      elif code == 62:
+        cells.append('°' if model is VestaboardModel.FLAGSHIP else '❤')
+      elif 0 <= code < len(_CHAR_MAP) and _CHAR_MAP[code]:
+        cells.append(_CHAR_MAP[code])
+      else:
+        cells.append(' ')
+    rows.append(''.join(cells))
+  return '\n'.join(rows)
+
+
 # --- State ---
 
 
@@ -311,6 +343,33 @@ def _await_post_gate() -> None:
         logger.debug('Vestaboard pacing gate: waiting %.1fs', wait)
         time.sleep(wait)
     _last_post_time = time.monotonic()
+
+
+# --- Last-sent grid cache (for the read-side /state endpoint) ---
+# Updated on every successful set_state_raw so the read-side endpoint can serve
+# the current board content without an extra (rate-limited) API round-trip.
+_last_grid: list[list[int]] | None = None
+_last_grid_at: float = 0.0  # epoch seconds (time.time()) of the last cache update
+_last_grid_lock = threading.Lock()
+
+
+def _cache_grid(grid: list[list[int]]) -> None:
+  """Store a copy of the last grid written to the board, with a timestamp."""
+  global _last_grid, _last_grid_at
+  with _last_grid_lock:
+    _last_grid = [row[:] for row in grid]
+    _last_grid_at = time.time()
+
+
+def get_cached_grid() -> tuple[list[list[int]] | None, float]:
+  """Return (a copy of the last grid sent to the board, epoch timestamp).
+
+  Returns (None, 0.0) if nothing has been written since process start.
+  """
+  with _last_grid_lock:
+    if _last_grid is None:
+      return None, 0.0
+    return [row[:] for row in _last_grid], _last_grid_at
 
 
 def get_state(color: VestaboardColor = VestaboardColor.BLACK) -> VestaboardState:
@@ -683,6 +742,7 @@ def set_state_raw(grid: list[list[int]]) -> None:
       r.raise_for_status()
     except requests.HTTPError:
       raise requests.HTTPError(f'Vestaboard API error: {r.status_code} {r.reason}') from None
+    _cache_grid(grid)
     return
 
 

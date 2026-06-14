@@ -14,6 +14,7 @@ import logging
 import threading
 
 import config as _config_mod
+import homebridge as _homebridge_mod
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,9 @@ def set_quiet(value: bool) -> None:
     _config_mod.write_config_section('scheduler', {'quiet': value})
     logger.info('Quiet mode %s', 'activated' if value else 'deactivated')
     _changed.set()
+  # Notify HomeBridge outside the lock (network I/O) and only on a real
+  # transition (the no-op case returned above).
+  _homebridge_mod.notify_mode_change('quiet', value)
 
 
 def is_quiet() -> bool:
