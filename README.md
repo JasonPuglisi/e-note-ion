@@ -221,6 +221,35 @@ is needed for persistence across stop/start cycles.
 A periodic health summary also logs to the console every hour, showing
 non-healthy integrations and their recent error rates.
 
+## Board state endpoint
+
+When the [webhook listener](#configuration) is enabled, `GET /state` returns the
+current board content plus the runtime mode toggles:
+
+```json
+{
+  "modes": { "quiet": false, "public": false },
+  "source": "board",
+  "grid": [[8, 0, 0]],
+  "rendered": "HELLO",
+  "timestamp": "2026-01-01T12:00:00-08:00"
+}
+```
+
+`modes` is always present; `grid`/`rendered`/`timestamp` are `null` when no
+content is known. `source` is `board` (last grid sent), `virtual` (quiet-mode
+buffer), or `empty`. Add `?refresh=true` to force an authoritative fetch from the
+Vestaboard API. Authentication uses the auto-generated `state` credential
+(`X-Webhook-Secret` header or `?secret=`), like `/health`.
+
+## Apple Home (HomeBridge)
+
+Quiet and Public modes can be exposed as native Apple Home switches via
+HomeBridge — manual toggles, Siri, and Home automations. The `GET /state`
+endpoint above keeps the switches in sync, and an optional `[homebridge]` config
+section pushes mode changes to HomeBridge instantly. See
+[`docs/homebridge.md`](docs/homebridge.md) for the full setup.
+
 ## Installing from PyPI
 
 **Requirements:** Python 3.14+

@@ -376,6 +376,13 @@ city = "San Francisco"
 # secret_hash = "$argon2id$v=19$m=65536,t=3,p=4$..."
 # webhooks = ["scheduler"]
 #
+# [webhook.credentials.state]
+# secret_hash = "$argon2id$v=19$m=65536,t=3,p=4$..."
+# webhooks = ["state"]
+# Auto-generated on first startup. Used to authenticate the GET /state endpoint
+# (current board content + quiet/public toggle state — read by HomeBridge etc.).
+# Check the log for the plaintext secret.
+#
 # [webhook.credentials.plex]
 # secret_hash = "$argon2id$v=19$m=65536,t=3,p=4$..."
 # webhooks = ["plex"]
@@ -395,3 +402,17 @@ city = "San Francisco"
 # [webhook.credentials.message.friend.alice]
 # secret_hash = "$argon2id$v=19$m=65536,t=3,p=4$..."
 # webhooks = ["message"]
+
+# [homebridge]
+# Optional: push quiet/public mode transitions to HomeBridge so the Apple Home
+# switches update instantly instead of waiting for the next poll of GET /state.
+# When this section is absent, no outbound notifications are sent (the plugin can
+# still poll /state). See docs/homebridge.md for the full setup.
+#
+# url — the HomeBridge endpoint that receives the push. On each transition,
+#   e-note-ion sends POST <url> with JSON {"characteristic": "quiet"|"public",
+#   "value": true|false}. Failures are logged and never block toggling.
+# url = "http://homebridge.local:51828/e-note-ion"
+#
+# secret — optional; sent as the X-Webhook-Secret header on the push.
+# secret = "your-shared-secret"

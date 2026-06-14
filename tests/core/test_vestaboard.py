@@ -1181,3 +1181,82 @@ def test_get_state_404_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(vb.EmptyBoardError):
       vb.get_state()
   assert mock_get.call_count == 1
+
+
+# --- render_grid_text (plain-text /state rendering) ---
+
+
+def test_render_grid_text_letters_and_blanks() -> None:
+  # code 1 → 'A' (first letter); code 0 → blank.
+  row = [1, 0, 0]
+  out = vb.render_grid_text([row])
+  assert out[0] == vb._CHAR_MAP[1]  # noqa: SLF001
+  assert out[1] == ' '
+  assert len(out) == 3
+
+
+def test_render_grid_text_color_squares_use_letters() -> None:
+  # codes 63-70 → single color letters, keeping rows column-aligned.
+  out = vb.render_grid_text([[63, 66, 67]])
+  assert out == 'RGB'
+
+
+def test_render_grid_text_no_ansi_escapes() -> None:
+  out = vb.render_grid_text([[1, 63, 71], [62, 0, 2]])
+  assert '\033' not in out
+
+
+def test_render_grid_text_rows_joined_with_newline() -> None:
+  out = vb.render_grid_text([[0, 0], [0, 0]])
+  assert out.count('\n') == 1
+
+
+def test_render_grid_text_heart_on_note() -> None:
+  vb.model = vb.VestaboardModel.NOTE
+  out = vb.render_grid_text([[62]])
+  assert out == '❤'
+
+
+def test_render_grid_text_degree_on_flagship() -> None:
+  original = vb.model
+  vb.model = vb.VestaboardModel.FLAGSHIP
+  try:
+    out = vb.render_grid_text([[62]])
+    assert out == '°'
+  finally:
+    vb.model = original
+
+
+# --- last-grid cache (for the /state endpoint) ---
+
+
+def test_get_cached_grid_none_initially() -> None:
+  vb._last_grid = None  # noqa: SLF001
+  grid, ts = vb.get_cached_grid()
+  assert grid is None
+  assert ts == 0.0
+
+
+def test_set_state_raw_caches_grid(monkeypatch: pytest.MonkeyPatch) -> None:
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'vestaboard': {'api_key': 'test-key'}})
+  vb._last_grid = None  # noqa: SLF001
+  grid = [[1, 2, 3], [0, 0, 0]]
+  ok = MagicMock()
+  ok.status_code = 200
+  ok.raise_for_status = MagicMock()
+  with (
+    patch('integrations.vestaboard.requests.post', return_value=ok),
+    patch('integrations.vestaboard.time.sleep'),
+  ):
+    vb.set_state_raw(grid)
+  cached, ts = vb.get_cached_grid()
+  assert cached == grid
+  assert ts > 0
+  # Returned grid is a copy — mutating it must not corrupt the cache.
+  assert cached is not None
+  cached[0][0] = 99
+  again, _ = vb.get_cached_grid()
+  assert again is not None
+  assert again[0][0] == 1

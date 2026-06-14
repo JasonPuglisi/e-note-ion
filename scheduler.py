@@ -747,6 +747,57 @@ def _authenticate_webhook(provided: str, integration: str) -> str | None:
   return None
 
 
+def _build_state_payload(refresh: bool = False) -> dict[str, Any]:
+  """Assemble the GET /state response: current mode toggles + board content.
+
+  Always includes `modes` (quiet/public) — the primary payload for the HomeKit
+  switches, so the endpoint returns 200 with modes even when no board content is
+  known. Board content is best-effort: the quiet-mode virtual state when quiet is
+  active, an authoritative fetch when refresh=True, otherwise the in-memory cache
+  of the last grid the worker sent. `source` is 'virtual', 'board', or 'empty';
+  `grid`/`rendered`/`timestamp` are null when nothing is known.
+  """
+  modes = {'quiet': _quiet_mod.is_quiet(), 'public': _public_mod.is_public()}
+  grid: list[list[int]] | None = None
+  grid_at = 0.0
+  source = 'empty'
+  refresh_error = False
+
+  if modes['quiet']:
+    grid = _quiet_mod.get_virtual_state()
+    if grid is not None:
+      source = 'virtual'
+      grid_at = time.time()
+  elif refresh:
+    try:
+      grid = vestaboard.get_state().layout
+      source = 'board'
+      grid_at = time.time()
+    except vestaboard.EmptyBoardError:
+      source = 'empty'
+    except Exception as e:  # noqa: BLE001 — refresh is best-effort; fall back to cache
+      logger.warning('State: refresh fetch failed: %s', e)
+      refresh_error = True
+      grid, grid_at = vestaboard.get_cached_grid()
+      if grid is not None:
+        source = 'board'
+  else:
+    grid, grid_at = vestaboard.get_cached_grid()
+    if grid is not None:
+      source = 'board'
+
+  payload: dict[str, Any] = {
+    'modes': modes,
+    'source': source,
+    'grid': grid,
+    'rendered': vestaboard.render_grid_text(grid) if grid is not None else None,
+    'timestamp': (datetime.fromtimestamp(grid_at, tz=_config_mod.get_timezone()).isoformat() if grid_at else None),
+  }
+  if refresh_error:
+    payload['refresh_error'] = True
+  return payload
+
+
 def _make_webhook_handler() -> type:
   """Return a BaseHTTPRequestHandler subclass for the webhook listener."""
 
@@ -895,7 +946,25 @@ def _make_webhook_handler() -> type:
       status_code = 200 if summary['status'] == 'healthy' else 503
       return status_code, summary
 
+    def _handle_state(self, parsed: Any) -> None:
+      """GET /state — current mode toggles + board content (auth: 'state' cred)."""
+      header_secret = self.headers.get('X-Webhook-Secret', '')
+      query = parse_qs(parsed.query)
+      query_secret = query.get('secret', [''])[0]
+      provided = header_secret or query_secret
+      credential_name = _authenticate_webhook(provided, 'state')
+      if credential_name is None:
+        logger.warning('State: rejected request — invalid or missing secret')
+        self._respond(401, 'Unauthorized')
+        return
+      refresh = query.get('refresh', [''])[0].lower() in ('1', 'true', 'yes')
+      self._respond_json(200, _build_state_payload(refresh=refresh))
+
     def do_GET(self) -> None:  # noqa: N802
+      parsed = urlparse(self.path)
+      if parsed.path.strip('/') == 'state':
+        self._handle_state(parsed)
+        return
       result = self._handle_health()
       if result is not None:
         self._respond_json(result[0], result[1])
@@ -941,6 +1010,7 @@ _WEBHOOK_AUTOGEN: dict[str, str] = {
   'notion': 'notion',
   'plex': 'plex',
   'scheduler': 'scheduler',
+  'state': 'state',
 }
 
 

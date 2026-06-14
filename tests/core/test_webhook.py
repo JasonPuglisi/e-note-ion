@@ -1256,3 +1256,174 @@ def test_head_health_401_without_secret() -> None:
     finally:
       _stop_test_server(server)
       _health_mod.reset()
+
+
+# ---------------------------------------------------------------------------
+# GET /state endpoint
+# ---------------------------------------------------------------------------
+
+
+def _state_cred_config() -> dict[str, Any]:
+  """Config with a test credential scoped to the state endpoint."""
+  return {
+    'webhook': {
+      'credentials': {
+        'test': {'secret_hash': _CRED_HASH, 'webhooks': ['state']},
+      },
+    },
+  }
+
+
+@pytest.mark.skipif(_CRED_HASH is None, reason='argon2-cffi not installed')
+def test_state_endpoint_returns_modes() -> None:
+  """/state always reports the current quiet/public toggle state."""
+  with patch.dict('config._config', _state_cred_config()):
+    with (
+      patch.object(_mod._quiet_mod, 'is_quiet', return_value=False),
+      patch.object(_mod._public_mod, 'is_public', return_value=True),
+      patch.object(_mod.vestaboard, 'get_cached_grid', return_value=(None, 0.0)),
+    ):
+      server, port = _start_test_server()
+      try:
+        status, body = _get(port, '/state')
+        assert status == 200
+        data = json.loads(body)
+        assert data['modes'] == {'quiet': False, 'public': True}
+        assert data['source'] == 'empty'
+        assert data['grid'] is None
+        assert data['rendered'] is None
+        assert data['timestamp'] is None
+      finally:
+        _stop_test_server(server)
+
+
+@pytest.mark.skipif(_CRED_HASH is None, reason='argon2-cffi not installed')
+def test_state_source_board_from_cache() -> None:
+  """With cached content and no quiet mode, /state serves the cached grid."""
+  grid = [[8, 0, 0], [0, 63, 0]]  # 'H', blank, blank / blank, red, blank
+  with patch.dict('config._config', _state_cred_config()):
+    with (
+      patch.object(_mod._quiet_mod, 'is_quiet', return_value=False),
+      patch.object(_mod._public_mod, 'is_public', return_value=False),
+      patch.object(_mod.vestaboard, 'get_cached_grid', return_value=(grid, 1_700_000_000.0)),
+    ):
+      server, port = _start_test_server()
+      try:
+        status, body = _get(port, '/state')
+        assert status == 200
+        data = json.loads(body)
+        assert data['source'] == 'board'
+        assert data['grid'] == grid
+        assert data['rendered'] is not None
+        assert data['timestamp'] is not None
+      finally:
+        _stop_test_server(server)
+
+
+@pytest.mark.skipif(_CRED_HASH is None, reason='argon2-cffi not installed')
+def test_state_source_virtual_when_quiet() -> None:
+  """In quiet mode, /state returns the virtual state (what wakes on the board)."""
+  virtual = [[8, 9, 0], [0, 0, 0]]
+  with patch.dict('config._config', _state_cred_config()):
+    with (
+      patch.object(_mod._quiet_mod, 'is_quiet', return_value=True),
+      patch.object(_mod._quiet_mod, 'get_virtual_state', return_value=virtual),
+      patch.object(_mod._public_mod, 'is_public', return_value=False),
+    ):
+      server, port = _start_test_server()
+      try:
+        status, body = _get(port, '/state')
+        assert status == 200
+        data = json.loads(body)
+        assert data['modes']['quiet'] is True
+        assert data['source'] == 'virtual'
+        assert data['grid'] == virtual
+      finally:
+        _stop_test_server(server)
+
+
+@pytest.mark.skipif(_CRED_HASH is None, reason='argon2-cffi not installed')
+def test_state_refresh_calls_get_state() -> None:
+  """?refresh=true fetches authoritative board state via the Vestaboard API."""
+  fetched = [[1, 2, 3], [4, 5, 6]]
+  fake_state = MagicMock()
+  fake_state.layout = fetched
+  with patch.dict('config._config', _state_cred_config()):
+    with (
+      patch.object(_mod._quiet_mod, 'is_quiet', return_value=False),
+      patch.object(_mod._public_mod, 'is_public', return_value=False),
+      patch.object(_mod.vestaboard, 'get_state', return_value=fake_state) as mock_get,
+      patch.object(_mod.vestaboard, 'get_cached_grid', return_value=(None, 0.0)),
+    ):
+      server, port = _start_test_server()
+      try:
+        status, body = _get(port, '/state?refresh=true')
+        assert status == 200
+        data = json.loads(body)
+        assert data['source'] == 'board'
+        assert data['grid'] == fetched
+        mock_get.assert_called_once()
+      finally:
+        _stop_test_server(server)
+
+
+@pytest.mark.skipif(_CRED_HASH is None, reason='argon2-cffi not installed')
+def test_state_refresh_error_falls_back_to_cache() -> None:
+  """A failed refresh fetch falls back to the cache and still returns 200 + modes."""
+  cached = [[7, 7, 7], [0, 0, 0]]
+  with patch.dict('config._config', _state_cred_config()):
+    with (
+      patch.object(_mod._quiet_mod, 'is_quiet', return_value=False),
+      patch.object(_mod._public_mod, 'is_public', return_value=False),
+      patch.object(_mod.vestaboard, 'get_state', side_effect=RuntimeError('API down')),
+      patch.object(_mod.vestaboard, 'get_cached_grid', return_value=(cached, 1_700_000_000.0)),
+    ):
+      server, port = _start_test_server()
+      try:
+        status, body = _get(port, '/state?refresh=true')
+        assert status == 200
+        data = json.loads(body)
+        assert data['source'] == 'board'
+        assert data['grid'] == cached
+        assert data['refresh_error'] is True
+      finally:
+        _stop_test_server(server)
+
+
+@pytest.mark.skipif(_CRED_HASH is None, reason='argon2-cffi not installed')
+def test_state_endpoint_401_without_secret() -> None:
+  with patch.dict('config._config', _state_cred_config()):
+    server, port = _start_test_server()
+    try:
+      status, _ = _get(port, '/state', secret='')
+      assert status == 401
+    finally:
+      _stop_test_server(server)
+
+
+@pytest.mark.skipif(_CRED_HASH is None, reason='argon2-cffi not installed')
+def test_state_endpoint_401_wrong_secret() -> None:
+  with patch.dict('config._config', _state_cred_config()):
+    server, port = _start_test_server()
+    try:
+      status, _ = _get(port, '/state', secret='wrong-secret')
+      assert status == 401
+    finally:
+      _stop_test_server(server)
+
+
+@pytest.mark.skipif(_CRED_HASH is None, reason='argon2-cffi not installed')
+def test_state_endpoint_query_param_auth() -> None:
+  with patch.dict('config._config', _state_cred_config()):
+    with (
+      patch.object(_mod._quiet_mod, 'is_quiet', return_value=False),
+      patch.object(_mod._public_mod, 'is_public', return_value=False),
+      patch.object(_mod.vestaboard, 'get_cached_grid', return_value=(None, 0.0)),
+    ):
+      server, port = _start_test_server()
+      try:
+        status, body = _get(port, f'/state?secret={_CRED_SECRET}', secret='')
+        assert status == 200
+        assert json.loads(body)['modes'] == {'quiet': False, 'public': False}
+      finally:
+        _stop_test_server(server)
