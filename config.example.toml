@@ -411,8 +411,13 @@ city = "San Francisco"
 #
 # url — the HomeBridge endpoint that receives the push. On each transition,
 #   e-note-ion sends POST <url> with JSON {"characteristic": "quiet"|"public",
-#   "value": true|false}. Failures are logged and never block toggling.
-# url = "http://homebridge.local:51828/e-note-ion"
+#   "value": true|false}. Use http://<homebridge-host>:<port>/ where <port>
+#   matches the plugin's pushPort; the path is ignored. Failures are logged and
+#   never block toggling.
+# url = "http://homebridge.local:51828/"
 #
-# secret — optional; sent as the X-Webhook-Secret header on the push.
-# secret = "your-shared-secret"
+# secret — sent as the X-Webhook-Secret header on the push. The companion plugin
+#   auto-generates this and prints the plaintext in the Homebridge log once
+#   (storing only a hash); copy that value here. Required when the plugin has a
+#   secret set (it always does), or the push is rejected with 401.
+# secret = "paste-the-plaintext-from-the-homebridge-log"
