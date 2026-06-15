@@ -47,7 +47,7 @@ When `[homebridge]` is configured, each **real** quiet/public transition fires:
 
 ```
 POST <url>
-X-Webhook-Secret: <secret>   (if configured)
+X-Webhook-Secret: <secret>
 
 {"characteristic": "quiet"｜"public", "value": true｜false}
 ```
@@ -59,9 +59,18 @@ interval (e.g. 5 minutes) when push is enabled, as a self-healing safety net.
 
 ```toml
 [homebridge]
-url = "http://homebridge.local:51828/e-note-ion"
-secret = "your-shared-secret"
+url = "http://homebridge.local:51828/"
+secret = "<plaintext printed once in the Homebridge log>"
 ```
+
+- **`url`** points at the plugin's push listener: `http://<homebridge-host>:<port>/`.
+  The `<port>` must match the plugin's `pushPort`. The **path is ignored** — the
+  plugin accepts a `POST` on any path of that port, so a bare `/` is fine.
+- **`secret`** is required for the companion plugin: it auto-generates a push
+  secret and prints the plaintext in the Homebridge log once (storing only a
+  hash). Copy that value here. The plugin verifies every push against it, so an
+  absent or mismatched secret yields `401` and the push is dropped (polling
+  still keeps state correct).
 
 ---
 
