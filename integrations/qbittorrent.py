@@ -61,7 +61,12 @@ def _login(base_url: str, username: str, password: str, *, verify: bool = True) 
     timeout=10,
   )
   r.raise_for_status()
-  if r.text.strip() != 'Ok.':
+  # Login-success signalling differs by version: qBittorrent <=5.1 returns
+  # 200 + body 'Ok.'; 5.2+ returns 204 with an empty body. A rejected login is
+  # 200 + 'Fails.' in both. Key off the status code (not the cookie name) so we
+  # stay independent of the port-specific 'QBT_SID_<port>' cookie renamed in
+  # 5.2 — the session jar stores and forwards whatever cookie is issued.
+  if r.status_code != 204 and r.text.strip() != 'Ok.':
     raise IntegrationDataUnavailableError('qBittorrent: login failed — check credentials')
   return session
 
