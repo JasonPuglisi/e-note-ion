@@ -69,7 +69,11 @@ When nothing is seeding, the template is silently skipped.
 ## API details
 
 **Auth:** `POST /api/v2/auth/login` with form-encoded username/password.
-Returns a session cookie used for subsequent requests.
+Returns a session cookie used for subsequent requests. Success is signalled by
+`200 Ok.` on qBittorrent ≤5.1 and by `204 No Content` (empty body) on 5.2+; the
+cookie was also renamed `SID` → `QBT_SID_<port>` in 5.2. The integration accepts
+both status forms and forwards the whole cookie jar, so it is version- and
+port-agnostic.
 
 **Data:** `GET /api/v2/torrents/info?filter=seeding` — returns per-torrent
 objects. The integration sums the `size` field across all results.
@@ -83,5 +87,7 @@ Session-level stats (`/api/v2/transfer/info`) do not persist and are not used.
 
 Authoritative source: https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-5.0)
 
-The integration uses `/api/v2/auth/login` and `/api/v2/torrents/info` — both
-stable since qBittorrent 4.1. Monitor the wiki for deprecation notices.
+The integration uses `/api/v2/auth/login` and `/api/v2/torrents/info` — stable
+since qBittorrent 4.1, though 5.2 changed the login **success** response from
+`200 Ok.` to `204` (empty body) and renamed the session cookie to
+`QBT_SID_<port>`. Monitor the wiki for further deprecation notices.

@@ -21,14 +21,27 @@ def _torrent(*, size: int = 1_000_000_000) -> dict:
 
 
 def _login_response_ok() -> MagicMock:
+  # qBittorrent <=5.1: 200 + body 'Ok.'.
   resp = MagicMock()
+  resp.status_code = 200
   resp.text = 'Ok.'
   resp.raise_for_status = MagicMock()
   return resp
 
 
-def _login_response_fail() -> MagicMock:
+def _login_response_ok_204() -> MagicMock:
+  # qBittorrent 5.2+: 204 No Content, empty body (session cookie still set).
   resp = MagicMock()
+  resp.status_code = 204
+  resp.text = ''
+  resp.raise_for_status = MagicMock()
+  return resp
+
+
+def _login_response_fail() -> MagicMock:
+  # Rejected credentials: 200 + body 'Fails.' (no session cookie).
+  resp = MagicMock()
+  resp.status_code = 200
   resp.text = 'Fails.'
   resp.raise_for_status = MagicMock()
   return resp
@@ -80,6 +93,15 @@ def test_fmt_size(size_bytes: int, expected: str) -> None:
 def test_login_success() -> None:
   session_mock = MagicMock()
   session_mock.post.return_value = _login_response_ok()
+  with patch('integrations.qbittorrent.requests.Session', return_value=session_mock):
+    session = qbt._login('http://localhost:8080', 'admin', 'test')
+  assert session is session_mock
+
+
+def test_login_success_204() -> None:
+  # qBittorrent 5.2+ signals success with 204 + empty body (not 'Ok.').
+  session_mock = MagicMock()
+  session_mock.post.return_value = _login_response_ok_204()
   with patch('integrations.qbittorrent.requests.Session', return_value=session_mock):
     session = qbt._login('http://localhost:8080', 'admin', 'test')
   assert session is session_mock
