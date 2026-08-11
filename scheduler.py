@@ -96,9 +96,19 @@ _KNOWN_INTEGRATIONS: frozenset[str] = frozenset(
 # Cache of loaded integration modules, keyed by name.
 _integrations: dict[str, Any] = {}
 
-# Resolved private flags for webhook-capable integrations, populated by
-# _load_file.  The webhook handler checks this to set data['private'] so
-# individual integrations don't need to propagate the flag themselves.
+# Resolved private flags for webhook-capable integrations, keyed by integration
+# name and ORed across that integration's templates. Consulted at pop time as a
+# fallback when a message does not carry data['private'] itself.
+#
+# Populated by _register_webhook_private_flags() for every content file on disk,
+# and again by _load_file for the subset that is actually loaded. The former
+# matters because webhook dispatch is independent of [scheduler].content_enabled:
+# an integration can receive and display webhooks while its JSON was never
+# loaded, and a load-time-only registry would leave those messages unmarked.
+#
+# This is a coarse net (per-integration, not per-template). Webhook integrations
+# should stamp data['private'] on the messages they enqueue so the per-template
+# flag travels with the message; see resolve_private().
 _webhook_private: dict[str, bool] = {}
 
 
@@ -1129,6 +1139,25 @@ def _coerce_bool(val: object, label: str) -> bool | None:
   return None
 
 
+def resolve_private(template: dict[str, Any], override: dict[str, Any], label: str) -> bool:
+  """Resolve the effective private flag for a template.
+
+  The config override (e.g. [plex.schedules.now_playing] private = false)
+  takes precedence over the JSON's "private" field; an unrecognised override
+  value is ignored and the JSON value stands.
+
+  Shared by _load_file and by webhook-only integrations, which must stamp
+  data['private'] themselves — their templates are never registered through
+  _load_file unless the file is listed in [scheduler].content_enabled.
+  """
+  private = bool(template.get('private', False))
+  if 'private' in override:
+    coerced = _coerce_bool(override['private'], f'private override for {label}')
+    if coerced is not None:
+      private = coerced
+  return private
+
+
 def _validate_template(name: str, template: dict[str, Any]) -> None:
   """Validate a single template dict, raising ValueError with a clear message.
 
@@ -1226,11 +1255,7 @@ def _load_file(
         disabled_jobs.append(template_name)
         continue
     # Resolve effective private flag: config override takes precedence over JSON.
-    private = template.get('private', False)
-    if 'private' in override:
-      coerced = _coerce_bool(override['private'], f'private override for {stem}.{template_name}')
-      if coerced is not None:
-        private = coerced
+    private = resolve_private(template, override, f'{stem}.{template_name}')
     priority = template['priority']
     truncation = template.get('truncation', 'hard')
     data: dict[str, Any] = {
@@ -1353,6 +1378,43 @@ def _load_file(
     logger.info('  · %s  disabled', template_name)
 
 
+def _register_webhook_private_flags() -> None:
+  """Populate _webhook_private from every content file on disk.
+
+  Runs regardless of [scheduler].content_enabled because webhook dispatch is
+  independent of content loading: _get_integration() imports the module and the
+  integration reads its own JSON, so an integration that was never loaded can
+  still receive webhooks and display them. Registering only loaded files left
+  those messages unmarked, so private content reached the board in public mode.
+
+  Best-effort: unreadable or malformed files are logged at debug and skipped —
+  the load pass that follows reports them at warning level.
+  """
+  for directory in ('user', 'contrib'):
+    path = Path('content') / directory
+    if not path.is_dir():
+      continue
+    for f in sorted(path.glob('*.json')):
+      try:
+        with open(f) as fh:
+          content = json.load(fh)
+        templates = content['templates']
+      except Exception as e:  # noqa: BLE001 — the load pass reports this properly
+        logger.debug('skipping %s during webhook private-flag scan: %s', f, e)
+        continue
+      if not isinstance(templates, dict):
+        continue
+      for template_name, template in templates.items():
+        if not isinstance(template, dict):
+          continue
+        integration = template.get('integration')
+        if not template.get('webhook', False) or not isinstance(integration, str):
+          continue
+        override = _config_mod.get_schedule_override(f'{f.stem}.{template_name}')
+        private = resolve_private(template, override, f'{f.stem}.{template_name}')
+        _webhook_private[integration] = _webhook_private.get(integration, False) or private
+
+
 def load_content(
   scheduler: BackgroundScheduler,
   content_enabled: set[str] | None = None,
@@ -1370,6 +1432,10 @@ def load_content(
     if content_enabled is None:
       return True
     return '*' in content_enabled or stem in content_enabled
+
+  # Register private flags for every webhook template on disk before the load
+  # filter is applied — webhooks fire whether or not their file was enabled.
+  _register_webhook_private_flags()
 
   user_stems: set[str] = set()
   contrib_stems: set[str] = set()

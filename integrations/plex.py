@@ -48,6 +48,14 @@ _HANDLED_EVENTS = _PLAY_EVENTS | {_PAUSE_EVENT} | _STOP_EVENTS
 # Debounce window applied to play, pause, and stop events.
 _DEBOUNCE_SECS = 3
 
+# Maps each handled event to the plex.json template it would display.
+_EVENT_TEMPLATES: dict[str, str] = {
+  'media.play': 'now_playing',
+  'media.resume': 'now_playing',
+  'media.pause': 'paused',
+  'media.stop': 'stopped',
+}
+
 
 class _State(enum.Enum):
   IDLE = 'idle'
@@ -234,11 +242,14 @@ def _load_template_config(template_name: str) -> dict[str, Any]:
   on top of the JSON defaults, matching the behaviour of scheduled templates.
   """
   import config as _config_mod
+  import scheduler as _sched
 
   with open(_PLEX_JSON_PATH) as f:
     content = json.load(f)
   template = content['templates'][template_name]
   schedule = template['schedule']
+
+  override = _config_mod.get_schedule_override(f'plex.{template_name}')
 
   effective: dict[str, Any] = {
     'hold': schedule['hold'],
@@ -246,9 +257,11 @@ def _load_template_config(template_name: str) -> dict[str, Any]:
     'priority': template['priority'],
     'truncation': template.get('truncation', 'hard'),
     'templates': template.get('templates', []),
+    # Resolved here (not left to the scheduler's load-time registry) because
+    # plex is typically run webhook-only, with plex.json never loaded.
+    'private': _sched.resolve_private(template, override, f'plex.{template_name}'),
   }
 
-  override = _config_mod.get_schedule_override(f'plex.{template_name}')
   for field in ('hold', 'timeout'):
     val = override.get(field)
     if isinstance(val, int) and val >= 0:
@@ -258,6 +271,37 @@ def _load_template_config(template_name: str) -> dict[str, Any]:
     effective['priority'] = priority_val
 
   return effective
+
+
+def _cancel_pending_timers() -> None:
+  """Cancel all pending debounce timers and clear their captured data."""
+  global _pending_play_timer, _pending_pause_timer, _pending_stop_timer
+  global _pending_stop_data, _saved_stop_data
+
+  for timer in (_pending_play_timer, _pending_pause_timer, _pending_stop_timer):
+    if timer is not None:
+      timer.cancel()
+  _pending_play_timer = None
+  _pending_pause_timer = None
+  _pending_stop_timer = None
+  _pending_stop_data = None
+  _saved_stop_data = None
+
+
+def _is_public_and_private(event: str) -> bool:
+  """Return whether public mode is active and this event's template is private."""
+  import public as _public_mod
+
+  if not _public_mod.is_public():
+    return False
+  template_name = _EVENT_TEMPLATES.get(event)
+  if template_name is None:
+    return False
+  try:
+    return bool(_load_template_config(template_name)['private'])
+  except Exception as e:  # noqa: BLE001 — fail closed: suppress on config error
+    logger.warning('plex: could not resolve private flag for %r (%s); suppressing in public mode', template_name, e)
+    return True
 
 
 def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) -> WebhookMessage | None:
@@ -273,6 +317,10 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
   sibling timers so that rapid self-cancelling sequences (play→pause,
   pause→resume, stop→play between episodes) produce no display flashes.
 
+  While public mode is active and the event's template is private, the event
+  is discarded outright: no timer, no enqueue, no board interrupt. State is
+  reset to IDLE and re-established by the next event once public mode ends.
+
   Always returns None — the scheduler receives "Discarded" for every Plex
   webhook and the actual enqueueing is handled by the timer callbacks.
   """
@@ -286,12 +334,26 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
 
     logger.debug('plex: %s (state=%s)', event, _state.value)
 
+    # Cleared before the public-mode check below so Trakt's view of playback
+    # stays accurate even while the display is suppressed — otherwise a stale
+    # watching state could surface once public mode ends.
     try:
       import integrations.trakt as _trakt
 
       _trakt.clear_watching_state()
     except ImportError:
       pass
+
+    # Public mode: plex content is private, so nothing will reach the board.
+    # Return before scheduling any timer — a fired timer would enqueue a
+    # message that is dropped at pop time, but only after fire_hold_interrupt()
+    # had already cut short whatever public content was holding the board.
+    # Also skips the TMDb lookups in _build_metadata.
+    if _is_public_and_private(event):
+      _cancel_pending_timers()
+      _state = _State.IDLE
+      logger.debug('plex: discarding %s: public mode active and template is private', event)
+      return None
 
     # --- State machine transition and timer management ---
 
@@ -330,6 +392,8 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
         },
         'truncation': cfg['truncation'],
       }
+      if cfg['private']:
+        play_data['private'] = True
       priority = cfg['priority']
       hold = cfg['hold']
       timeout = cfg['timeout']
@@ -395,6 +459,8 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
         },
         'truncation': cfg['truncation'],
       }
+      if cfg['private']:
+        pause_data['private'] = True
       priority = cfg['priority']
       hold = cfg['hold']
       timeout = cfg['timeout']
@@ -461,6 +527,8 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
         'variables': {'show_name': [show_name_rows], 'episode_line': [[episode_line]]} if has_media else {},
         'truncation': cfg['truncation'],
       }
+      if cfg['private']:
+        new_stop_data['private'] = True
 
       # Prefer rescued stop data from an earlier cancelled stop debounce
       # (e.g. ep1-stop → ep2-play → ep2-stop: show ep1's stopped card).

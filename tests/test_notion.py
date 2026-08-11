@@ -6,14 +6,6 @@ import pytest
 import integrations.notion as notion
 from scheduler import WebhookMessage
 
-_TEMPLATE_CONFIG = {
-  'hold': 120,
-  'timeout': 120,
-  'priority': 7,
-  'truncation': 'word',
-  'templates': [{'format': ['[W] NOTION', '{message}']}],
-}
-
 
 def _make_payload(
   message: str = 'task completed',
@@ -198,3 +190,28 @@ def test_exception_returns_none(caplog: pytest.LogCaptureFixture) -> None:
     result = notion.handle_webhook(_make_payload())
   assert result is None
   assert 'Notion webhook error' in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# private flag (issue #583)
+# ---------------------------------------------------------------------------
+
+
+def test_notion_data_marked_private() -> None:
+  """notion.json marks notification private; the flag must travel on the message.
+
+  scheduler._webhook_private is only populated for content files that were
+  actually loaded, so a notion.json absent from [scheduler].content_enabled
+  would otherwise reach the board while public mode is active.
+  """
+  result = notion.handle_webhook(_make_payload('task completed'))
+  assert isinstance(result, WebhookMessage)
+  assert result.data['private'] is True
+
+
+def test_notion_private_override_false_omits_flag() -> None:
+  """[notion.schedules.notification] private = false wins over the JSON default."""
+  with patch('config.get_schedule_override', return_value={'private': False}):
+    result = notion.handle_webhook(_make_payload('task completed'))
+  assert isinstance(result, WebhookMessage)
+  assert 'private' not in result.data

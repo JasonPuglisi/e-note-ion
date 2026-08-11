@@ -1,6 +1,6 @@
 [project]
 name = "e-note-ion"
-version = "1.22.1"
+version = "1.22.2"
 description = "Automation for Vestaboard displays — with emotion"
 keywords = ["vestaboard", "note", "flagship", "automation", "schedule", "scheduling"]
 authors = [
@@ -27,7 +27,7 @@ dependencies = [
     "argon2-cffi>=25.1.0",
     "caldav>=3.2.1",
     "icalendar>=7.1.2",
-    "Pillow>=12.2.0",
+    "Pillow>=12.3.0",
     "recurring-ical-events>=3.8.2",
     "requests>=2.34.2",
 ]

@@ -35,10 +35,10 @@ Walkthrough for adding a new integration module to e-note-ion — covers code co
 - **Logger:** `logger = logging.getLogger(__name__)` at module top.
 - **Imports inside functions, with underscore aliases**, for everything that touches runtime state:
   ```python
-  import config as _config_mod      # not at module top — keeps integrations importable in tests
+  import config as _config_mod  # not at module top — keeps integrations importable in tests
   import integrations.vestaboard as _vb
   import integrations.media as _media
-  import scheduler as _sched         # only inside webhook handlers / enqueue paths
+  import scheduler as _sched  # only inside webhook handlers / enqueue paths
   ```
   Module-level `import config` blocks `pytest` from collecting tests when `config.toml` is absent.
 - **HTTP**:

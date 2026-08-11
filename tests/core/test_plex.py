@@ -1248,3 +1248,192 @@ def test_handle_webhook_episode_no_guid_no_tmdb_resolution_keeps_plex_se(
     _fire_play_timer()
 
   assert mock_enqueue.call_args.kwargs['data']['variables']['episode_line'] == [['S2E5 PILOT']]
+
+
+# ---------------------------------------------------------------------------
+# private flag / public mode (issue #583)
+#
+# Plex is typically run webhook-only, with plex.json absent from
+# [scheduler].content_enabled. In that setup scheduler._webhook_private is
+# never populated, so the enqueued data must carry 'private' itself or private
+# now-playing content reaches the board while public mode is active.
+# ---------------------------------------------------------------------------
+
+
+def test_play_timer_stamps_private_on_data(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Regression for #583: play data is marked private without content loading."""
+  import scheduler as _sched
+
+  monkeypatch.setattr(_sched, '_webhook_private', {})
+  with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+    _plex.handle_webhook(_episode_payload())
+    _fire_play_timer()
+
+  assert mock_enqueue.call_args.kwargs['data']['private'] is True
+
+
+def test_pause_timer_stamps_private_on_data(
+  monkeypatch: pytest.MonkeyPatch,
+  _plex_playing: None,
+) -> None:
+  import scheduler as _sched
+
+  monkeypatch.setattr(_sched, '_webhook_private', {})
+  with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+    _plex.handle_webhook(_episode_payload(event='media.pause'))
+    _fire_pause_timer()
+
+  assert mock_enqueue.call_args.kwargs['data']['private'] is True
+
+
+def test_stop_timer_stamps_private_on_data(
+  monkeypatch: pytest.MonkeyPatch,
+  _plex_playing: None,
+) -> None:
+  import scheduler as _sched
+
+  monkeypatch.setattr(_sched, '_webhook_private', {})
+  with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+    _plex.handle_webhook(_episode_payload(event='media.stop'))
+    _fire_stop_timer()
+
+  assert mock_enqueue.call_args.kwargs['data']['private'] is True
+
+
+def test_stop_timer_stamps_private_without_media(_plex_playing: None) -> None:
+  """The no-metadata stop branch builds a different dict — it must be private too."""
+  with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+    _plex.handle_webhook({'event': 'media.stop'})
+    _fire_stop_timer()
+
+  data = mock_enqueue.call_args.kwargs['data']
+  assert data['variables'] == {}
+  assert data['private'] is True
+
+
+def test_rescued_stop_data_stays_private(_plex_playing: None) -> None:
+  """Stop data rescued across a play event must still carry the private flag."""
+  with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+    # ep1 stop → rescued when ep2 play arrives → ep2 stop replays ep1's card.
+    _plex.handle_webhook(_episode_payload(event='media.stop', show='Ep1 Show'))
+    _plex.handle_webhook(_episode_payload(event='media.play', show='Ep2 Show'))
+    _plex.handle_webhook(_episode_payload(event='media.stop', show='Ep2 Show'))
+    _fire_stop_timer()
+
+  data = mock_enqueue.call_args.kwargs['data']
+  assert data['variables']['show_name'] == [['EP1 SHOW']]
+  assert data['private'] is True
+
+
+def test_private_override_false_omits_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+  """[plex.schedules.now_playing] private = false wins over the JSON default."""
+  monkeypatch.setattr(
+    _config_mod,
+    '_config',
+    {'plex': {'schedules': {'now_playing': {'private': False}}}},
+  )
+  with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+    _plex.handle_webhook(_episode_payload())
+    _fire_play_timer()
+
+  assert 'private' not in mock_enqueue.call_args.kwargs['data']
+
+
+def test_public_mode_discards_play_without_timer() -> None:
+  """Public mode: no timer is started, so no interrupt can cut public content."""
+  with patch('public.is_public', return_value=True):
+    result = _plex.handle_webhook(_episode_payload())
+
+  assert result is None
+  assert _plex._pending_play_timer is None
+
+
+def test_public_mode_discards_pause_without_timer(_plex_playing: None) -> None:
+  with patch('public.is_public', return_value=True):
+    _plex.handle_webhook(_episode_payload(event='media.pause'))
+
+  assert _plex._pending_pause_timer is None
+
+
+def test_public_mode_discards_stop_without_timer(_plex_playing: None) -> None:
+  with patch('public.is_public', return_value=True):
+    _plex.handle_webhook(_episode_payload(event='media.stop'))
+
+  assert _plex._pending_stop_timer is None
+
+
+def test_public_mode_does_not_fire_hold_interrupt() -> None:
+  """The reported symptom: a private plex event must not disturb public content."""
+  with (
+    patch('public.is_public', return_value=True),
+    patch('scheduler.enqueue') as mock_enqueue,
+    patch('scheduler.fire_hold_interrupt') as mock_interrupt,
+  ):
+    _plex.handle_webhook(_episode_payload())
+
+  mock_enqueue.assert_not_called()
+  mock_interrupt.assert_not_called()
+
+
+def test_public_mode_skips_tmdb_lookups(monkeypatch: pytest.MonkeyPatch) -> None:
+  """No metadata is built in public mode, so no TMDb network work happens."""
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+
+  def _boom(*args: Any, **kwargs: Any) -> None:
+    raise AssertionError('TMDb lookup performed while public mode active')
+
+  monkeypatch.setattr(_tmdb, 'find_episode_by_tvdb_id', _boom)
+  monkeypatch.setattr(_tmdb, 'search_show_by_title', _boom)
+
+  payload = _episode_payload()
+  payload['Metadata']['Guid'] = [{'id': 'tvdb://12345'}]
+  with patch('public.is_public', return_value=True):
+    _plex.handle_webhook(payload)
+
+
+def test_public_mode_still_clears_trakt_state() -> None:
+  """Trakt's playback view stays accurate even while the display is suppressed."""
+  with (
+    patch('public.is_public', return_value=True),
+    patch('integrations.trakt.clear_watching_state') as mock_clear,
+  ):
+    _plex.handle_webhook(_episode_payload())
+
+  mock_clear.assert_called_once()
+
+
+def test_public_mode_cancels_pending_timer(monkeypatch: pytest.MonkeyPatch) -> None:
+  """A timer scheduled just before public mode activated is cancelled, not left to fire."""
+  _plex.handle_webhook(_episode_payload())
+  assert _plex._pending_play_timer is not None
+
+  with (
+    patch('public.is_public', return_value=True),
+    patch('scheduler.enqueue') as mock_enqueue,
+  ):
+    _plex.handle_webhook(_episode_payload(event='media.stop'))
+
+  assert _plex._pending_play_timer is None
+  assert _plex._state is _plex._State.IDLE
+  mock_enqueue.assert_not_called()
+
+
+def test_public_mode_off_is_unaffected() -> None:
+  """Regression guard: normal operation still enqueues."""
+  with patch('public.is_public', return_value=False):
+    with patch('scheduler.enqueue') as mock_enqueue, patch('scheduler.fire_hold_interrupt'):
+      _plex.handle_webhook(_episode_payload())
+      _fire_play_timer()
+
+  mock_enqueue.assert_called_once()
+
+
+def test_private_flag_resolution_failure_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+  """If the private flag cannot be resolved, suppress rather than risk exposure."""
+
+  def _broken(template_name: str) -> dict[str, Any]:
+    raise OSError('plex.json unreadable')
+
+  monkeypatch.setattr(_plex, '_load_template_config', _broken)
+  with patch('public.is_public', return_value=True):
+    assert _plex._is_public_and_private('media.play') is True
