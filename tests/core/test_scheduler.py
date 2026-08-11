@@ -2936,3 +2936,108 @@ def test_validate_calendar_schedule_no_op_when_section_absent(
   with caplog.at_level('WARNING'):
     _mod.load_content(sched, content_enabled=None)
   assert 'gated_templates' not in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# webhook private-flag registration (issue #583)
+#
+# Webhook dispatch is independent of [scheduler].content_enabled, so an
+# integration can receive and display webhooks while its JSON was never loaded.
+# The private flag must survive that path.
+# ---------------------------------------------------------------------------
+
+
+def test_worker_skips_private_webhook_message_without_registry(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Regression for #583: data['private'] alone must gate, with no registry entry.
+
+  Reproduces the reported failure: plex absent from content_enabled, so
+  _webhook_private is empty and the name-keyed fallback returns False.
+  """
+  monkeypatch.setattr(_mod, '_webhook_private', {})
+  msg = _make_worker_msg(scheduled_at=time.monotonic(), timeout=3600)
+  msg.name = 'webhook.plex'
+  msg.data['private'] = True
+  with (
+    patch.object(_mod, 'pop_valid_message', side_effect=[msg, KeyboardInterrupt()]),
+    patch('public.is_public', return_value=True),
+    patch('integrations.vestaboard.set_state_raw') as mock_set,
+  ):
+    with pytest.raises(KeyboardInterrupt):
+      _mod.worker()
+  mock_set.assert_not_called()
+
+
+def test_register_webhook_private_flags_ignores_content_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Private flags register for every webhook template on disk, loaded or not."""
+  monkeypatch.setattr(_mod, '_webhook_private', {})
+  monkeypatch.setattr(_mod._config_mod, 'get_schedule_override', lambda template_id: {})
+  _mod._register_webhook_private_flags()
+  # plex, message, and notion are all webhook-only and private in contrib.
+  assert _mod._webhook_private['plex'] is True
+  assert _mod._webhook_private['message'] is True
+  assert _mod._webhook_private['notion'] is True
+
+
+def test_register_webhook_private_flags_skips_malformed_files(
+  monkeypatch: pytest.MonkeyPatch,
+  tmp_path: Path,
+) -> None:
+  """A malformed content file is skipped rather than aborting registration."""
+  content = tmp_path / 'content'
+  (content / 'contrib').mkdir(parents=True)
+  (content / 'contrib' / 'broken.json').write_text('{not json')
+  (content / 'contrib' / 'good.json').write_text(
+    json.dumps(
+      {
+        'templates': {
+          'notification': {
+            'webhook': True,
+            'private': True,
+            'integration': 'notion',
+            'priority': 5,
+            'schedule': {'hold': 60, 'timeout': 60},
+          }
+        }
+      }
+    )
+  )
+  monkeypatch.chdir(tmp_path)
+  monkeypatch.setattr(_mod, '_webhook_private', {})
+  monkeypatch.setattr(_mod._config_mod, 'get_schedule_override', lambda template_id: {})
+  _mod._register_webhook_private_flags()
+  assert _mod._webhook_private == {'notion': True}
+
+
+def test_register_webhook_private_flags_honors_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+  """A config override of private = false is respected during registration."""
+  content = tmp_path / 'content'
+  (content / 'contrib').mkdir(parents=True)
+  (content / 'contrib' / 'plex.json').write_text(
+    json.dumps(
+      {
+        'templates': {
+          'now_playing': {
+            'webhook': True,
+            'private': True,
+            'integration': 'plex',
+            'priority': 8,
+            'schedule': {'hold': 60, 'timeout': 30},
+          }
+        }
+      }
+    )
+  )
+  monkeypatch.chdir(tmp_path)
+  monkeypatch.setattr(_mod, '_webhook_private', {})
+  monkeypatch.setattr(_mod._config_mod, 'get_schedule_override', lambda template_id: {'private': False})
+  _mod._register_webhook_private_flags()
+  assert _mod._webhook_private == {'plex': False}
+
+
+def test_resolve_private_override_precedence() -> None:
+  """Config override wins; an unrecognised value leaves the JSON value standing."""
+  template = {'private': True}
+  assert _mod.resolve_private(template, {}, 'x.y') is True
+  assert _mod.resolve_private(template, {'private': False}, 'x.y') is False
+  assert _mod.resolve_private(template, {'private': 'nonsense'}, 'x.y') is True
+  assert _mod.resolve_private({}, {'private': True}, 'x.y') is True

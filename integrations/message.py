@@ -65,20 +65,25 @@ _MAX_NAME_COLS: dict[str, int] = {'note': 8, 'flagship': 15}
 def _load_template_config(template_name: str) -> dict[str, Any]:
   """Return effective config for a webhook-only template from message.json."""
   import config as _config_mod
+  import scheduler as _sched
 
   with open(_MESSAGE_JSON_PATH) as f:
     content = json.load(f)
   template = content['templates'][template_name]
   schedule = template['schedule']
 
+  override = _config_mod.get_schedule_override(f'message.{template_name}')
+
   effective: dict[str, Any] = {
     'hold': schedule['hold'],
     'timeout': schedule['timeout'],
     'priority': template['priority'],
     'truncation': template.get('truncation', 'hard'),
+    # Resolved here because message.json is not loaded unless it is listed in
+    # [scheduler].content_enabled, while its webhook fires either way.
+    'private': _sched.resolve_private(template, override, f'message.{template_name}'),
   }
 
-  override = _config_mod.get_schedule_override(f'message.{template_name}')
   for field in ('hold', 'timeout'):
     val = override.get(field)
     if isinstance(val, int) and val >= 0:
@@ -149,12 +154,16 @@ def handle_webhook(
     cfg = _load_template_config('notification')
 
     logger.debug('message: enqueueing from %r', credential_name)
+    data_out: dict[str, Any] = {
+      'templates': [{'format': [header, '{message}']}],
+      'variables': {'message': [message_lines]},
+      'truncation': cfg['truncation'],
+    }
+    if cfg['private']:
+      data_out['private'] = True
+
     return WebhookMessage(
-      data={
-        'templates': [{'format': [header, '{message}']}],
-        'variables': {'message': [message_lines]},
-        'truncation': cfg['truncation'],
-      },
+      data=data_out,
       priority=cfg['priority'],
       hold=cfg['hold'],
       timeout=cfg['timeout'],

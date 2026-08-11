@@ -6,13 +6,6 @@ import pytest
 import integrations.message as message
 from scheduler import WebhookMessage
 
-_TEMPLATE_CONFIG = {
-  'hold': 120,
-  'timeout': 600,
-  'priority': 8,
-  'truncation': 'wrap_ellipsis',
-}
-
 _FRIEND_ALICE = {'color': 'R'}
 
 
@@ -341,3 +334,32 @@ def test_exception_returns_none(caplog: pytest.LogCaptureFixture) -> None:
     result = message.handle_webhook(_make_payload(), credential_name='alice')
   assert result is None
   assert 'Message webhook error' in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# private flag (issue #583)
+# ---------------------------------------------------------------------------
+
+
+def test_message_data_marked_private() -> None:
+  """message.json marks notification private; the flag must travel on the message.
+
+  scheduler._webhook_private is only populated for content files that were
+  actually loaded, so a message.json absent from [scheduler].content_enabled
+  would otherwise reach the board while public mode is active.
+  """
+  with patch('config.get_message_friend', return_value=_FRIEND_ALICE):
+    result = message.handle_webhook(_make_payload(), credential_name='alice')
+  assert isinstance(result, WebhookMessage)
+  assert result.data['private'] is True
+
+
+def test_message_private_override_false_omits_flag() -> None:
+  """[message.schedules.notification] private = false wins over the JSON default."""
+  with (
+    patch('config.get_message_friend', return_value=_FRIEND_ALICE),
+    patch('config.get_schedule_override', return_value={'private': False}),
+  ):
+    result = message.handle_webhook(_make_payload(), credential_name='alice')
+  assert isinstance(result, WebhookMessage)
+  assert 'private' not in result.data

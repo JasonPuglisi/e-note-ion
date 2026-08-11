@@ -36,11 +36,14 @@ def _load_template_config(template_name: str) -> dict[str, Any]:
   on top of the JSON defaults, matching the behaviour of scheduled templates.
   """
   import config as _config_mod
+  import scheduler as _sched
 
   with open(_NOTION_JSON_PATH) as f:
     content = json.load(f)
   template = content['templates'][template_name]
   schedule = template['schedule']
+
+  override = _config_mod.get_schedule_override(f'notion.{template_name}')
 
   effective: dict[str, Any] = {
     'hold': schedule['hold'],
@@ -48,9 +51,11 @@ def _load_template_config(template_name: str) -> dict[str, Any]:
     'priority': template['priority'],
     'truncation': template.get('truncation', 'hard'),
     'templates': template.get('templates', []),
+    # Resolved here because notion.json is not loaded unless it is listed in
+    # [scheduler].content_enabled, while its webhook fires either way.
+    'private': _sched.resolve_private(template, override, f'notion.{template_name}'),
   }
 
-  override = _config_mod.get_schedule_override(f'notion.{template_name}')
   for field in ('hold', 'timeout'):
     val = override.get(field)
     if isinstance(val, int) and val >= 0:
@@ -117,12 +122,16 @@ def handle_webhook(payload: dict[str, Any], credential_name: str | None = None) 
       supersede_tag,
       credential_name,
     )
+    data_out: dict[str, Any] = {
+      'templates': cfg['templates'],
+      'variables': {'message': [message_lines]},
+      'truncation': cfg['truncation'],
+    }
+    if cfg['private']:
+      data_out['private'] = True
+
     return WebhookMessage(
-      data={
-        'templates': cfg['templates'],
-        'variables': {'message': [message_lines]},
-        'truncation': cfg['truncation'],
-      },
+      data=data_out,
       priority=cfg['priority'],
       hold=cfg['hold'],
       timeout=cfg['timeout'],
