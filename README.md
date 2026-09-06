@@ -113,34 +113,10 @@ Until auth is complete, templates from that integration are silently skipped
 and the display shows other content normally. See each integration's sidecar
 doc under [`content/contrib/`](content/contrib/) for setup details.
 
-## Upgrading to 2.0
+## Upgrading
 
-2.0 removes two config formats that 1.x auto-migrated on startup. The migration
-code is gone, so these need a one-time manual edit. Both are quick.
-
-**`[scheduler.quiet]` → a flat key.** Replace:
-
-```toml
-[scheduler.quiet]
-active = true
-```
-
-with `quiet = true` under `[scheduler]`, and delete the old section. 1.x
-rewrote this for you; 2.0 refuses to start rather than guess, because the old
-shape read as *enabled* regardless of what `active` was set to.
-
-**Flat message credentials → the nested namespace.** Rename any
-`[webhook.credentials.<name>]` section whose `webhooks = ["message"]`:
-
-| Old | New |
-|---|---|
-| `[webhook.credentials.message-admin]` | `[webhook.credentials.message.admin]` |
-| `[webhook.credentials.alice]` | `[webhook.credentials.message.friend.alice]` |
-
-Keep the `secret_hash`; drop the now-redundant `webhooks` line. Re-running
-friend registration recreates them correctly if you would rather not edit by
-hand. Credentials for every *other* integration (`plex`, `notion`, and so on)
-are unchanged and stay flat.
+Breaking changes and the steps to move between major versions are in
+[MIGRATIONS.md](MIGRATIONS.md). Check it before upgrading across a major.
 
 ## Configuration
 

@@ -168,6 +168,7 @@ MANIFEST.in                 # sdist file inclusion rules
     auto-release.yml        # Creates a release on version bump; publishes to PyPI and GHCR
     release.yml             # Builds + pushes multi-arch Docker image to GHCR
 SECURITY.md                 # Vulnerability disclosure policy and API key guidance
+MIGRATIONS.md               # Steps for moving between major versions (newest first)
 CONTRIBUTING.md             # Contribution guide
 CODE_OF_CONDUCT.md          # Contributor Covenant
 assets/
