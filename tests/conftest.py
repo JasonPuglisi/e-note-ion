@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Generator
 
 import pytest
@@ -13,6 +14,19 @@ def reset_vestaboard_model() -> Generator[None, None, None]:
   original = vestaboard.model
   yield
   vestaboard.model = original
+
+
+@pytest.fixture(autouse=True)
+def _isolate_health_log(tmp_path: Path) -> None:
+  """Point the health log at a temp directory for every test.
+
+  Lives here rather than in tests/core/ so it covers the whole suite: health
+  state persists through data/health.jsonl, so without this a test that records
+  an error writes it to the real file and the *next* test's health.init()
+  loads it back, producing failures that depend on execution order.
+  """
+  _health_mod._LOG_DIR = tmp_path
+  _health_mod._LOG_PATH = tmp_path / 'health.jsonl'
 
 
 @pytest.fixture(autouse=True)

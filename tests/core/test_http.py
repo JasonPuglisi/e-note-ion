@@ -221,3 +221,31 @@ def test_redact_survives_a_malformed_url() -> None:
   """A ValueError out of urlsplit must not take down error handling."""
   assert 'redacted' in http_mod.redact('see http://[not-a-valid-host/x') or True
   http_mod.redact('http://')  # must not raise
+
+
+# --- credential classification (#503) ---
+
+
+@pytest.mark.parametrize('status', [401, 403])
+def test_raise_for_credentials_flags_auth_rejections(status: int) -> None:
+  resp = MagicMock(status_code=status)
+  with pytest.raises(http_mod.CredentialError, match='credential rejected'):
+    http_mod.raise_for_credentials(resp, 'discogs')
+
+
+@pytest.mark.parametrize('status', [200, 204, 404, 429, 500, 503])
+def test_raise_for_credentials_ignores_everything_else(status: int) -> None:
+  """Only 401/403 mean "your key is wrong".
+
+  A 500 or a 429 at startup is not an expired token, and marking it as one
+  would page someone about a service having a bad minute.
+  """
+  http_mod.raise_for_credentials(MagicMock(status_code=status), 'discogs')
+
+
+def test_credential_error_names_the_integration_and_where_to_fix_it() -> None:
+  resp = MagicMock(status_code=401)
+  with pytest.raises(http_mod.CredentialError) as exc:
+    http_mod.raise_for_credentials(resp, 'ynab')
+  assert 'ynab' in str(exc.value)
+  assert 'config.toml' in str(exc.value)

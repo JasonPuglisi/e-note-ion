@@ -19,7 +19,7 @@ from datetime import date
 import requests
 
 from exceptions import IntegrationDataUnavailableError
-from integrations.http import CacheEntry, fetch_with_retry, user_agent
+from integrations.http import CacheEntry, fetch_with_retry, raise_for_credentials, user_agent
 
 logger = logging.getLogger(__name__)
 
@@ -246,3 +246,12 @@ def get_variables() -> dict[str, list[list[str]]]:
   _cache = CacheEntry(result)
   logger.debug('YNAB: net_worth=%s, delta=%s', amount_line, pct_line)
   return result
+
+
+def preflight() -> None:
+  """Validate the YNAB personal access token at startup (#503)."""
+  import config as _config_mod
+
+  api_key = _config_mod.get('ynab', 'api_key')
+  r = fetch_with_retry('GET', f'{_BASE_URL}/budgets', headers=_headers(api_key), timeout=10)
+  raise_for_credentials(r, 'ynab')

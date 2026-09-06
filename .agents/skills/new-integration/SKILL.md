@@ -128,6 +128,24 @@ See `content/README.md` for the full spec. Minimum viable contrib JSON:
 
 For webhook-only templates: omit `cron`, set `"webhook": true`.
 
+### Credential validation at startup
+
+If the integration has a credential, give it a `preflight()` that makes one
+cheap authenticated call and passes the response through
+`integrations.http.raise_for_credentials(resp, '<name>')`. The scheduler calls
+`preflight()` for every loaded integration at startup and records a
+`CredentialError` as a health error, so an expired key shows on `/health`
+immediately rather than whenever the cron next fires — up to a day later.
+
+Only 401/403 count. Do not raise `CredentialError` for a 500, a timeout, or an
+empty result: `/health` has to keep meaning "your credential is bad" rather
+than "something was briefly flaky". An expected-empty result in particular
+(`IntegrationDataUnavailableError(expected=True)`, e.g. "all monitors up") is
+the healthy state and must not fail preflight.
+
+Skip the check when the integration is optional and unconfigured — see
+`integrations/tmdb.py`.
+
 ## Constraints
 
 - **Don't add new integrations that depend on heavyweight packages** without prior discussion. Every dep increases attack surface and Docker image size.

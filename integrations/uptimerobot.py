@@ -22,7 +22,7 @@ import requests
 
 import integrations.vestaboard as _vb
 from exceptions import IntegrationDataUnavailableError
-from integrations.http import CacheEntry, fetch_with_retry
+from integrations.http import CacheEntry, fetch_with_retry, raise_for_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -174,3 +174,17 @@ def get_variables() -> dict[str, list[list[str]]]:
 
   _cache = CacheEntry(result)
   return result
+
+
+def preflight() -> None:
+  """Validate the UptimeRobot API key at startup (#503).
+
+  UptimeRobot answers a bad key with HTTP 401, so this does not need to inspect
+  the body — unlike get_variables, which must distinguish "all monitors up"
+  (an expected-empty result) from a real failure.
+  """
+  import config as _config_mod
+
+  api_key = _config_mod.get('uptimerobot', 'api_key')
+  r = fetch_with_retry('POST', _API_URL, data={'api_key': api_key, 'format': 'json', 'limit': 1}, timeout=10)
+  raise_for_credentials(r, 'uptimerobot')

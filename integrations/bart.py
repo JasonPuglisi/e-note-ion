@@ -22,7 +22,7 @@ import requests
 
 import integrations.vestaboard as _vb
 from exceptions import IntegrationDataUnavailableError
-from integrations.http import CacheEntry, fetch_with_retry, redact, user_agent
+from integrations.http import CacheEntry, fetch_with_retry, raise_for_credentials, redact, user_agent
 
 logger = logging.getLogger(__name__)
 
@@ -220,3 +220,18 @@ def get_variables() -> dict[str, list[list[str]]]:
   logger.debug('BART: fetched departures for %s (dest filters: %s)', station, dest_filters)
   _departures_cache = CacheEntry(variables)
   return variables
+
+
+def preflight() -> None:
+  """Validate the BART API key at startup (#503)."""
+  import config as _config_mod
+
+  api_key = _config_mod.get('bart', 'api_key')
+  r = fetch_with_retry(
+    'GET',
+    f'{_API_BASE}/route.aspx',
+    params={'cmd': 'routes', 'key': api_key, 'json': 'y'},
+    headers={'User-Agent': user_agent()},
+    timeout=10,
+  )
+  raise_for_credentials(r, 'bart')

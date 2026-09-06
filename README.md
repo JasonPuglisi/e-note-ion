@@ -164,6 +164,13 @@ See `config.example.toml` for the full keyword grammar and edge cases.
 
 ## Health monitoring
 
+Credentials are validated once at startup. An integration whose key the service
+rejects (HTTP 401/403) is marked unhealthy immediately and shows on `/health`,
+rather than staying silent until its cron next fires — up to a day later for the
+daily ones. Startup continues either way: one expired token does not take the
+board down.
+
+
 When the [webhook listener](#configuration) is enabled, a health endpoint is
 available at `GET /health`. It returns a JSON summary of all registered
 integration statuses, useful for uptime monitoring (e.g. UptimeRobot).
