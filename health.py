@@ -36,6 +36,17 @@ logger = logging.getLogger(__name__)
 
 _LOG_INTERVAL = 3600  # seconds between periodic health log entries
 
+# How often overall status is re-evaluated for alerting. Much shorter than
+# _LOG_INTERVAL: an hourly check would mean an outage goes unreported for up to
+# an hour. Polling rather than reacting to events is required, not lazy — an
+# integration going OVERDUE is defined by the *absence* of events, so nothing
+# fires to react to.
+_STATUS_WATCH_INTERVAL = 60
+
+# A candidate status must persist this long before it is reported, so a single
+# transient failure that resolves on the next run does not page anyone.
+_DEFAULT_ALERT_CONFIRM_SECONDS = 120
+
 # --- Persistence and threshold constants ---
 
 # Runtime state directory. Declared as a Docker VOLUME (/app/data) so it
@@ -103,6 +114,12 @@ _lock = threading.Lock()
 _targets: dict[str, _TargetState] = {}
 _started_at: float = 0.0
 _log_timer: threading.Timer | None = None
+_status_timer: threading.Timer | None = None
+
+# Last status actually reported, and the candidate currently being confirmed.
+_notified_status: Status | None = None
+_pending_status: Status | None = None
+_pending_since: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -531,6 +548,96 @@ def start_periodic_log() -> None:
   _log_timer.start()
 
 
+def _alert_confirm_seconds() -> float:
+  """Confirmation window before a status change is reported."""
+  import config as _config_mod  # local import: health.py stays importable without a loaded config
+
+  raw = _config_mod.get_optional('health', 'alert_confirm_seconds', str(_DEFAULT_ALERT_CONFIRM_SECONDS))
+  try:
+    value = float(raw)
+  except ValueError:
+    logger.warning('invalid [health] alert_confirm_seconds %r — using %s', raw, _DEFAULT_ALERT_CONFIRM_SECONDS)
+    return _DEFAULT_ALERT_CONFIRM_SECONDS
+  return max(0.0, value)
+
+
+def check_status_transition(now: float | None = None) -> tuple[str, str] | None:
+  """Evaluate overall status and report a sustained change.
+
+  Returns the (previous, current) pair that was reported, or None. Separated
+  from the timer so tests can drive it directly with an explicit clock.
+
+  A change is only reported once the new status has held for the confirmation
+  window. Without that, an integration that fails one run and recovers on the
+  next would produce a healthy→error→healthy pair of notifications for a blip
+  that never needed attention.
+  """
+  global _notified_status, _pending_status, _pending_since
+
+  import healthalert as _alert_mod  # local import: keeps health.py importable standalone
+
+  now = time.time() if now is None else now
+  current = overall_status()
+
+  with _lock:
+    baseline = _notified_status
+    if baseline is None:
+      # First evaluation establishes the baseline without notifying — otherwise
+      # every restart would announce a transition into whatever it starts in.
+      _notified_status = current
+      _pending_status = None
+      return None
+
+    if current == baseline:
+      _pending_status = None
+      return None
+
+    if _pending_status != current:
+      _pending_status = current
+      _pending_since = now
+      return None
+
+    if (now - _pending_since) < _alert_confirm_seconds():
+      return None
+
+    _notified_status = current
+    _pending_status = None
+
+  logger.info('Health status changed: %s → %s', baseline.value, current.value)
+  if _alert_mod.is_configured():
+    _alert_mod.notify_status_change(baseline.value, current.value, get_summary())
+  return baseline.value, current.value
+
+
+def start_status_watch() -> None:
+  """Start the repeating timer that watches for health status transitions."""
+  global _status_timer
+
+  def _tick() -> None:
+    global _status_timer
+    try:
+      check_status_transition()
+    except Exception:  # noqa: BLE001 — a watcher failure must never kill the timer
+      logger.exception('Health status watch failed')
+    _status_timer = threading.Timer(_STATUS_WATCH_INTERVAL, _tick)
+    _status_timer.daemon = True
+    _status_timer.start()
+
+  _status_timer = threading.Timer(_STATUS_WATCH_INTERVAL, _tick)
+  _status_timer.daemon = True
+  _status_timer.start()
+
+
+def stop_status_watch() -> None:
+  """Cancel the status watch timer (for clean shutdown in tests)."""
+  global _status_timer, _notified_status, _pending_status
+  if _status_timer is not None:
+    _status_timer.cancel()
+    _status_timer = None
+  _notified_status = None
+  _pending_status = None
+
+
 def stop_periodic_log() -> None:
   """Cancel the periodic log timer (for clean shutdown in tests)."""
   global _log_timer
@@ -546,3 +653,4 @@ def reset() -> None:
     _targets.clear()
     _started_at = 0.0
   stop_periodic_log()
+  stop_status_watch()

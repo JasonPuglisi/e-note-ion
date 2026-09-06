@@ -402,6 +402,28 @@ city = "San Francisco"
 # secret_hash = "$argon2id$v=19$m=65536,t=3,p=4$..."
 # webhooks = ["message"]
 
+# [health]
+# Optional: push a notification when overall health status changes, so a break
+# reaches you without polling GET /health. When alert_url is absent, nothing is
+# sent (the endpoint still works). See docs/health-alerts.md for recipes.
+#
+# alert_url — endpoint that receives the push. On each sustained transition,
+#   e-note-ion sends POST <url> with JSON {"previous": "healthy", "current":
+#   "error", "uptime_seconds": N, "unhealthy": {...}} where `unhealthy` carries
+#   only the targets that are actually unwell. Works with Slack/Discord
+#   webhooks, ntfy, Pushover, or a Home Assistant webhook trigger. Failures are
+#   logged and never affect the scheduler.
+# alert_url = "https://ntfy.sh/my-private-topic"
+#
+# alert_secret — sent as the X-Webhook-Secret header on the push. Optional;
+#   omit for services that authenticate via the URL itself.
+# alert_secret = "a-long-random-string"
+#
+# alert_confirm_seconds — how long a new status must hold before it is
+#   reported. Stops a single failed run that recovers on the next one from
+#   producing a healthy→error→healthy pair of alerts. Default: 120.
+# alert_confirm_seconds = 120
+
 # [homebridge]
 # Optional: push quiet/public mode transitions to HomeBridge so the Apple Home
 # switches update instantly instead of waiting for the next poll of GET /state.
