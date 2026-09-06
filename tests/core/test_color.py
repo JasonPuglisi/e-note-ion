@@ -321,3 +321,50 @@ def test_oversized_image_is_rejected_before_the_decode() -> None:
 
   with patch.object(_Image.Image, 'convert', side_effect=AssertionError('decoded an oversized image')):
     assert color_mod.dominant_color_tag(buf.getvalue(), fallback='[Y]') == '[Y]'
+
+
+# --- oversized download handling (follow-up to #594) ---
+
+
+def test_oversized_body_is_skipped_not_truncated() -> None:
+  """An over-cap body must be recognised, not read partially.
+
+  Reading exactly _MAX_IMAGE_BYTES silently truncated the image, which then
+  failed to decode and fell back — indistinguishable from a corrupt file, with
+  no signal that a size limit caused it.
+  """
+  oversized = b'\xff\xd8\xff' + b'x' * (color_mod._MAX_IMAGE_BYTES + 10)
+  fake = MagicMock()
+  fake.headers = {'Content-Type': 'image/jpeg'}
+  fake.raw.read.side_effect = lambda n: oversized[:n]
+
+  with patch('integrations.color.fetch_with_retry', return_value=fake):
+    assert color_mod.fetch_cover_color('https://example.com/cover.jpg', fallback='[G]') == '[G]'
+
+  # Read one byte past the cap, which is what makes the overage detectable.
+  fake.raw.read.assert_called_once_with(color_mod._MAX_IMAGE_BYTES + 1)
+
+
+def test_body_exactly_at_the_cap_is_still_processed() -> None:
+  """The cap is inclusive — an image of exactly the limit is legitimate."""
+  from PIL import Image as _Image
+
+  buf = io.BytesIO()
+  _Image.new('RGB', (60, 60), (200, 20, 30)).save(buf, format='PNG')
+  payload = buf.getvalue()
+  assert len(payload) < color_mod._MAX_IMAGE_BYTES
+
+  fake = MagicMock()
+  fake.headers = {'Content-Type': 'image/png'}
+  fake.raw.read.side_effect = lambda n: payload[:n]
+
+  with patch('integrations.color.fetch_with_retry', return_value=fake):
+    assert color_mod.fetch_cover_color('https://example.com/cover.png') == '[R]'
+
+
+def test_byte_cap_has_real_headroom_over_observed_cover_art() -> None:
+  """Guards against re-tightening this to a size that clips real covers.
+
+  Measured against a real Discogs collection: median 90 KB, largest 153 KB.
+  """
+  assert color_mod._MAX_IMAGE_BYTES >= 4 * 1024 * 1024

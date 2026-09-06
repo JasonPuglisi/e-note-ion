@@ -38,7 +38,7 @@ import random
 import requests
 from PIL import Image
 
-from integrations.http import fetch_with_retry, user_agent
+from integrations.http import fetch_with_retry, redact, user_agent
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,15 @@ _SAMPLE_SIZE = 100
 
 # Maximum image size to read (bytes). Cover art thumbnails are well under
 # 500 KB; this guards against unexpectedly large redirect targets.
-_MAX_IMAGE_BYTES = 2 * 1024 * 1024  # 2 MB
+# Sized for legitimate cover art with a lot of headroom, not as a security
+# control. Measured against a real Discogs collection: 30 covers, median 90 KB,
+# largest 153 KB — so this is ~50x the observed maximum.
+#
+# It used to do double duty as the decompression-bomb defence, which is what
+# kept it at 2 MB. _MAX_IMAGE_PIXELS now handles that on the decoded size, so
+# this only has to bound bandwidth and memory for the raw download, and can be
+# generous enough that a higher-resolution source never silently degrades.
+_MAX_IMAGE_BYTES = 8 * 1024 * 1024  # 8 MB
 
 # Ceiling on decoded pixels, independent of the byte cap above. The byte cap
 # bounds the download; it does not bound the decode. A highly compressed 2 MB
@@ -353,7 +361,14 @@ def fetch_cover_color(url: str, *, fallback: str = '[Y]') -> str:
       logger.debug('color: GIF response skipped (likely placeholder)')
       return fallback
 
-    image_bytes = r.raw.read(_MAX_IMAGE_BYTES)
+    # Read one byte past the cap so an oversized body is *detected* rather than
+    # silently truncated. A truncated image fails to decode and falls back,
+    # which looks identical to a corrupt image — there was no way to tell that
+    # a size limit was the cause.
+    image_bytes = r.raw.read(_MAX_IMAGE_BYTES + 1)
+    if len(image_bytes) > _MAX_IMAGE_BYTES:
+      logger.debug('color: image exceeds %d bytes, skipping (%s)', _MAX_IMAGE_BYTES, redact(url))
+      return fallback
   except requests.RequestException as e:
     logger.debug('color: image fetch failed — %s', e)
     return fallback
