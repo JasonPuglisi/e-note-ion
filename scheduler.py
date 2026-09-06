@@ -743,12 +743,26 @@ def worker() -> None:
 
 # --- Webhook Server ---
 
-# Logger names, not package names — qh3 logs under 'quic'. Verified against the
-# installed package; guessing 'qh3' would silence nothing. See #598.
+# Floors for third-party loggers that would otherwise inherit log_level from the
+# root logger. Per-logger, because the right floor differs: quic has nothing
+# worth hearing below ERROR, while apscheduler's WARNING and ERROR are exactly
+# what you want — missed job runs, jobs raising, max-instances hits. Only its
+# INFO bookkeeping is noise, and our own load output already says it better:
 #
-# Noise only: these are restored at DEBUG, where the operator has asked for
+#   apscheduler INFO   'Added job "..." to job store "default"'  (x26 at startup)
+#                      'Adding job tentatively -- ...'           (x26 at startup)
+#                      'Running job "..."' / 'Job "..." executed successfully'
+#   our INFO           '· breakfast  cron="0 8 * * *"  priority=9  hold=600s'
+#
+# Logger names, not package names — qh3 logs under 'quic'. Verified against the
+# installed packages; guessing 'qh3' would silence nothing. See #598.
+#
+# All of these are restored at DEBUG, where the operator has asked for
 # third-party detail.
-_NOISY_THIRD_PARTY_LOGGERS = ('quic',)
+_THIRD_PARTY_LOG_FLOORS: dict[str, int] = {
+  'quic': logging.ERROR,
+  'apscheduler': logging.WARNING,
+}
 
 # caldav's "Ical data was modified" warning is handled separately because it is
 # not noise — it prints a unified diff of real calendar event data (summaries,
@@ -1779,8 +1793,8 @@ def main() -> None:
   # Skipped entirely at DEBUG: an operator who asked for DEBUG wants the
   # third-party detail too.
   if level > logging.DEBUG:
-    for noisy in _NOISY_THIRD_PARTY_LOGGERS:
-      logging.getLogger(noisy).setLevel(logging.ERROR)
+    for noisy, floor in _THIRD_PARTY_LOG_FLOORS.items():
+      logging.getLogger(noisy).setLevel(floor)
 
   # Unconditional: personal data must not be gated on log level. Attached to the
   # handler rather than the 'caldav' logger — a logger's own filters do not run

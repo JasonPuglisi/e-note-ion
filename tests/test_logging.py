@@ -107,5 +107,5 @@ def test_caldav_is_no_longer_blanket_silenced() -> None:
   """The diff is handled by a filter now, so caldav keeps its normal level."""
   import scheduler as _sched
 
-  assert 'caldav' not in _sched._NOISY_THIRD_PARTY_LOGGERS
-  assert 'quic' in _sched._NOISY_THIRD_PARTY_LOGGERS
+  assert 'caldav' not in _sched._THIRD_PARTY_LOG_FLOORS
+  assert 'quic' in _sched._THIRD_PARTY_LOG_FLOORS
