@@ -3110,39 +3110,31 @@ def test_apscheduler_warnings_survive_the_floor() -> None:
     logging.getLogger('apscheduler').setLevel(saved)
 
 
-@pytest.mark.parametrize(
-  ('configured', 'expect_silenced'),
-  [('INFO', True), ('WARNING', True), ('DEBUG', False)],
-)
-def test_third_party_noise_is_silenced_except_at_debug(
-  configured: str,
-  expect_silenced: bool,
-) -> None:
-  """log_level is set on the root logger, so every dependency inherits it.
+@pytest.mark.parametrize('configured', ['DEBUG', 'INFO', 'WARNING'])
+def test_third_party_noise_is_floored_at_every_level(configured: str) -> None:
+  """Including DEBUG.
 
-  caldav emits a multi-line diff of real calendar event data at WARNING, and
-  quic warns on every idle keepalive close. Both are silenced at normal levels
-  and deliberately restored at DEBUG, where the operator asked for detail.
+  log_level is set on the root logger, so dependencies inherit it. There used
+  to be a DEBUG escape hatch on the theory that DEBUG meant "show everything";
+  it shipped twice and hid the problem both times, because production runs at
+  DEBUG. "Tell me more about e-note-ion" is not "print APScheduler's per-job
+  bookkeeping".
   """
   level = getattr(logging, configured)
   saved = {name: logging.getLogger(name).level for name in _mod._THIRD_PARTY_LOG_FLOORS}
   try:
     for name in _mod._THIRD_PARTY_LOG_FLOORS:
       logging.getLogger(name).setLevel(logging.NOTSET)
+    logging.root.setLevel(level)
 
-    if level > logging.DEBUG:
-      for name, floor in _mod._THIRD_PARTY_LOG_FLOORS.items():
-        logging.getLogger(name).setLevel(floor)
+    for noisy, floor in _mod._THIRD_PARTY_LOG_FLOORS.items():
+      logging.getLogger(noisy).setLevel(floor)
 
     for name, floor in _mod._THIRD_PARTY_LOG_FLOORS.items():
       lg = logging.getLogger(name)
-      assert (lg.level == floor) is expect_silenced, f'{name} at log_level={configured}'
-      # Below the floor is cut; at the floor still gets through. Checked against
-      # each logger's own floor rather than a shared one, since apscheduler
-      # keeps WARNING (missed runs) while quic does not.
       below = logging.INFO if floor > logging.INFO else logging.DEBUG
-      assert lg.isEnabledFor(below) is not expect_silenced, f'{name} below-floor at {configured}'
-      assert lg.isEnabledFor(floor), f'{name} must always keep records at its own floor'
+      assert not lg.isEnabledFor(below), f'{name} noise leaked at log_level={configured}'
+      assert lg.isEnabledFor(floor), f'{name} must keep records at its own floor'
   finally:
     for name, lvl in saved.items():
       logging.getLogger(name).setLevel(lvl)
