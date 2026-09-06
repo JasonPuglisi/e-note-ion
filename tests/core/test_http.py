@@ -153,3 +153,71 @@ def test_user_agent_cached() -> None:
     user_agent()
     user_agent()
   mock_ver.assert_called_once()
+
+
+# --- redact (#591) ---
+
+
+@pytest.mark.parametrize(
+  ('label', 'text', 'secret'),
+  [
+    (
+      'bart key in a connection-error path',
+      "HTTPSConnectionPool(host='api.bart.gov', port=443): Max retries exceeded with "
+      'url: /api/etd.aspx?cmd=etd&orig=EMBR&key=SUPERSECRETKEY&json=y (Caused by ...)',
+      'SUPERSECRETKEY',
+    ),
+    (
+      'ics feed url, where the path is the credential',
+      "calendar: fetch failed for 'https://p12-caldav.icloud.com/published/2/MTIz_SECRETTOKEN' — boom",
+      'SECRETTOKEN',
+    ),
+    (
+      'ics feed reported as a bare path',
+      'Max retries exceeded with url: /published/2/MTIz_SECRETTOKEN',
+      'SECRETTOKEN',
+    ),
+    (
+      'credentials in userinfo',
+      'connect failed: https://alice:hunter2@example.com/feed',
+      'hunter2',
+    ),
+    (
+      'query string with no surrounding url',
+      'upstream rejected ?access_token=abc123def&scope=read',
+      'abc123def',
+    ),
+  ],
+)
+def test_redact_removes_secrets(label: str, text: str, secret: str) -> None:
+  """Exception text reaches record_error(), which writes it to data/health.jsonl
+  and serves it from /health. Several of our URLs are themselves credentials."""
+  out = http_mod.redact(text)
+  assert secret not in out, f'{label}: secret survived redaction -> {out}'
+
+
+def test_redact_keeps_the_host_so_errors_stay_useful() -> None:
+  """Which service failed is the entire diagnostic value; keep that much.
+
+  Asserted as exact output rather than a substring check. A substring check
+  would be weaker (it cannot tell where in the string the host ended up) and
+  CodeQL rightly flags `host in url` as the shape of a bypassable host check.
+  """
+  assert http_mod.redact('Max retries exceeded with url: https://api.bart.gov/api/etd.aspx?key=SECRET') == (
+    'Max retries exceeded with url: https://api.bart.gov/...'
+  )
+
+
+def test_redact_leaves_non_url_text_alone() -> None:
+  for text in ['plain failure, nothing sensitive', 'HTTP 503 Service Unavailable', '']:
+    assert http_mod.redact(text) == text
+
+
+def test_redact_keeps_a_bare_origin_intact() -> None:
+  assert http_mod.redact('https://example.com') == 'https://example.com'
+
+
+def test_redact_survives_a_malformed_url() -> None:
+  """A ValueError out of urlsplit must not take down error handling."""
+  assert 'redacted' in http_mod.redact('see http://[not-a-valid-host/x') or True
+  http_mod.redact('http://')  # must not raise

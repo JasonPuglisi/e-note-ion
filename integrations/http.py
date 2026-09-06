@@ -7,15 +7,64 @@
 
 import importlib.metadata
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlsplit
 
 import requests
 
 logger = logging.getLogger(__name__)
 
 _ua_cache: str | None = None
+
+# Matches a URL well enough to redact it. Deliberately greedy about what counts
+# as a URL and conservative about what survives: over-redacting a log line is
+# cheap, leaking a credential is not.
+_URL_RE = re.compile(r'\b[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s\'"<>\\]+')
+
+
+def _redact_url(match: re.Match[str]) -> str:
+  raw = match.group(0)
+  try:
+    parts = urlsplit(raw)
+  except ValueError:
+    return '<redacted-url>'
+  host = parts.hostname or ''
+  if not host:
+    return '<redacted-url>'
+  if parts.port:
+    host = f'{host}:{parts.port}'
+  # hostname drops any user:password@ prefix for us.
+  tail = '/...' if (parts.path not in ('', '/') or parts.query) else ''
+  return f'{parts.scheme}://{host}{tail}'
+
+
+# requests reports the *path* separately from the host: "Max retries exceeded
+# with url: /api/etd.aspx?cmd=etd&key=SECRET". The absolute-URL pattern above
+# never sees that, and BART puts its API key in exactly that query string.
+_BARE_PATH_RE = re.compile(r'(?i)\b(url:\s*)(/[^\s\'"<>\\]*)')
+
+# Anything left that looks like a query string, wherever it appears.
+_QUERY_RE = re.compile(r'\?[A-Za-z0-9_.\-]+=[^\s\'"<>\\]*')
+
+
+def redact(text: str) -> str:
+  """Reduce every URL in *text* to scheme://host, dropping path, query and userinfo.
+
+  Exception text from requests embeds the full request URL, and several of our
+  URLs *are* credentials: a private iCloud or Google ICS feed is a bearer token
+  in path form, and BART takes its API key as a query parameter. That text
+  reaches record_error(), which writes it to data/health.jsonl and serves it
+  from /health as last_error_message.
+
+  Host and scheme are kept because "which service failed" is the whole
+  diagnostic value; everything that could identify or authenticate is dropped.
+  """
+  text = _URL_RE.sub(_redact_url, text)
+  text = _BARE_PATH_RE.sub(r'\1/...', text)
+  return _QUERY_RE.sub('?...', text)
 
 
 def user_agent() -> str:

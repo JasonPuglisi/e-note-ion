@@ -22,7 +22,7 @@ import requests
 
 import integrations.vestaboard as _vb
 from exceptions import IntegrationDataUnavailableError
-from integrations.http import CacheEntry, fetch_with_retry, user_agent
+from integrations.http import CacheEntry, fetch_with_retry, redact, user_agent
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +188,9 @@ def get_variables() -> dict[str, list[list[str]]]:
     if isinstance(e, requests.HTTPError) and e.response is not None:
       msg = f'BART API error: {e.response.status_code} {e.response.reason}'
     else:
-      msg = str(e)
+      # Timeout and ConnectionError text embeds the full request URL, and the
+      # BART API key travels as a query parameter. (#591)
+      msg = redact(str(e))
     logger.warning('BART: departures request failed — %s', msg)
     if _departures_cache is not None and _departures_cache.is_valid(_DEPARTURES_CACHE_TTL):
       logger.debug('BART: serving stale departures cache')
