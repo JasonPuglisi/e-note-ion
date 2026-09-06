@@ -31,7 +31,7 @@ from integrations.http import user_agent
 logger = logging.getLogger(__name__)
 
 _DEVICE_CODE_URL = 'https://oauth2.googleapis.com/device/code'
-_TOKEN_URL = 'https://oauth2.googleapis.com/token'  # nosec B105 — URL, not a password
+_TOKEN_URL = 'https://oauth2.googleapis.com/token'  # nosec B105  # URL, not a password
 
 # Prevents multiple concurrent auth background threads.
 _auth_started = False
@@ -93,7 +93,7 @@ def _clear_tokens() -> None:
 
   _config_mod.write_section_values(
     'google',
-    {'access_token': '', 'refresh_token': '', 'expires_at': ''},  # nosec B105 — empty strings intentionally clear stored tokens
+    {'access_token': '', 'refresh_token': '', 'expires_at': ''},  # nosec B105  # empty strings intentionally clear stored tokens
   )
 
 

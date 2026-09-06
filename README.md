@@ -18,8 +18,8 @@ with no web UI or cloud dependency required. Supports both the
 ## Who this is for
 
 E•NOTE•ION is built for developers and power users who want to treat their
-board like infrastructure: content in files, schedules in cron, secrets in env
-vars, deploys in Docker.
+board like infrastructure: content in files, schedules in cron, secrets in
+`config.toml`, deploys in Docker.
 
 If you'd prefer a friendlier experience — a web UI, drag-and-drop scheduling,
 and a polished setup flow — check out
@@ -132,6 +132,8 @@ Key `[scheduler]` settings:
 | `public` | `false` | When `true`, skip templates marked `private = true` (for shared/guest-visible spaces). Can be toggled at runtime via `POST /webhook/scheduler` with `{"action": "public"}` or `{"action": "private"}` |
 | `content_enabled` | _(absent)_ | Content filter for cron-scheduled templates in both `user/` and `contrib/`: absent = all user loads, no contrib; `["*"]` = all user + all contrib; `["bart", "my_quotes"]` = only matching stems from either directory. **Webhook-only integrations (`plex`, `message`, `notion`) are unaffected — their webhooks fire regardless of this setting.** |
 | `timezone` | system TZ | IANA timezone for cron job scheduling (e.g. `"America/Los_Angeles"`) |
+| `log_level` | `"INFO"` | Logging level: `"DEBUG"`, `"INFO"`, `"WARNING"`, `"ERROR"`, `"CRITICAL"`. `"DEBUG"` shows per-integration cache hits, retry attempts, and state transitions |
+| `quiet` | `false` | When `true`, render content to virtual state instead of sending it to the board. Normally written by `POST /webhook/scheduler` with `{"action": "quiet"}` / `{"action": "wake"}`, but can be set manually before startup |
 | `min_hold` | `60` | Minimum seconds any message stays on display before a high-priority (≥8) queued message can interrupt it. Set to `0` to disable (not recommended for physical displays). |
 
 ### Calendar-driven gating
@@ -324,10 +326,10 @@ uv run pyright
 uv run bandit -c pyproject.toml -r .
 uv run pip-audit
 uv run pre-commit run pretty-format-json --all-files
-uv run pytest
+uv run pytest --cov --cov-report=term-missing
 ```
 
-All checks are also enforced as pre-commit hooks.
+Every check except `pytest` also runs as a pre-commit hook.
 
 ### Integration tests
 

@@ -41,7 +41,7 @@ import time
 from datetime import date, datetime, timedelta
 from typing import Any, cast
 from urllib.parse import urljoin
-from xml.etree import ElementTree as ET  # nosec B405 — XML from authenticated Apple API
+from xml.etree import ElementTree as ET  # nosec B405  # XML from authenticated Apple API
 
 import recurring_ical_events
 import requests
@@ -366,7 +366,7 @@ def _get_caldav_calendars(
       raw_color = props.get('{http://apple.com/ns/ical/}calendar-color') if props else None  # pyright: ignore[reportAttributeAccessIssue] — caldav dual sync/async return typing
       if raw_color:
         color_tag = hex_to_color_tag(str(raw_color))
-    except Exception:  # noqa: BLE001  # nosec B110 — color is optional; CalDAV property fetch may fail on non-Apple servers
+    except Exception:  # noqa: BLE001  # nosec B110  # color is optional; CalDAV property fetch may fail on non-Apple servers
       pass
 
     result.append((cal, color_tag))
@@ -429,7 +429,7 @@ def _collect_candidates_caldav(
         for component in event_obj.icalendar_instance.subcomponents:
           if component.name == 'VEVENT':
             merged.add_component(component)
-      except Exception:  # noqa: BLE001  # nosec B112 — skip malformed CalDAV event objects; continue to next
+      except Exception:  # noqa: BLE001  # nosec B112  # skip malformed CalDAV event objects; continue to next
         continue
 
     try:
@@ -508,7 +508,7 @@ def _get_addressbook_url(carddav_url: str, username: str, password: str) -> str:
       timeout=15,
     )
     r.raise_for_status()
-    root = ET.fromstring(r.content)  # nosec B314 — XML from authenticated Apple API
+    root = ET.fromstring(r.content)  # nosec B314  # XML from authenticated Apple API
     principal_href = root.findtext('.//d:current-user-principal/d:href', namespaces=ns)
     if not principal_href:
       raise IntegrationDataUnavailableError('calendar: CardDAV principal not found')
@@ -528,7 +528,7 @@ def _get_addressbook_url(carddav_url: str, username: str, password: str) -> str:
       timeout=15,
     )
     r.raise_for_status()
-    root = ET.fromstring(r.content)  # nosec B314 — XML from authenticated Apple API
+    root = ET.fromstring(r.content)  # nosec B314  # XML from authenticated Apple API
     home_href = root.findtext('.//card:addressbook-home-set/d:href', namespaces=ns)
     if not home_href:
       raise IntegrationDataUnavailableError('calendar: CardDAV addressbook home not found')
@@ -548,7 +548,7 @@ def _get_addressbook_url(carddav_url: str, username: str, password: str) -> str:
       timeout=15,
     )
     r.raise_for_status()
-    root = ET.fromstring(r.content)  # nosec B314 — XML from authenticated Apple API
+    root = ET.fromstring(r.content)  # nosec B314  # XML from authenticated Apple API
     addressbook_url: str | None = None
     for resp in root.findall('d:response', ns):
       rtype = resp.find('.//d:resourcetype', ns)
@@ -610,7 +610,7 @@ def _fetch_birthday_contacts(
     raise IntegrationDataUnavailableError(f'calendar: birthday contacts fetch failed — {e}') from None
 
   ns = {'d': 'DAV:', 'card': 'urn:ietf:params:xml:ns:carddav'}
-  root = ET.fromstring(r.content)  # nosec B314 — XML from authenticated Apple API
+  root = ET.fromstring(r.content)  # nosec B314  # XML from authenticated Apple API
   contacts: list[tuple[str, int, int]] = []
 
   for resp in root.findall('d:response', ns):
@@ -690,7 +690,7 @@ def _resolve_self_contact(
       timeout=15,
     )
     r.raise_for_status()
-    root = ET.fromstring(r.content)  # nosec B314 — XML from authenticated Apple API
+    root = ET.fromstring(r.content)  # nosec B314  # XML from authenticated Apple API
     me_card_href = root.findtext('.//cs:me-card/d:href', namespaces=ns)
     if not me_card_href:
       logger.debug('calendar: me-card property absent — self-birthday unavailable')
@@ -728,7 +728,7 @@ def _resolve_self_contact(
     logger.debug('calendar: self contact resolved')
     return _self_contact_cache
 
-  except Exception:  # noqa: BLE001  # nosec B112 — broad catch; me-card is best-effort
+  except Exception:  # noqa: BLE001 — broad catch; me-card discovery is best-effort
     logger.debug('calendar: me-card discovery failed — self-birthday unavailable')
     return None
 

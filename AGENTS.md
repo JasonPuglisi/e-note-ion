@@ -47,8 +47,9 @@ on this project collaboratively with the user.
   OAuth scopes and API permissions they strictly need
 
 **Stability (post-1.0):**
-- Content JSON format, CLI flags, Docker env vars, and config.toml keys are
-  part of the public API — breaking changes require a major version bump
+- Content JSON format, CLI flags, and config.toml keys are part of the public
+  API — breaking changes require a major version bump. (The app reads no
+  environment variables; all configuration lives in `config.toml`.)
 - Deprecate before removing: add a deprecation warning for at least one minor
   release before removing any public-facing feature
 - Internal APIs (integration module signatures, scheduler internals) may change
@@ -78,7 +79,7 @@ public.py                   # Runtime public mode state (thread-safe, persisted 
 quiet.py                    # Software-side quiet mode state (thread-safe, persisted to config.toml)
 homebridge.py               # Optional outbound push notifier for HomeBridge/Apple Home (fires on quiet/public transitions)
 health.py                   # Integration health tracking (thread-safe, persisted to data/health.jsonl)
-config.py                   # TOML config loader (load_config, get, get_optional, get_schedule_override, write_section_values — in-place token persistence)
+config.py                   # TOML config loader (load_config, get, get_optional, get_schedule_override, write_section_values / write_config_section — in-place persistence)
 exceptions.py               # Custom exception types (IntegrationDataUnavailableError)
 config.toml                 # Runtime config with API keys (git-ignored; copy from config.example.toml)
 config.example.toml         # Config template committed to the repo
@@ -133,19 +134,33 @@ content/
     uptimerobot.json / .md  # UptimeRobot service outage alerts (API polling)
     ynab.json / .md         # YNAB net worth tracker
     youtube.json / .md      # YouTube live streams from subscriptions
+    message-wordlist.txt    # 500-word list for generating friend passphrases
+    shortcuts/              # Apple Shortcuts templates (message, diving, quiet/public control)
   user/                     # Personal content (always loaded, git-ignored)
 data/                       # Runtime state directory (Docker VOLUME, git-ignored)
   health.jsonl              # Persisted health events (JSONL, auto-managed, purged after 7 days)
+tests/                      # Unit tests (pytest); see Tests below for layout
+  core/                     # Unit tests for integrations with shared fixtures
+  integrations/             # Live-API integration tests (deselected by default)
+scripts/
+  check-version-bump.sh     # Pre-commit hook: warn when .py/.json is staged without a version bump
+  staged-integration-tests.sh # Pre-commit hook: run integration tests for staged integrations
 docs/
   webhook-reverse-proxy.md  # Webhook TLS setup guide (Cloudflare Tunnel, reverse proxy)
   homebridge.md             # Apple Home / HomeBridge setup (GET /state, [homebridge] push, companion plugin)
 .env.example                # Template for local integration test secrets (copy to .env, fill in, git-ignored)
 Dockerfile                  # Single-stage image using ghcr.io/astral-sh/uv
-.github/workflows/
-  ci.yml                    # Runs checks on every push and pull request to main
-  auto-release.yml          # Creates a release on version bump; publishes to PyPI and GHCR
-  release.yml               # Builds + pushes multi-arch Docker image to GHCR
+MANIFEST.in                 # sdist file inclusion rules
+.pre-commit-config.yaml     # Pre-commit hook definitions (ruff, bandit, pip-audit, pyright, local scripts)
+.github/
+  dependabot.yml            # Weekly uv + github-actions update config (grouped)
+  workflows/
+    ci.yml                  # Runs checks on every push and pull request to main
+    auto-release.yml        # Creates a release on version bump; publishes to PyPI and GHCR
+    release.yml             # Builds + pushes multi-arch Docker image to GHCR
 SECURITY.md                 # Vulnerability disclosure policy and API key guidance
+CONTRIBUTING.md             # Contribution guide
+CODE_OF_CONDUCT.md          # Contributor Covenant
 assets/
   icon.png                  # App icon (256×256) for Unraid CA
   social-preview.png        # GitHub repository social preview (1280×640)
@@ -196,8 +211,15 @@ skill.
 - Run checks: `uv run ruff check .`, `uv run ruff format --check .`,
   `uv run pyright`, `uv run bandit -c pyproject.toml -r .`, `uv run pip-audit`,
   `uv run pre-commit run pretty-format-json --all-files`,
-  `uv run pytest --cov=integrations --cov=. --cov-report=term-missing`
+  `uv run pytest --cov --cov-report=term-missing` (source list lives in
+  `[tool.coverage.run]`; passing `--cov=.` pulls the tests into the report and
+  inflates the number)
 - Install hooks (once after cloning): `uv run pre-commit install`
+- Two local hooks live in `scripts/`: `check-version-bump.sh` fails the commit
+  when a `.py` or `.json` file is staged without a `version` bump in
+  `pyproject.toml` (bypass with `--no-verify` when genuinely not
+  release-worthy), and `staged-integration-tests.sh` runs the matching live-API
+  test for any staged `integrations/<name>.py`
 - Tests live in `tests/`; use `pytest` with `unittest.mock` for HTTP calls
 
 ## Docker
@@ -227,7 +249,7 @@ PR labels (apply one or more):
 
 - PRs that introduce new logic **must** include corresponding tests in `tests/`
 - Use `pytest`; mock HTTP calls with `unittest.mock`
-- CI runs `uv run pytest --cov=integrations --cov=. --cov-report=term-missing`
+- CI runs `uv run pytest --cov --cov-report=term --cov-report=xml`
   — tests must pass before merge; coverage is reported but not gated
 - When working on existing code that lacks tests, add retroactive coverage as
   part of the same PR where feasible
@@ -497,8 +519,12 @@ template output, consult and follow both content docs:
 - Target 80 columns; up to 120 is acceptable when breaking would be awkward;
   past 120 only as a last resort
 - All `requests` calls must include `timeout=`
-- Suppress bandit findings with `# nosec BXXX — justification` (always include
-  rule ID AND a short reason); never suppress blindly
+- Suppress bandit findings with `# nosec BXXX  # justification` — always the
+  bandit rule ID (`B311`, not ruff's `S311`) AND a short reason, with the reason
+  behind a second `#`. Bandit parses everything between `nosec` and the next
+  `#` as test IDs: prose there floods the output with "not a test name"
+  warnings, and an unrecognised ID silently degrades the line to a *blanket*
+  suppression. Never suppress blindly.
 - Integration modules must import `config` inside functions (not at module
   level) using the alias `import config as _config_mod` — consistent with
   `_public_mod` / `_quiet_mod` in `scheduler.py`. This keeps integrations

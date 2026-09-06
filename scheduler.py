@@ -39,7 +39,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 import config as _config_mod
 import health as _health_mod
-import integrations.vestaboard as vestaboard
+import integrations.vestaboard as _vb
 import public as _public_mod
 import quiet as _quiet_mod
 from exceptions import IntegrationDataUnavailableError
@@ -397,10 +397,10 @@ def _do_hold(
       if virtual is not None:
         logger.info('[hold] quiet→wake during %s — sending virtual state to board', message.name)
         try:
-          vestaboard.set_state_raw(virtual)
-        except vestaboard.DuplicateContentError:
+          _vb.set_state_raw(virtual)
+        except _vb.DuplicateContentError:
           pass
-        except vestaboard.BoardLockedError:
+        except _vb.BoardLockedError:
           logger.warning('[hold] board locked on wake — virtual state discarded')
         except Exception as e:  # noqa: BLE001
           logger.error('[hold] error sending virtual state on wake: %s', e)
@@ -452,11 +452,11 @@ def _clear_private_content() -> None:
   if not found_public:
     logger.info('Public mode active with private content displayed — clearing board')
     try:
-      blank = [[0] * vestaboard.model.cols for _ in range(vestaboard.model.rows)]
-      vestaboard.set_state_raw(blank)
+      blank = [[0] * _vb.model.cols for _ in range(_vb.model.rows)]
+      _vb.set_state_raw(blank)
       _board_showing_private = False
       _health_mod.record_success(_health_mod.VESTABOARD_TARGET)
-    except vestaboard.BoardLockedError:
+    except _vb.BoardLockedError:
       _health_mod.record_locked(_health_mod.VESTABOARD_TARGET)
     except Exception as e:  # noqa: BLE001
       _health_mod.record_error(_health_mod.VESTABOARD_TARGET, str(e))
@@ -481,10 +481,10 @@ def worker() -> None:
       if virtual is not None:
         logger.info('Quiet mode ended — sending virtual state to board')
         try:
-          vestaboard.set_state_raw(virtual)
-        except vestaboard.DuplicateContentError:
+          _vb.set_state_raw(virtual)
+        except _vb.DuplicateContentError:
           pass  # content already showing
-        except vestaboard.BoardLockedError:
+        except _vb.BoardLockedError:
           logger.warning('Board locked on wake — virtual state discarded')
         except Exception as e:  # noqa: BLE001
           logger.error('Error sending virtual state on wake: %s', e)
@@ -556,7 +556,7 @@ def worker() -> None:
         variables = getattr(_get_integration(message.data['integration']), fn_name)()
       templates = message.data['templates']
       truncation = message.data.get('truncation', 'hard')
-      grid = vestaboard.render(templates, variables, truncation)
+      grid = _vb.render(templates, variables, truncation)
     except IntegrationDataUnavailableError as e:
       if _health_name:
         if e.expected:
@@ -586,14 +586,14 @@ def worker() -> None:
       _quiet_mod.set_virtual_state(grid)
     else:
       try:
-        vestaboard.set_state_raw(grid)
-      except vestaboard.DuplicateContentError:
+        _vb.set_state_raw(grid)
+      except _vb.DuplicateContentError:
         # Duplicate = board already shows this content. Count as vestaboard
         # success (the user's goal is met) and fall through to _do_hold()
         # so lower-priority queued messages cannot preempt it.
         _health_mod.record_success(_health_mod.VESTABOARD_TARGET)
         logger.warning('Duplicate content for %s — already on board, still holding.', message.name)
-      except vestaboard.BoardLockedError as e:
+      except _vb.BoardLockedError as e:
         _health_mod.record_locked(_health_mod.VESTABOARD_TARGET)
         with _current_hold_lock:
           _current_hold_supersede_tag = ''
@@ -640,7 +640,7 @@ def worker() -> None:
         # Phase 1: fetch + render — attributed to the integration target.
         try:
           new_vars = getattr(_i, _f)()
-          _grid = vestaboard.render(_t, new_vars, _tr)
+          _grid = _vb.render(_t, new_vars, _tr)
         except IntegrationDataUnavailableError as _e:
           if _hn:
             if _e.expected:
@@ -660,10 +660,10 @@ def worker() -> None:
           _quiet_mod.set_virtual_state(_grid)
           return
         try:
-          vestaboard.set_state_raw(_grid)
-        except vestaboard.DuplicateContentError:
+          _vb.set_state_raw(_grid)
+        except _vb.DuplicateContentError:
           _health_mod.record_success(_health_mod.VESTABOARD_TARGET)
-        except vestaboard.BoardLockedError:
+        except _vb.BoardLockedError:
           _health_mod.record_locked(_health_mod.VESTABOARD_TARGET)
         except Exception as _e:
           _health_mod.record_error(_health_mod.VESTABOARD_TARGET, str(_e))
@@ -780,19 +780,19 @@ def _build_state_payload(refresh: bool = False) -> dict[str, Any]:
       grid_at = time.time()
   elif refresh:
     try:
-      grid = vestaboard.get_state().layout
+      grid = _vb.get_state().layout
       source = 'board'
       grid_at = time.time()
-    except vestaboard.EmptyBoardError:
+    except _vb.EmptyBoardError:
       source = 'empty'
     except Exception as e:  # noqa: BLE001 — refresh is best-effort; fall back to cache
       logger.warning('State: refresh fetch failed: %s', e)
       refresh_error = True
-      grid, grid_at = vestaboard.get_cached_grid()
+      grid, grid_at = _vb.get_cached_grid()
       if grid is not None:
         source = 'board'
   else:
-    grid, grid_at = vestaboard.get_cached_grid()
+    grid, grid_at = _vb.get_cached_grid()
     if grid is not None:
       source = 'board'
 
@@ -800,7 +800,7 @@ def _build_state_payload(refresh: bool = False) -> dict[str, Any]:
     'modes': modes,
     'source': source,
     'grid': grid,
-    'rendered': vestaboard.render_grid_text(grid) if grid is not None else None,
+    'rendered': _vb.render_grid_text(grid) if grid is not None else None,
     'timestamp': (datetime.fromtimestamp(grid_at, tz=_config_mod.get_timezone()).isoformat() if grid_at else None),
   }
   if refresh_error:
@@ -1591,7 +1591,7 @@ def main() -> None:
 
   model = _config_mod.get_model()
   if model == 'flagship':
-    vestaboard.model = vestaboard.VestaboardModel.FLAGSHIP
+    _vb.model = _vb.VestaboardModel.FLAGSHIP
 
   content_enabled = _config_mod.get_content_enabled()
 
@@ -1614,8 +1614,8 @@ def main() -> None:
 
   logger.info('Current message:')
   try:
-    logger.info('%s', vestaboard.get_state())
-  except vestaboard.EmptyBoardError:
+    logger.info('%s', _vb.get_state())
+  except _vb.EmptyBoardError:
     logger.info('(no current message)')
   scheduler = BackgroundScheduler(
     misfire_grace_time=300,

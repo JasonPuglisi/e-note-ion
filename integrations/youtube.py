@@ -11,7 +11,7 @@
 
 import logging
 import time
-import xml.etree.ElementTree as ET  # noqa: N817  # nosec B405 — trusted YouTube RSS feeds, not arbitrary XML
+import xml.etree.ElementTree as ET  # noqa: N817  # nosec B405  # trusted YouTube RSS feeds, not arbitrary XML
 from datetime import datetime
 
 import requests
@@ -157,7 +157,7 @@ def _fetch_rss_video_ids(channel_ids: list[str]) -> list[str]:
       continue
 
     try:
-      root = ET.fromstring(r.text)  # nosec B314 — YouTube RSS is trusted
+      root = ET.fromstring(r.text)  # nosec B314  # YouTube RSS is trusted
     except ET.ParseError:
       logger.debug('YouTube: malformed RSS for %s — skipping', channel_id)
       continue

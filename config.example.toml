@@ -236,10 +236,9 @@ password = "your-webui-password"
 # priority = 3
 
 [plex]
-# Optional: seconds to wait after a media.stop event before showing the stopped
-# card. If a media.play or media.resume arrives in this window (e.g. between
-# back-to-back episodes), the stopped card is suppressed entirely. Default: 3.
-# stop_debounce = 3
+# No settings are required. The play/pause/stop debounce window is hardcoded at
+# 3 seconds. To override hold/timeout/priority for the now_playing or paused
+# templates, add [plex.schedules.now_playing] or [plex.schedules.paused].
 
 [ynab]
 # Net worth tracker — sums all account balances from your YNAB budget.

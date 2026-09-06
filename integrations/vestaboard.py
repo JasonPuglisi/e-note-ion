@@ -492,7 +492,7 @@ def _expand_format(
   triggering variable substitution. Color tag escaping is handled by
   _encode_line (see [[X]] in _next_token).
   """
-  chosen: dict[str, list[str]] = {name: random.choice(options) for name, options in variables.items()}  # nosec B311 — template variable option selection, not a security context
+  chosen: dict[str, list[str]] = {name: random.choice(options) for name, options in variables.items()}  # nosec B311  # template variable option selection, not a security context
 
   def _sub(match: re.Match[str]) -> str:
     opt = chosen.get(match.group(1), [''])
@@ -698,7 +698,7 @@ def render(
 
   Returns a model.rows × model.cols grid of integer character codes.
   """
-  template = random.choice(templates)  # nosec B311 — template selection, not a security context
+  template = random.choice(templates)  # nosec B311  # template selection, not a security context
   lines = _expand_format(template['format'], variables)
   lines = _wrap_lines(lines, truncation)
   grid = _build_grid(lines)
