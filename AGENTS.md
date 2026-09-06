@@ -173,9 +173,30 @@ assets/
   README.md                 # AI generation prompts for both images
 ```
 
-The Unraid CA template lives in a separate repository:
-[JasonPuglisi/unraid-templates](https://github.com/JasonPuglisi/unraid-templates).
-Update the XML there when adding new Docker config fields (ports, volumes, env vars).
+## Related Projects
+
+Two sibling repos depend on this one. Neither is a submodule and neither has its
+own agent instructions — treat this section as the contract between them.
+
+| Repo | What couples it to e-note-ion |
+|---|---|
+| [JasonPuglisi/unraid-templates](https://github.com/JasonPuglisi/unraid-templates) | `e-note-ion.xml` mirrors the `Dockerfile`: every `VOLUME`, `EXPOSE`, and mount path needs a matching `<Config>` entry, and the descriptions restate `config.toml` semantics. |
+| [JasonPuglisi/homebridge-e-note-ion](https://github.com/JasonPuglisi/homebridge-e-note-ion) | Consumes the webhook API: `POST /webhook/scheduler` (`quiet` / `wake` / `public` / `private`), `GET /state`, and the `[homebridge]` push contract. Changing any of those shapes breaks the plugin silently. |
+
+**When a change here touches one of them, say so in the PR and open a matching
+issue there.** These drift quietly because CI in this repo cannot see either one:
+
+- Anything in `Dockerfile` — a new `VOLUME`, a changed port, a new mount path —
+  needs the Unraid XML updated. A volume declared here but absent there becomes an
+  anonymous volume that Unraid discards on container update.
+- Anything in the webhook/state surface — new actions, renamed JSON fields, changed
+  auth, changed response shape — needs a corresponding plugin release. The plugin
+  has no contract test against a running scheduler.
+- `docs/homebridge.md` documents the plugin's setup; keep it current when the
+  plugin's config schema changes.
+
+Both are small and low-traffic, so they go stale without anyone noticing. The
+`health-review` skill checks them as part of a full audit.
 
 ## How It Works
 
