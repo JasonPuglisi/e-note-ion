@@ -197,10 +197,15 @@ def test_redact_removes_secrets(label: str, text: str, secret: str) -> None:
 
 
 def test_redact_keeps_the_host_so_errors_stay_useful() -> None:
-  """Which service failed is the entire diagnostic value; keep that much."""
-  out = http_mod.redact('Max retries exceeded with url: https://api.bart.gov/api/etd.aspx?key=SECRET')
-  assert 'api.bart.gov' in out
-  assert 'SECRET' not in out
+  """Which service failed is the entire diagnostic value; keep that much.
+
+  Asserted as exact output rather than a substring check. A substring check
+  would be weaker (it cannot tell where in the string the host ended up) and
+  CodeQL rightly flags `host in url` as the shape of a bypassable host check.
+  """
+  assert http_mod.redact('Max retries exceeded with url: https://api.bart.gov/api/etd.aspx?key=SECRET') == (
+    'Max retries exceeded with url: https://api.bart.gov/...'
+  )
 
 
 def test_redact_leaves_non_url_text_alone() -> None:
