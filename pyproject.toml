@@ -1,6 +1,6 @@
 [project]
 name = "e-note-ion"
-version = "1.24.0"
+version = "1.24.1"
 description = "Automation for Vestaboard displays — with emotion"
 keywords = ["vestaboard", "note", "flagship", "automation", "schedule", "scheduling"]
 authors = [
@@ -48,7 +48,10 @@ build-backend = "setuptools.build_meta"
 package = true
 
 [tool.setuptools]
-py-modules = ["scheduler", "config", "exceptions"]
+# Every root module. Missing entries here silently ship a broken wheel:
+# the console script imports health, which imports healthalert, neither of
+# which were listed.
+py-modules = ["config", "exceptions", "health", "healthalert", "homebridge", "public", "quiet", "scheduler"]
 
 [tool.setuptools.packages.find]
 include = ["integrations*"]

@@ -743,10 +743,31 @@ def worker() -> None:
 
 # --- Webhook Server ---
 
-# Logger names, not package names — qh3 logs under 'quic' and caldav's vcal
-# module logs under 'caldav'. Verified against the installed packages; guessing
-# the package name would silence neither. See #598.
-_NOISY_THIRD_PARTY_LOGGERS = ('caldav', 'quic')
+# Logger names, not package names — qh3 logs under 'quic'. Verified against the
+# installed package; guessing 'qh3' would silence nothing. See #598.
+#
+# Noise only: these are restored at DEBUG, where the operator has asked for
+# third-party detail.
+_NOISY_THIRD_PARTY_LOGGERS = ('quic',)
+
+# caldav's "Ical data was modified" warning is handled separately because it is
+# not noise — it prints a unified diff of real calendar event data (summaries,
+# descriptions, times) to justify normalising trailing whitespace.
+#
+# It is silenced at *every* level, DEBUG included. Asking for verbose logs from
+# this project is not the same as consenting to a dependency dumping personal
+# calendar contents into a file that gets collected and shipped onward, and the
+# original fix conflated the two: production runs at DEBUG, so the escape hatch
+# put the diff straight back.
+_ICAL_DIFF_MARKER = 'Ical data was modified'
+
+
+class _DropIcalDiff(logging.Filter):
+  """Drop caldav's event-data diff, whatever the configured level."""
+
+  def filter(self, record: logging.LogRecord) -> bool:
+    return _ICAL_DIFF_MARKER not in record.getMessage()
+
 
 _MAX_WEBHOOK_BODY = 64 * 1024  # 64 KB — generous limit for any webhook payload
 
@@ -1760,6 +1781,13 @@ def main() -> None:
   if level > logging.DEBUG:
     for noisy in _NOISY_THIRD_PARTY_LOGGERS:
       logging.getLogger(noisy).setLevel(logging.ERROR)
+
+  # Unconditional: personal data must not be gated on log level. Attached to the
+  # handler rather than the 'caldav' logger — a logger's own filters do not run
+  # on records propagated up from its children, so a handler filter is the only
+  # placement that holds regardless of which logger caldav emits from.
+  for handler in logging.root.handlers:
+    handler.addFilter(_DropIcalDiff())
 
   model = _config_mod.get_model()
   if model == 'flagship':
