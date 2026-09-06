@@ -29,7 +29,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from queue import Empty, PriorityQueue
 from typing import Any
@@ -718,6 +718,31 @@ def worker() -> None:
 
 _MAX_WEBHOOK_BODY = 64 * 1024  # 64 KB — generous limit for any webhook payload
 
+# Seconds a single connection may sit idle mid-request before the handler gives
+# up. Without this a stalled socket holds its thread forever; before #590, when
+# the server was single-threaded, it held the *entire* listener forever.
+_WEBHOOK_SOCKET_TIMEOUT = 20
+
+# Concurrent argon2id verifications allowed across all handler threads.
+#
+# Threading the server without this trades a CPU denial-of-service for a worse
+# memory one: PasswordHasher defaults to 64 MiB per verification, so N handler
+# threads verifying at once reserve N * 64 MiB. Two keeps the ceiling at 128 MiB
+# on hardware that is often a Raspberry Pi, while still letting a legitimate
+# webhook through while another is being checked.
+_AUTH_CONCURRENCY = 2
+
+# How long a request waits for an argon2 slot before being shed with 503. Bounds
+# the queue an attacker can build up; a legitimate caller never waits this long
+# because a verification takes tens of milliseconds.
+_AUTH_WAIT_SECONDS = 5
+
+_auth_semaphore = threading.BoundedSemaphore(_AUTH_CONCURRENCY)
+
+
+class _AuthCapacityError(Exception):
+  """Raised when no argon2 slot frees up within _AUTH_WAIT_SECONDS."""
+
 
 def _authenticate_webhook(provided: str, integration: str) -> str | None:
   """Authenticate a webhook request against named credentials.
@@ -730,9 +755,21 @@ def _authenticate_webhook(provided: str, integration: str) -> str | None:
   include the integration name for it to be considered. Credential secrets are
   verified using argon2id hashing.
   """
+  # Reject a missing secret before touching argon2 at all. Unauthenticated
+  # probes overwhelmingly send no secret, and this makes them free to refuse.
+  if not provided:
+    return None
+
   credentials = _config_mod.get_credentials(integration)
   if not credentials:
     return None
+
+  # One verification per configured credential is unavoidable — there is no way
+  # to know which one a secret belongs to without trying. Bounding concurrency
+  # is what keeps that from being a lever.
+  if not _auth_semaphore.acquire(timeout=_AUTH_WAIT_SECONDS):
+    logger.warning('Webhook: auth capacity exhausted, shedding request for %r', integration)
+    raise _AuthCapacityError
 
   try:
     from argon2 import PasswordHasher  # noqa: PLC0415
@@ -753,6 +790,8 @@ def _authenticate_webhook(provided: str, integration: str) -> str | None:
       'argon2-cffi is required for named webhook credentials but is not installed; '
       'install it with: pip install argon2-cffi'
     )
+  finally:
+    _auth_semaphore.release()
 
   return None
 
@@ -812,6 +851,10 @@ def _make_webhook_handler() -> type:
   """Return a BaseHTTPRequestHandler subclass for the webhook listener."""
 
   class _WebhookHandler(BaseHTTPRequestHandler):
+    # Honoured by socketserver.StreamRequestHandler.setup(); without it a client
+    # that opens a connection and stops sending holds its thread indefinitely.
+    timeout = _WEBHOOK_SOCKET_TIMEOUT
+
     def do_POST(self) -> None:  # noqa: N802
       # Validate path: must be /webhook/<integration>
       # Parse separately from query string so ?secret= is handled cleanly.
@@ -829,7 +872,11 @@ def _make_webhook_handler() -> type:
       header_secret = self.headers.get('X-Webhook-Secret', '')
       query_secret = parse_qs(parsed.query).get('secret', [''])[0]
       provided = header_secret or query_secret
-      credential_name = _authenticate_webhook(provided, integration_name)
+      try:
+        credential_name = _authenticate_webhook(provided, integration_name)
+      except _AuthCapacityError:
+        self._respond(503, 'Server busy, retry shortly')
+        return
       if credential_name is None:
         logger.warning('Webhook: rejected request for %r — invalid or missing secret', integration_name)
         self._respond(401, 'Unauthorized')
@@ -946,7 +993,11 @@ def _make_webhook_handler() -> type:
       header_secret = self.headers.get('X-Webhook-Secret', '')
       query_secret = parse_qs(parsed.query).get('secret', [''])[0]
       provided = header_secret or query_secret
-      credential_name = _authenticate_webhook(provided, 'health')
+      try:
+        credential_name = _authenticate_webhook(provided, 'health')
+      except _AuthCapacityError:
+        self._respond(503, 'Server busy, retry shortly')
+        return None
       if credential_name is None:
         logger.warning('Health: rejected request — invalid or missing secret')
         self._respond(401, 'Unauthorized')
@@ -962,7 +1013,11 @@ def _make_webhook_handler() -> type:
       query = parse_qs(parsed.query)
       query_secret = query.get('secret', [''])[0]
       provided = header_secret or query_secret
-      credential_name = _authenticate_webhook(provided, 'state')
+      try:
+        credential_name = _authenticate_webhook(provided, 'state')
+      except _AuthCapacityError:
+        self._respond(503, 'Server busy, retry shortly')
+        return
       if credential_name is None:
         logger.warning('State: rejected request — invalid or missing secret')
         self._respond(401, 'Unauthorized')
@@ -1100,7 +1155,10 @@ def _start_webhook_server() -> None:
       _autogen_webhook_credential(integration, cred_name)
 
   handler = _make_webhook_handler()
-  server = HTTPServer((bind, port), handler)
+  # Threaded so one slow or stalled connection cannot block every other
+  # webhook, /health, and /state request. daemon_threads is set by
+  # ThreadingHTTPServer, so a wedged handler cannot hold up interpreter exit.
+  server = ThreadingHTTPServer((bind, port), handler)
   threading.Thread(target=server.serve_forever, daemon=True).start()
   logger.info('Webhook listener started on %s:%d', bind, port)
 
