@@ -149,6 +149,21 @@ def _fetch_ics_bytes(url: str) -> bytes:
     raise IntegrationDataUnavailableError(f'calendar: fetch failed for {safe_url} — {redact(str(e))}') from None
 
 
+def _display_name(cal: Any) -> str:
+  """Return a CalDAV calendar's display name.
+
+  caldav deprecated the `.name` property in 3.0; it now only emits a
+  DeprecationWarning and calls get_display_name(). Using it means the code
+  breaks outright whenever they finish the removal. (#596)
+
+  get_display_name() is typed `str | None | Coroutine[...]` because caldav
+  shares one class between its sync and async clients; the sync client returns
+  the value directly, which is the same assumption the `cast` on get_calendars
+  above already makes.
+  """
+  return str(cast(str | None, cal.get_display_name()) or '')
+
+
 def _ics_calendar_color(cal: Calendar) -> str | None:
   """Return the nearest Vestaboard color tag from X-APPLE-CALENDAR-COLOR, or None."""
   raw = cal.get('X-APPLE-CALENDAR-COLOR')
@@ -359,7 +374,7 @@ def _get_caldav_calendars(
   # caldav 3.2 types get_calendars as Coroutine; the sync client returns the
   # awaited value directly.
   for cal in cast(list[Any], all_cals):
-    cal_name = str(cal.name or '')
+    cal_name = _display_name(cal)
     if name_filter is not None and cal_name not in name_filter:
       continue
 
@@ -377,7 +392,7 @@ def _get_caldav_calendars(
   # If calendar_names was specified, reorder to match the requested order.
   if name_filter is not None:
     order = {name: i for i, name in enumerate(calendar_names or [])}
-    result.sort(key=lambda item: order.get(str(item[0].name or ''), len(order)))
+    result.sort(key=lambda item: order.get(_display_name(item[0]), len(order)))
 
   logger.debug('calendar: CalDAV discovered %d calendar(s)', len(result))
   _caldav_cache = result

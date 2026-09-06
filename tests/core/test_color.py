@@ -271,3 +271,53 @@ def test_fetch_cover_color_substitutes_black_with_white() -> None:
   with patch('integrations.color.fetch_with_retry', return_value=_mock_response(png)):
     tag = color_mod.fetch_cover_color('https://example.com/cover.jpg')
   assert tag == '[W]'
+
+
+# --- decompression bomb bound (#594) ---
+
+
+def test_oversized_image_returns_fallback_instead_of_decoding() -> None:
+  """The 2 MB byte cap bounds the download, not the decode.
+
+  A highly compressed PNG can sit under the byte cap and still expand past
+  Pillow's ~89 Mpx default, around 268 MB of RGB. The image is thumbnailed to
+  _SAMPLE_SIZE immediately, so no real resolution is ever needed.
+  """
+  from PIL import Image
+
+  # A single-colour image of this size compresses to a few KB but declares far
+  # more pixels than the limit allows.
+  side = int(color_mod._MAX_IMAGE_PIXELS**0.5) + 500
+  buf = io.BytesIO()
+  Image.new('RGB', (side, side), (200, 20, 30)).save(buf, format='PNG')
+  payload = buf.getvalue()
+
+  assert len(payload) < color_mod._MAX_IMAGE_BYTES, 'test image must pass the byte cap to be meaningful'
+
+  assert color_mod.dominant_color_tag(payload, fallback='[Y]') == '[Y]'
+
+
+def test_normal_image_still_decodes_under_the_pixel_limit() -> None:
+  assert color_mod.dominant_color_tag(_png_bytes(200, 20, 30)) == '[R]'
+
+
+def test_pillow_global_limit_is_left_alone() -> None:
+  """The bound is an explicit header check, not a mutation of Pillow's global."""
+  from PIL import Image
+
+  before = Image.MAX_IMAGE_PIXELS
+  color_mod.dominant_color_tag(_png_bytes(10, 20, 30))
+  color_mod.dominant_color_tag(b'not an image')
+  assert Image.MAX_IMAGE_PIXELS == before
+
+
+def test_oversized_image_is_rejected_before_the_decode() -> None:
+  """Rejection must happen on the header, not after materialising the raster."""
+  from PIL import Image as _Image
+
+  side = int(color_mod._MAX_IMAGE_PIXELS**0.5) + 500
+  buf = io.BytesIO()
+  _Image.new('RGB', (side, side), (200, 20, 30)).save(buf, format='PNG')
+
+  with patch.object(_Image.Image, 'convert', side_effect=AssertionError('decoded an oversized image')):
+    assert color_mod.dominant_color_tag(buf.getvalue(), fallback='[Y]') == '[Y]'

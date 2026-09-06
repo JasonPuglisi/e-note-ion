@@ -62,6 +62,18 @@ _SAMPLE_SIZE = 100
 # 500 KB; this guards against unexpectedly large redirect targets.
 _MAX_IMAGE_BYTES = 2 * 1024 * 1024  # 2 MB
 
+# Ceiling on decoded pixels, independent of the byte cap above. The byte cap
+# bounds the download; it does not bound the decode. A highly compressed 2 MB
+# PNG can sit under it and still expand to Pillow's ~89 Mpx default limit,
+# which is roughly 268 MB of RGB — an OOM on Raspberry-Pi-class hardware.
+#
+# The image is thumbnailed to _SAMPLE_SIZE immediately, so nothing here needs
+# real resolution. 16 Mpx is far beyond any cover art and still well under
+# Pillow's default. Checked explicitly against the lazily-parsed header rather
+# than via Image.MAX_IMAGE_PIXELS, which only warns at its limit and raises at
+# twice it. (#594)
+_MAX_IMAGE_PIXELS = 16_000_000
+
 # Pixel brightness thresholds for background filtering (sRGB 0–255 scale).
 _NEAR_WHITE = 230  # all channels above this → skip
 _NEAR_BLACK = 25  # all channels below this → skip
@@ -251,7 +263,19 @@ def dominant_color_tag(image_bytes: bytes, *, fallback: str = '[Y]') -> str:
     A color tag string like '[R]', '[B]', etc.
   """
   try:
-    img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+    # Image.open() is lazy: it parses the header and stops. Checking .size here
+    # rejects an oversized image before .convert() forces the full decode.
+    #
+    # Pillow's own MAX_IMAGE_PIXELS is not enough on its own — it only emits a
+    # DecompressionBombWarning at the limit and raises at *twice* it, so an
+    # image between those bounds decodes anyway. An explicit check is also
+    # cheaper to reason about than mutating a global. (#594)
+    img = Image.open(io.BytesIO(image_bytes))
+    pixels = img.size[0] * img.size[1]
+    if pixels > _MAX_IMAGE_PIXELS:
+      logger.debug('color: image too large to decode (%d pixels > %d)', pixels, _MAX_IMAGE_PIXELS)
+      return fallback
+    img = img.convert('RGB')
   except Exception as e:
     logger.debug('color: image decode failed — %s', e)
     return fallback
