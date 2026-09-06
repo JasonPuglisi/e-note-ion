@@ -238,8 +238,8 @@ def get_optional_bool(section: str, key: str, default: bool = False) -> bool:
   Uses the raw TOML value rather than casting through str, so TOML booleans
   (e.g. `public = true`) are returned as Python bools correctly.
 
-  Supports dotted section names (e.g. ``'scheduler.quiet'``) by traversing
-  nested dicts — matching the TOML nesting produced by ``[scheduler.quiet]``.
+  Supports dotted section names by traversing nested dicts, matching TOML's
+  own nesting.
   """
   node: dict[str, object] = _config
   for part in section.split('.'):
@@ -249,7 +249,16 @@ def get_optional_bool(section: str, key: str, default: bool = False) -> bool:
   value = node.get(key)
   if value is None:
     return default
-  return bool(value)
+  if not isinstance(value, bool):
+    # Never coerce. bool() on a dict or a non-empty string is True regardless of
+    # what it contains, so `quiet = "false"` and `quiet = { active = false }`
+    # would both silently enable the thing the user was trying to turn off.
+    print(
+      f'Error: [{section}] {key} must be true or false in config.toml, found {value!r}.',
+      file=sys.stderr,
+    )
+    raise SystemExit(1)
+  return value
 
 
 def get_model() -> str:
@@ -301,10 +310,11 @@ def get_credentials(integration_name: str) -> dict[str, dict[str, Any]]:
   if not isinstance(creds, dict):
     return {}
   result: dict[str, dict[str, Any]] = {}
-  for name, data in creds.items():
-    if isinstance(data, dict) and integration_name in data.get('webhooks', []):
-      result[name] = data
-  # Message credentials live in a nested namespace: webhook.credentials.message.*
+
+  # Message credentials live only in the nested namespace as of 2.0 (#431).
+  # Returning early rather than also running the flat loop below is what
+  # actually removes flat support: a flat [webhook.credentials.<name>] with
+  # webhooks = ["message"] would otherwise still authenticate.
   if integration_name == 'message':
     msg_creds = creds.get('message', {})
     if isinstance(msg_creds, dict):
@@ -316,6 +326,11 @@ def get_credentials(integration_name: str) -> dict[str, dict[str, Any]]:
         for friend_name, friend_data in friends.items():
           if isinstance(friend_data, dict):
             result[friend_name] = friend_data
+    return result
+
+  for name, data in creds.items():
+    if isinstance(data, dict) and integration_name in data.get('webhooks', []):
+      result[name] = data
   return result
 
 
@@ -505,65 +520,6 @@ def delete_config_section(section: str) -> None:
         return
       d = d[part]
     d.pop(parts[-1], None)
-
-
-def migrate_quiet_config() -> None:
-  """Migrate old [scheduler.quiet] section to flat [scheduler].quiet key.
-
-  Detects the old ``[scheduler.quiet]`` subsection with an ``active`` key,
-  rewrites it as ``quiet = true/false`` under ``[scheduler]``, and removes the
-  old section. Logs a deprecation warning when migration occurs.
-
-  No-op if the old section does not exist (fresh install or already migrated).
-  This migration shim is removed in 2.0 (#483).
-  """
-  import logging
-
-  quiet_section = _config.get('scheduler', {}).get('quiet')
-  if not isinstance(quiet_section, dict):
-    return  # already flat key or absent
-
-  value = bool(quiet_section.get('active', False))
-  delete_config_section('scheduler.quiet')
-  write_config_section('scheduler', {'quiet': value})
-
-  logger = logging.getLogger(__name__)
-  logger.warning(
-    'Migrated [scheduler.quiet] active = %s → [scheduler] quiet = %s '
-    '— the old format is deprecated and will be removed in 2.0',
-    str(value).lower(),
-    str(value).lower(),
-  )
-
-
-def migrate_message_credentials() -> int:
-  """Migrate old-style flat message credentials to the nested namespace.
-
-  Detects [webhook.credentials.<name>] sections with webhooks = ["message"] and
-  rewrites them as [webhook.credentials.message.admin] (for the old 'message-admin'
-  credential) or [webhook.credentials.message.friend.<name>] (for all friends).
-  Removes the old flat sections after writing the new ones.
-
-  Returns the number of credentials migrated. This migration shim is removed in 2.0.
-
-  Raises FileNotFoundError if config.toml does not exist.
-  """
-  creds = _config.get('webhook', {}).get('credentials', {})
-  if not isinstance(creds, dict):
-    return 0
-
-  to_migrate: list[tuple[str, dict]] = [
-    (name, data) for name, data in creds.items() if isinstance(data, dict) and data.get('webhooks') == ['message']
-  ]
-
-  for name, data in to_migrate:
-    new_section = (
-      'webhook.credentials.message.admin' if name == 'message-admin' else f'webhook.credentials.message.friend.{name}'
-    )
-    write_config_section(new_section, data)
-    delete_config_section(f'webhook.credentials.{name}')
-
-  return len(to_migrate)
 
 
 def get_schedule_override(template_id: str) -> dict:

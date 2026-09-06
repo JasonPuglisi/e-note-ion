@@ -1208,15 +1208,6 @@ def _start_webhook_server() -> None:
 
   bind = _config_mod.get_optional('webhook', 'bind', '127.0.0.1')
 
-  # Migrate old-style flat message credentials to the nested namespace (removed in 2.0).
-  migrated = _config_mod.migrate_message_credentials()
-  if migrated:
-    logger.info(
-      'Auto-migrated %d message credential(s) to webhook.credentials.message.*. '
-      'No action required — your passphrases continue to work unchanged.',
-      migrated,
-    )
-
   # Auto-generate credentials for integrations that have none yet.
   for integration, cred_name in sorted(_WEBHOOK_AUTOGEN.items()):
     existing = _config_mod.get_credentials(integration)
@@ -1774,7 +1765,6 @@ def main() -> None:
   logging.basicConfig(level=logging.INFO, handlers=[_handler])
   _validate_startup(args.config)
   _config_mod.load_config(args.config)
-  _config_mod.migrate_quiet_config()
   _quiet_mod.init()
   _public_mod.init()
   _health_mod.init()
