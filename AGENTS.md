@@ -475,6 +475,31 @@ Two types of milestones are used:
   changes to warrant the bump. When ready, close all issues in the release
   milestone as part of a single major-version PR.
 
+### Major versions use a `release/**` integration branch
+
+Breaking changes never land on `main` one at a time. `auto-release.yml` fires
+on *any* version bump pushed to `main`, so unreleased breaking changes sitting
+there would be shipped by the next unrelated patch release — a Dependabot
+runtime bump is enough.
+
+Instead:
+
+1. Branch `release/<version>` off `main` (e.g. `release/2.0`).
+2. Each issue in the milestone is its own PR **into that branch**, reviewed
+   normally. No version bump in any of them — use `git commit --no-verify`,
+   since `check-version-bump` correctly objects.
+3. When the milestone is complete, open one PR from `release/<version>` into
+   `main` carrying the version bump and closing every issue in the milestone.
+   From `main`'s perspective this is the single major-version PR above.
+
+`ci.yml` runs on `release/**` for exactly this reason. Two things deliberately
+do **not**: `auto-release.yml` is `main`-only so a release branch can never cut
+a release, and the advisory `integration` job is gated to `main` pushes so real
+API secrets never run from an integration branch. Keep both that way.
+
+Rebase the release branch on `main` periodically rather than merging `main`
+into it, so the final PR stays a clean forward diff.
+
 ## Maintenance
 
 Dependencies and pinned versions should be kept current:
