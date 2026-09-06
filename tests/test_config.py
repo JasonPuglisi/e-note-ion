@@ -689,3 +689,165 @@ def test_migrate_message_credentials_file_stays_clean(
   }
   _mod.migrate_message_credentials()
   assert '\n\n\n' not in cfg.read_text()
+
+
+# --- TOML string escaping (#592) ---
+
+
+@pytest.mark.parametrize(
+  'raw',
+  [
+    'plain',
+    'has "quotes"',
+    'back\\slash',
+    'both "q" and \\s',
+    'new\nline',
+    'carriage\rreturn',
+    'tab\there',
+    'null\x00byte',
+    'del\x7fchar',
+  ],
+)
+def test_toml_str_round_trips_through_a_real_write(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  raw: str,
+) -> None:
+  """Any string written must parse back identically.
+
+  OAuth tokens (Trakt, Google) reach write_section_values unvalidated. Before
+  #592 a value containing a quote or backslash produced a config.toml that
+  tomllib could no longer read — taking every other credential with it.
+  """
+  monkeypatch.chdir(tmp_path)
+  _write_config(tmp_path, '[myapp]\naccess_token = "old"\n')
+  _mod.load_config()
+
+  _mod.write_section_values('myapp', {'access_token': raw})
+
+  parsed = tomllib.loads((tmp_path / 'config.toml').read_text())
+  assert parsed['myapp']['access_token'] == raw
+
+
+def test_toml_str_escapes_list_items(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.chdir(tmp_path)
+  _write_config(tmp_path, '[webhook]\n')
+  _mod.load_config()
+
+  _mod.write_config_section('webhook.credentials.alice', {'secret_hash': 'h', 'webhooks': ['mes"sage', 'pl\\ex']})
+
+  parsed = tomllib.loads((tmp_path / 'config.toml').read_text())
+  assert parsed['webhook']['credentials']['alice']['webhooks'] == ['mes"sage', 'pl\\ex']
+
+
+# --- atomic write (#592) ---
+
+
+def test_atomic_write_leaves_no_temp_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.chdir(tmp_path)
+  _write_config(tmp_path, '[myapp]\nkey = "old"\n')
+  _mod.load_config()
+
+  _mod.write_section_values('myapp', {'key': 'new'})
+
+  assert list(tmp_path.glob('.config.toml.*')) == []
+  assert tomllib.loads((tmp_path / 'config.toml').read_text())['myapp']['key'] == 'new'
+
+
+def test_atomic_write_preserves_file_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  """config.toml holds every credential — a write must not widen its mode."""
+  monkeypatch.chdir(tmp_path)
+  _write_config(tmp_path, '[myapp]\nkey = "old"\n')
+  (tmp_path / 'config.toml').chmod(0o600)
+  _mod.load_config()
+
+  _mod.write_section_values('myapp', {'key': 'new'})
+
+  assert (tmp_path / 'config.toml').stat().st_mode & 0o777 == 0o600
+
+
+def test_atomic_write_falls_back_when_replace_is_refused(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  """Docker bind-mounts config.toml as a single file, which pins the inode and
+  makes os.replace fail with EBUSY. The write must still land."""
+  import errno as _errno
+  import os as _os
+
+  monkeypatch.chdir(tmp_path)
+  _write_config(tmp_path, '[myapp]\nkey = "old"\n')
+  _mod.load_config()
+
+  original_inode = (tmp_path / 'config.toml').stat().st_ino
+
+  def _refuse(src: object, dst: object) -> None:
+    raise OSError(_errno.EBUSY, 'Device or resource busy')
+
+  monkeypatch.setattr(_os, 'replace', _refuse)
+  _mod.write_section_values('myapp', {'key': 'new'})
+
+  assert tomllib.loads((tmp_path / 'config.toml').read_text())['myapp']['key'] == 'new'
+  assert list(tmp_path.glob('.config.toml.*')) == []
+  # In-place write keeps the inode, which is exactly why it survives a bind mount.
+  assert (tmp_path / 'config.toml').stat().st_ino == original_inode
+
+
+def test_atomic_write_reraises_unexpected_oserror(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  """A genuine failure (disk full, say) must not be swallowed by the fallback."""
+  import errno as _errno
+  import os as _os
+
+  monkeypatch.chdir(tmp_path)
+  _write_config(tmp_path, '[myapp]\nkey = "old"\n')
+  _mod.load_config()
+
+  def _boom(src: object, dst: object) -> None:
+    raise OSError(_errno.ENOSPC, 'No space left on device')
+
+  monkeypatch.setattr(_os, 'replace', _boom)
+  with pytest.raises(OSError):
+    _mod.write_section_values('myapp', {'key': 'new'})
+
+  assert list(tmp_path.glob('.config.toml.*')) == []
+
+
+# --- write serialisation (#592) ---
+
+
+def test_concurrent_writers_do_not_lose_updates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  """The webhook thread and APScheduler job threads both write config.
+
+  Without the lock these interleave: each reads the file, mutates its own copy,
+  and the last writer wins, silently discarding the others. Refreshed OAuth
+  tokens are the most likely casualty.
+  """
+  import threading
+
+  monkeypatch.chdir(tmp_path)
+  _write_config(tmp_path, '[myapp]\nseed = "0"\n')
+  _mod.load_config()
+
+  n = 12
+  start = threading.Barrier(n)
+  errors: list[BaseException] = []
+
+  def _writer(i: int) -> None:
+    try:
+      start.wait(timeout=10)
+      _mod.write_section_values('myapp', {f'key{i}': str(i)})
+    except BaseException as e:  # noqa: BLE001 — surfaced via the errors list
+      errors.append(e)
+
+  threads = [threading.Thread(target=_writer, args=(i,)) for i in range(n)]
+  for t in threads:
+    t.start()
+  for t in threads:
+    t.join(timeout=30)
+
+  assert not errors
+  parsed = tomllib.loads((tmp_path / 'config.toml').read_text())
+  assert sorted(k for k in parsed['myapp'] if k.startswith('key')) == sorted(f'key{i}' for i in range(n))
