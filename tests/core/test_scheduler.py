@@ -3085,12 +3085,13 @@ def test_unexpected_unavailable_is_still_a_warning(caplog: pytest.LogCaptureFixt
 
 
 def test_noisy_third_party_loggers_are_named_by_logger_not_package() -> None:
-  """qh3 logs under 'quic' and caldav's vcal module under 'caldav'.
+  """qh3 logs under 'quic', not 'qh3' — guessing the package name silences nothing.
 
-  Guessing the package names ('qh3') would silence neither, so this pins the
-  names that were verified against the installed packages.
+  caldav is deliberately absent: its event-data diff is personal data, handled
+  by an unconditional handler filter rather than a level floor that DEBUG would
+  lift. See test_logging.py.
   """
-  assert _mod._NOISY_THIRD_PARTY_LOGGERS == ('caldav', 'quic')
+  assert _mod._NOISY_THIRD_PARTY_LOGGERS == ('quic',)
 
 
 @pytest.mark.parametrize(

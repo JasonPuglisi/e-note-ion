@@ -21,7 +21,11 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 # Copy source, config example, and bundled contrib content.
-COPY scheduler.py config.py exceptions.py health.py public.py quiet.py homebridge.py config.example.toml ./
+# Every root module, by glob. Enumerating them by hand shipped v1.24.0 without
+# healthalert.py, and because health.py imports it lazily the container started
+# fine and then raised ModuleNotFoundError on a timer 60s later — past every
+# check that existed. A glob cannot drift from the filesystem.
+COPY *.py config.example.toml ./
 COPY integrations/ ./integrations/
 COPY content/contrib/ ./content/contrib/
 

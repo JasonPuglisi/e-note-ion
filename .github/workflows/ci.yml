@@ -82,8 +82,28 @@ jobs:
           load: true
           tags: e-note-ion:ci
 
+      # `import scheduler` alone is not enough. health.py imports healthalert
+      # lazily inside a timer callback, so v1.24.0 shipped without that module,
+      # started cleanly, and raised ModuleNotFoundError 60s later — past every
+      # check we had. Importing every root module catches the whole class.
       - name: Smoke test
-        run: docker run --rm e-note-ion:ci python -c "import scheduler"
+        run: |
+          docker run --rm e-note-ion:ci python -c "import scheduler"
+          MODULES=$(ls *.py | sed 's/\.py$//' | tr '\n' ' ')
+          echo "checking modules: $MODULES"
+          docker run --rm e-note-ion:ci python -c "
+          import importlib, sys
+          missing = []
+          for name in '$MODULES'.split():
+              try:
+                  importlib.import_module(name)
+              except Exception as e:
+                  missing.append(f'{name}: {e}')
+          if missing:
+              print('modules missing from the image:', *missing, sep='\n  ')
+              sys.exit(1)
+          print('all root modules import inside the image')
+          "
 
       # config.toml is documented as a single-file bind mount, which pins the
       # inode and makes os.replace() fail with EBUSY. That is the only place
