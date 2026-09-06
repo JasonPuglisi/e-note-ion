@@ -39,6 +39,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 import config as _config_mod
 import health as _health_mod
+import integrations.http as _http
 import integrations.vestaboard as _vb
 import public as _public_mod
 import quiet as _quiet_mod
@@ -459,7 +460,7 @@ def _clear_private_content() -> None:
     except _vb.BoardLockedError:
       _health_mod.record_locked(_health_mod.VESTABOARD_TARGET)
     except Exception as e:  # noqa: BLE001
-      _health_mod.record_error(_health_mod.VESTABOARD_TARGET, str(e))
+      _health_mod.record_error(_health_mod.VESTABOARD_TARGET, _http.redact(str(e)))
       logger.error('Error clearing board for public mode: %s', e)
 
 
@@ -562,7 +563,7 @@ def worker() -> None:
         if e.expected:
           _health_mod.record_expected_empty(_health_name)
         else:
-          _health_mod.record_error(_health_name, str(e))
+          _health_mod.record_error(_health_name, _http.redact(str(e)))
       with _current_hold_lock:
         _current_hold_supersede_tag = ''
         _current_hold_priority = None
@@ -570,7 +571,7 @@ def worker() -> None:
       continue
     except Exception as e:
       if _health_name:
-        _health_mod.record_error(_health_name, str(e))
+        _health_mod.record_error(_health_name, _http.redact(str(e)))
       with _current_hold_lock:
         _current_hold_supersede_tag = ''
         _current_hold_priority = None
@@ -605,7 +606,7 @@ def worker() -> None:
           _queue.put(message)
         continue
       except Exception as e:
-        _health_mod.record_error(_health_mod.VESTABOARD_TARGET, str(e))
+        _health_mod.record_error(_health_mod.VESTABOARD_TARGET, _http.redact(str(e)))
         with _current_hold_lock:
           _current_hold_supersede_tag = ''
           _current_hold_priority = None
@@ -646,11 +647,11 @@ def worker() -> None:
             if _e.expected:
               _health_mod.record_expected_empty(_hn)
             else:
-              _health_mod.record_error(_hn, str(_e))
+              _health_mod.record_error(_hn, _http.redact(str(_e)))
           raise
         except Exception as _e:
           if _hn:
-            _health_mod.record_error(_hn, str(_e))
+            _health_mod.record_error(_hn, _http.redact(str(_e)))
           raise
         if _hn:
           _health_mod.record_success(_hn)
@@ -666,7 +667,7 @@ def worker() -> None:
         except _vb.BoardLockedError:
           _health_mod.record_locked(_health_mod.VESTABOARD_TARGET)
         except Exception as _e:
-          _health_mod.record_error(_health_mod.VESTABOARD_TARGET, str(_e))
+          _health_mod.record_error(_health_mod.VESTABOARD_TARGET, _http.redact(str(_e)))
           raise
         else:
           _health_mod.record_success(_health_mod.VESTABOARD_TARGET)
@@ -938,7 +939,7 @@ def _make_webhook_handler() -> type:
       try:
         result: WebhookMessage | None = mod.handle_webhook(payload, credential_name=credential_name)
       except Exception as e:  # noqa: BLE001
-        _health_mod.record_error(integration_name, str(e))
+        _health_mod.record_error(integration_name, _http.redact(str(e)))
         logger.error('Webhook error in %r: %s', integration_name, e)
         self._respond(500, 'Internal error')
         return

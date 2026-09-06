@@ -50,7 +50,7 @@ from icalendar.cal import Component
 
 from exceptions import IntegrationDataUnavailableError
 from integrations.color import hex_to_color_tag
-from integrations.http import fetch_with_retry
+from integrations.http import fetch_with_retry, redact
 
 logger = logging.getLogger(__name__)
 
@@ -140,10 +140,13 @@ def _fetch_ics_bytes(url: str) -> bytes:
     logger.debug('calendar: fetched ICS from %r (%d bytes)', url, len(data))
     return data
   except requests.RequestException as e:
+    # The ICS URL is itself a bearer credential — a private iCloud or Google
+    # feed URL grants read access to the calendar. Never log it whole. (#591)
+    safe_url = redact(url)
     if cached is not None:
-      logger.warning('calendar: fetch failed for %r, serving stale cache — %s', url, e)
+      logger.warning('calendar: fetch failed for %s, serving stale cache — %s', safe_url, redact(str(e)))
       return cached[0]
-    raise IntegrationDataUnavailableError(f'calendar: fetch failed for {url!r} — {e}') from None
+    raise IntegrationDataUnavailableError(f'calendar: fetch failed for {safe_url} — {redact(str(e))}') from None
 
 
 def _ics_calendar_color(cal: Calendar) -> str | None:
