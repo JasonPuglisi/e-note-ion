@@ -81,6 +81,20 @@ jobs:
       - name: Smoke test
         run: docker run --rm e-note-ion:ci python -c "import scheduler"
 
+      # config.toml is documented as a single-file bind mount, which pins the
+      # inode and makes os.replace() fail with EBUSY. That is the only place
+      # config._atomic_write()'s in-place fallback is exercised, and no unit
+      # test can reproduce it. See #592.
+      - name: Smoke test config writes under a single-file bind mount
+        run: |
+          printf '[scheduler]\nmodel = "note"\n' > smoke-config.toml
+          chmod 666 smoke-config.toml
+          docker run --rm \
+            -v "$PWD/smoke-config.toml:/app/config.toml" \
+            -v "$PWD/scripts/docker-config-smoke.py:/app/docker-config-smoke.py" \
+            e-note-ion:ci python docker-config-smoke.py
+          grep -q '\[smoke\]' smoke-config.toml
+
   # Advisory only — not required by the branch ruleset. Failures surface in
   # the PR checks list but do not block merge.
   integration:

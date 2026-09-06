@@ -8,14 +8,32 @@
 # Integration modules import config inside their functions so they can be
 # imported in tests without a real config file present.
 
+import errno
+import os
 import re
 import sys
+import tempfile
+import threading
 import tomllib
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 _CONFIG_PATH = Path('config.toml')
+
+# Serialises the read-modify-write cycle in write_section_values,
+# write_config_section, and delete_config_section. Without it, the webhook
+# thread (public/quiet toggles, message registration, diving) and APScheduler
+# job threads (Trakt and Google token refresh) can interleave and silently drop
+# one another's updates. RLock rather than Lock because migration helpers call
+# the writers in a loop and may later want the lock themselves.
+_write_lock = threading.RLock()
+
+# errnos that mean "this filesystem will not let you rename over the target".
+# The important one is EBUSY: config.toml is bind-mounted as a *single file* in
+# the documented Docker deployment, which pins the inode and makes os.replace
+# fail. Falling back to an in-place write keeps those installs working.
+_REPLACE_UNSUPPORTED = frozenset({errno.EBUSY, errno.EXDEV, errno.EPERM, errno.EACCES, errno.EINVAL})
 
 _config: dict = {}
 
@@ -59,6 +77,74 @@ def has_section(section: str) -> bool:
   return section in _config
 
 
+def _toml_str(value: str) -> str:
+  """Render a Python string as a TOML basic string, escaping what TOML requires.
+
+  Without this, a value containing a quote or a backslash produces a
+  config.toml that no longer parses — and this file holds every credential the
+  project has. OAuth tokens (Trakt, Google) reach here unvalidated.
+  """
+  out = ['"']
+  for ch in value:
+    if ch == '\\':
+      out.append('\\\\')
+    elif ch == '"':
+      out.append('\\"')
+    elif ch == '\n':
+      out.append('\\n')
+    elif ch == '\r':
+      out.append('\\r')
+    elif ch == '\t':
+      out.append('\\t')
+    elif ord(ch) < 0x20 or ord(ch) == 0x7F:
+      out.append(f'\\u{ord(ch):04X}')
+    else:
+      out.append(ch)
+  out.append('"')
+  return ''.join(out)
+
+
+def _atomic_write(text: str) -> None:
+  """Write *text* to config.toml, atomically where the filesystem allows it.
+
+  Writes a temp file in the same directory, fsyncs it, then os.replace()s it
+  over the target so a crash mid-write cannot leave a truncated config.toml.
+
+  Falls back to an in-place write when the rename is refused — notably under
+  Docker, where config.toml is a single-file bind mount and os.replace fails
+  with EBUSY. The fallback is exactly the previous behaviour, so those installs
+  are no worse off than before; every other install gains atomicity.
+  """
+  directory = _CONFIG_PATH.resolve().parent
+  try:
+    mode = _CONFIG_PATH.stat().st_mode & 0o777
+  except OSError:
+    mode = 0o600
+
+  fd, tmp_name = tempfile.mkstemp(dir=directory, prefix='.config.toml.', suffix='.tmp')
+  tmp = Path(tmp_name)
+  try:
+    with os.fdopen(fd, 'w') as f:
+      f.write(text)
+      f.flush()
+      os.fsync(f.fileno())
+    # mkstemp creates 0600; restore whatever the real file had so we neither
+    # widen permissions on a secrets file nor lock out a container user.
+    os.chmod(tmp, mode)
+    os.replace(tmp, _CONFIG_PATH)
+  except OSError as e:
+    tmp.unlink(missing_ok=True)
+    if e.errno not in _REPLACE_UNSUPPORTED:
+      raise
+    import logging
+
+    logging.getLogger(__name__).debug('config: atomic replace unavailable (%s), writing in place', e.strerror)
+    _CONFIG_PATH.write_text(text)
+  except BaseException:
+    tmp.unlink(missing_ok=True)
+    raise
+
+
 def get_optional(section: str, key: str, default: str = '') -> str:
   """Return an optional string config value, or default if absent."""
   value = _config.get(section, {}).get(key)
@@ -77,51 +163,52 @@ def write_section_values(section: str, values: dict[str, str | int]) -> None:
   Raises FileNotFoundError if config.toml does not exist.
   Raises ValueError if the section header is not found in the file.
   """
-  if not _CONFIG_PATH.exists():
-    raise FileNotFoundError(f'config.toml not found at {_CONFIG_PATH.resolve()}')
+  with _write_lock:
+    if not _CONFIG_PATH.exists():
+      raise FileNotFoundError(f'config.toml not found at {_CONFIG_PATH.resolve()}')
 
-  lines = _CONFIG_PATH.read_text().splitlines(keepends=True)
+    lines = _CONFIG_PATH.read_text().splitlines(keepends=True)
 
-  section_start: int | None = None
-  section_end = len(lines)
+    section_start: int | None = None
+    section_end = len(lines)
 
-  for i, line in enumerate(lines):
-    stripped = line.strip()
-    if stripped == f'[{section}]':
-      section_start = i + 1
-    elif section_start is not None and stripped.startswith('[') and not stripped.startswith('#'):
-      section_end = i
-      break
-
-  if section_start is None:
-    raise ValueError(f'No [{section}] section found in config.toml')
-
-  section_lines = list(lines[section_start:section_end])
-
-  for key, value in values.items():
-    val_str = f'"{value}"' if isinstance(value, str) else str(value)
-    new_line = f'{key} = {val_str}\n'
-    found = False
-    for j, sl in enumerate(section_lines):
-      if re.match(rf'^{re.escape(key)}\s*=', sl):
-        section_lines[j] = new_line
-        found = True
+    for i, line in enumerate(lines):
+      stripped = line.strip()
+      if stripped == f'[{section}]':
+        section_start = i + 1
+      elif section_start is not None and stripped.startswith('[') and not stripped.startswith('#'):
+        section_end = i
         break
-      if re.match(rf'^#\s*{re.escape(key)}\s*=', sl):
-        section_lines[j] = new_line
-        found = True
-        break
-    if not found:
-      # Insert before any trailing blank lines so section separators
-      # stay between sections rather than before the new key.
-      insert_at = len(section_lines)
-      while insert_at > 0 and section_lines[insert_at - 1].strip() == '':
-        insert_at -= 1
-      section_lines.insert(insert_at, new_line)
 
-  lines[section_start:section_end] = section_lines
-  _CONFIG_PATH.write_text(''.join(lines))
-  _config.setdefault(section, {}).update(values)
+    if section_start is None:
+      raise ValueError(f'No [{section}] section found in config.toml')
+
+    section_lines = list(lines[section_start:section_end])
+
+    for key, value in values.items():
+      val_str = _toml_str(value) if isinstance(value, str) else str(value)
+      new_line = f'{key} = {val_str}\n'
+      found = False
+      for j, sl in enumerate(section_lines):
+        if re.match(rf'^{re.escape(key)}\s*=', sl):
+          section_lines[j] = new_line
+          found = True
+          break
+        if re.match(rf'^#\s*{re.escape(key)}\s*=', sl):
+          section_lines[j] = new_line
+          found = True
+          break
+      if not found:
+        # Insert before any trailing blank lines so section separators
+        # stay between sections rather than before the new key.
+        insert_at = len(section_lines)
+        while insert_at > 0 and section_lines[insert_at - 1].strip() == '':
+          insert_at -= 1
+        section_lines.insert(insert_at, new_line)
+
+    lines[section_start:section_end] = section_lines
+    _atomic_write(''.join(lines))
+    _config.setdefault(section, {}).update(values)
 
 
 def get_timezone() -> ZoneInfo | None:
@@ -249,108 +336,109 @@ def write_config_section(section: str, values: dict[str, str | int | bool | list
   Always produces exactly one blank line between sections and a trailing newline.
   Updates the in-memory config cache.
   """
-  if not _CONFIG_PATH.exists():
-    raise FileNotFoundError(f'config.toml not found at {_CONFIG_PATH.resolve()}')
+  with _write_lock:
+    if not _CONFIG_PATH.exists():
+      raise FileNotFoundError(f'config.toml not found at {_CONFIG_PATH.resolve()}')
 
-  lines = _CONFIG_PATH.read_text().splitlines(keepends=True)
-  header = f'[{section}]'
+    lines = _CONFIG_PATH.read_text().splitlines(keepends=True)
+    header = f'[{section}]'
 
-  section_start: int | None = None
-  section_end = len(lines)
+    section_start: int | None = None
+    section_end = len(lines)
 
-  for i, line in enumerate(lines):
-    stripped = line.strip()
-    if stripped == header:
-      section_start = i + 1
-    elif section_start is not None and stripped.startswith('[') and not stripped.startswith('#'):
-      section_end = i
-      break
+    for i, line in enumerate(lines):
+      stripped = line.strip()
+      if stripped == header:
+        section_start = i + 1
+      elif section_start is not None and stripped.startswith('[') and not stripped.startswith('#'):
+        section_end = i
+        break
 
-  def _render(v: str | int | bool | list[str]) -> str:
-    if isinstance(v, bool):
-      return 'true' if v else 'false'
-    if isinstance(v, list):
-      return '[' + ', '.join(f'"{item}"' for item in v) + ']'
-    if isinstance(v, int):
-      return str(v)
-    return f'"{v}"'
+    def _render(v: str | int | bool | list[str]) -> str:
+      if isinstance(v, bool):
+        return 'true' if v else 'false'
+      if isinstance(v, list):
+        return '[' + ', '.join(_toml_str(item) for item in v) + ']'
+      if isinstance(v, int):
+        return str(v)
+      return _toml_str(v)
 
-  if section_start is not None:
-    section_lines = list(lines[section_start:section_end])
-    for key, value in values.items():
-      new_line = f'{key} = {_render(value)}\n'
-      found = False
-      for j, sl in enumerate(section_lines):
-        if re.match(rf'^{re.escape(key)}\s*=', sl):
-          section_lines[j] = new_line
-          found = True
-          break
-        if re.match(rf'^#\s*{re.escape(key)}\s*=', sl):
-          section_lines[j] = new_line
-          found = True
-          break
-      if not found:
-        insert_at = len(section_lines)
-        while insert_at > 0 and section_lines[insert_at - 1].strip() == '':
-          insert_at -= 1
-        section_lines.insert(insert_at, new_line)
-    lines[section_start:section_end] = section_lines
-  else:
-    # Find insertion point: after the last section that shares our parent prefix
-    # (e.g. 'webhook.credentials.bob' groups with 'webhook.credentials.alice').
-    parent_prefix = '.'.join(section.split('.')[:-1])
-    sibling_end: int | None = None
-    i = 0
-    while i < len(lines):
-      stripped = lines[i].strip()
-      if stripped.startswith('[') and not stripped.startswith('#'):
-        inner = stripped[1:].rstrip(']')
-        if inner == parent_prefix or inner.startswith(f'{parent_prefix}.'):
-          j = i + 1
-          while j < len(lines):
-            if lines[j].strip().startswith('[') and not lines[j].strip().startswith('#'):
-              break
-            j += 1
-          sibling_end = j
-      i += 1
-
-    new_lines = [f'{header}\n']
-    for key, value in values.items():
-      new_lines.append(f'{key} = {_render(value)}\n')
-
-    if sibling_end is not None and sibling_end < len(lines):
-      # Insert between two sections: append a trailing blank line so the
-      # section that follows keeps its preceding separator.
-      new_lines.append('\n')
-      lines[sibling_end:sibling_end] = new_lines
+    if section_start is not None:
+      section_lines = list(lines[section_start:section_end])
+      for key, value in values.items():
+        new_line = f'{key} = {_render(value)}\n'
+        found = False
+        for j, sl in enumerate(section_lines):
+          if re.match(rf'^{re.escape(key)}\s*=', sl):
+            section_lines[j] = new_line
+            found = True
+            break
+          if re.match(rf'^#\s*{re.escape(key)}\s*=', sl):
+            section_lines[j] = new_line
+            found = True
+            break
+        if not found:
+          insert_at = len(section_lines)
+          while insert_at > 0 and section_lines[insert_at - 1].strip() == '':
+            insert_at -= 1
+          section_lines.insert(insert_at, new_line)
+      lines[section_start:section_end] = section_lines
     else:
-      # Append at end: strip any trailing blank lines, add exactly one separator.
-      while lines and lines[-1].strip() == '':
-        lines.pop()
-      if lines and not lines[-1].endswith('\n'):
-        lines[-1] += '\n'
-      lines.append('\n')
-      lines.extend(new_lines)
+      # Find insertion point: after the last section that shares our parent prefix
+      # (e.g. 'webhook.credentials.bob' groups with 'webhook.credentials.alice').
+      parent_prefix = '.'.join(section.split('.')[:-1])
+      sibling_end: int | None = None
+      i = 0
+      while i < len(lines):
+        stripped = lines[i].strip()
+        if stripped.startswith('[') and not stripped.startswith('#'):
+          inner = stripped[1:].rstrip(']')
+          if inner == parent_prefix or inner.startswith(f'{parent_prefix}.'):
+            j = i + 1
+            while j < len(lines):
+              if lines[j].strip().startswith('[') and not lines[j].strip().startswith('#'):
+                break
+              j += 1
+            sibling_end = j
+        i += 1
 
-  # Ensure file ends with a single newline.
-  while lines and lines[-1] == '\n' and len(lines) >= 2 and lines[-2] == '\n':
-    lines.pop()
-  if lines and not lines[-1].endswith('\n'):
-    lines[-1] += '\n'
+      new_lines = [f'{header}\n']
+      for key, value in values.items():
+        new_lines.append(f'{key} = {_render(value)}\n')
 
-  _CONFIG_PATH.write_text(''.join(lines))
+      if sibling_end is not None and sibling_end < len(lines):
+        # Insert between two sections: append a trailing blank line so the
+        # section that follows keeps its preceding separator.
+        new_lines.append('\n')
+        lines[sibling_end:sibling_end] = new_lines
+      else:
+        # Append at end: strip any trailing blank lines, add exactly one separator.
+        while lines and lines[-1].strip() == '':
+          lines.pop()
+        if lines and not lines[-1].endswith('\n'):
+          lines[-1] += '\n'
+        lines.append('\n')
+        lines.extend(new_lines)
 
-  # Update in-memory cache for dotted section names.
-  parts = section.split('.')
-  d = _config
-  for part in parts[:-1]:
-    d = d.setdefault(part, {})
-  last_part = parts[-1]
-  existing = d.get(last_part)
-  if isinstance(existing, dict):
-    existing.update(values)
-  else:
-    d[last_part] = dict(values)
+    # Ensure file ends with a single newline.
+    while lines and lines[-1] == '\n' and len(lines) >= 2 and lines[-2] == '\n':
+      lines.pop()
+    if lines and not lines[-1].endswith('\n'):
+      lines[-1] += '\n'
+
+    _atomic_write(''.join(lines))
+
+    # Update in-memory cache for dotted section names.
+    parts = section.split('.')
+    d = _config
+    for part in parts[:-1]:
+      d = d.setdefault(part, {})
+    last_part = parts[-1]
+    existing = d.get(last_part)
+    if isinstance(existing, dict):
+      existing.update(values)
+    else:
+      d[last_part] = dict(values)
 
 
 def delete_config_section(section: str) -> None:
@@ -361,61 +449,62 @@ def delete_config_section(section: str) -> None:
 
   Raises FileNotFoundError if config.toml does not exist.
   """
-  if not _CONFIG_PATH.exists():
-    raise FileNotFoundError(f'config.toml not found at {_CONFIG_PATH.resolve()}')
+  with _write_lock:
+    if not _CONFIG_PATH.exists():
+      raise FileNotFoundError(f'config.toml not found at {_CONFIG_PATH.resolve()}')
 
-  lines = _CONFIG_PATH.read_text().splitlines(keepends=True)
-  header = f'[{section}]'
+    lines = _CONFIG_PATH.read_text().splitlines(keepends=True)
+    header = f'[{section}]'
 
-  section_start: int | None = None
-  section_end = len(lines)
+    section_start: int | None = None
+    section_end = len(lines)
 
-  for i, line in enumerate(lines):
-    stripped = line.strip()
-    if stripped == header:
-      section_start = i
-    elif section_start is not None and stripped.startswith('[') and not stripped.startswith('#'):
-      section_end = i
-      break
+    for i, line in enumerate(lines):
+      stripped = line.strip()
+      if stripped == header:
+        section_start = i
+      elif section_start is not None and stripped.startswith('[') and not stripped.startswith('#'):
+        section_end = i
+        break
 
-  if section_start is None:
-    return  # nothing to delete
+    if section_start is None:
+      return  # nothing to delete
 
-  # Delete the section header through to (but not including) the next section.
-  # section_end already covers any trailing blank lines between this section
-  # and the next header, so the blank line *before* section_start is preserved
-  # as the separator for whatever follows.
-  del lines[section_start:section_end]
+    # Delete the section header through to (but not including) the next section.
+    # section_end already covers any trailing blank lines between this section
+    # and the next header, so the blank line *before* section_start is preserved
+    # as the separator for whatever follows.
+    del lines[section_start:section_end]
 
-  # Collapse any double blank lines that could arise (e.g. two separators
-  # merging when the deleted section had no preceding blank of its own).
-  result: list[str] = []
-  prev_blank = False
-  for line in lines:
-    is_blank = line.strip() == ''
-    if is_blank and prev_blank:
-      continue
-    result.append(line)
-    prev_blank = is_blank
-  lines = result
+    # Collapse any double blank lines that could arise (e.g. two separators
+    # merging when the deleted section had no preceding blank of its own).
+    result: list[str] = []
+    prev_blank = False
+    for line in lines:
+      is_blank = line.strip() == ''
+      if is_blank and prev_blank:
+        continue
+      result.append(line)
+      prev_blank = is_blank
+    lines = result
 
-  # Strip trailing blank lines left behind when the deleted section was last;
-  # ensure the file still ends with exactly one newline.
-  while lines and lines[-1].strip() == '':
-    lines.pop()
-  if lines and not lines[-1].endswith('\n'):
-    lines[-1] += '\n'
+    # Strip trailing blank lines left behind when the deleted section was last;
+    # ensure the file still ends with exactly one newline.
+    while lines and lines[-1].strip() == '':
+      lines.pop()
+    if lines and not lines[-1].endswith('\n'):
+      lines[-1] += '\n'
 
-  _CONFIG_PATH.write_text(''.join(lines))
+    _atomic_write(''.join(lines))
 
-  # Update in-memory cache.
-  parts = section.split('.')
-  d = _config
-  for part in parts[:-1]:
-    if not isinstance(d.get(part), dict):
-      return
-    d = d[part]
-  d.pop(parts[-1], None)
+    # Update in-memory cache.
+    parts = section.split('.')
+    d = _config
+    for part in parts[:-1]:
+      if not isinstance(d.get(part), dict):
+        return
+      d = d[part]
+    d.pop(parts[-1], None)
 
 
 def migrate_quiet_config() -> None:

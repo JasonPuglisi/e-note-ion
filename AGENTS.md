@@ -151,6 +151,7 @@ tests/                      # Unit tests (pytest); see Tests below for layout
 scripts/
   check-version-bump.sh     # Pre-commit hook: warn when .py/.json is staged without a version bump
   staged-integration-tests.sh # Pre-commit hook: run integration tests for staged integrations
+  docker-config-smoke.py    # CI: proves config writes work under a single-file bind mount
 docs/
   webhook-reverse-proxy.md  # Webhook TLS setup guide (Cloudflare Tunnel, reverse proxy)
   homebridge.md             # Apple Home / HomeBridge setup (GET /state, [homebridge] push, companion plugin)
