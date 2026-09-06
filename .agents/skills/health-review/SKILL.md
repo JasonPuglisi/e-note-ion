@@ -63,11 +63,24 @@ Comprehensive, repeatable audit of project health across code, tests, dependenci
 9. **Integration test hygiene** — advisory CI job passing on `main`; GitHub environment secrets/vars match the env var lists; new integrations have `test_<name>_integration.py` and env vars in `tests/integrations/conftest.py`.
    - `TRAKT_ACCESS_TOKEN` expires every ~90 days — copy from `config.toml` if Trakt integration tests start failing with auth errors.
    - `GOOGLE_REFRESH_TOKEN`: Production OAuth mode → no expiry. Testing mode → 7-day expiry (Google constraint).
-   - **Run them if `.env` is populated** (`uv run pytest -m integration -v`), and
-     **read the warnings summary, not just pass/fail**. Live calls surface things
-     mocks structurally cannot: upstream deprecations, changed response shapes,
-     new rate limits. A run that passes with three `DeprecationWarning`s is a
-     finding, not a green light.
+   - **Refresh credentials first, then run them.** A health review is the right
+     moment to pull current values from the running deployment into both local
+     `.env` / `config.toml` and the GitHub `integration` environment. Tokens
+     expire on their own schedule and nothing else in the process notices:
+     `TRAKT_ACCESS_TOKEN` rotates roughly every 90 days, and a stale one makes
+     the whole integration job advisory-fail in a way that is easy to scroll
+     past. Refreshing at a known checkpoint beats discovering it mid-incident.
+   - **Then run them** (`uv run pytest -m integration -v`), and **read the
+     warnings summary, not just pass/fail**. Live calls surface things mocks
+     structurally cannot: upstream deprecations, changed response shapes, new
+     rate limits. A run that passes with three `DeprecationWarning`s is a
+     finding, not a green light — that is exactly how the caldav `cal.name`
+     removal was caught.
+   - **Confirm the CI side too.** A green local run proves nothing about the
+     GitHub environment secrets, which drift independently. Check that the
+     advisory `integration` job on the latest `main` push actually *collected*
+     its tests rather than skipping — a skip exits 5 and the job shows failed,
+     but a partially-stale environment can still look plausible.
 10. **Documented commands vs. what CI actually runs** — diff every command string
     in `README.md` and `AGENTS.md` against the steps in `.github/workflows/ci.yml`.
     Drift here is invisible locally: the docs can be wrong for months while CI stays

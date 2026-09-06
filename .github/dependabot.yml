@@ -4,16 +4,17 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    # Workaround for dependabot/dependabot-core#13960: the uv FileFetcher
-    # treats every .txt file in the repo as a pip requirements file and
-    # chokes parsing LICENSE.txt. The upstream issue was closed as completed
-    # on 2026-05-13, but this exclusion has not been re-tested since. Drop it
-    # and confirm the next weekly uv run still opens PRs before removing.
-    # NOTE: paths are repo-root-relative — leading slash is rejected by
-    # Dependabot's config validator (the waylay-sdk-py example with leading
-    # slash is wrong; ours uses the bare path).
-    exclude-paths:
-      - "LICENSE.txt"
+    # The LICENSE.txt exclude-paths workaround for
+    # dependabot/dependabot-core#13960 was removed on 2026-09-06 (#595). That
+    # upstream issue closed as completed on 2026-05-13; the PR our comment used
+    # to cite, #14197, turned out to be an unrelated FileFetcher refactor that
+    # never merged, so the fix landed elsewhere.
+    #
+    # If the weekly uv run starts failing to parse LICENSE.txt, restore:
+    #   exclude-paths:
+    #     - "LICENSE.txt"
+    # Paths are repo-root-relative; a leading slash is rejected by Dependabot's
+    # config validator.
     groups:
       all:
         patterns: ["*"]

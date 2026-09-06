@@ -257,7 +257,11 @@ def pop_valid_message() -> QueuedMessage | None:
     if waited <= m.timeout:
       valid.append(m)
     else:
-      logger.warning('Discarding %s (waited %.1fs, timeout=%ds)', m.name, waited, m.timeout)
+      # A discard behind a higher-priority hold is expected; only a genuine
+      # backlog deserves a warning. Warning on both made the log useless
+      # during any Plex session. (#600)
+      log = logger.debug if _discard_is_expected(m.priority) else logger.warning
+      log('Discarding %s (waited %.1fs, timeout=%ds)', m.name, waited, m.timeout)
 
   if not valid:
     return None
@@ -310,6 +314,23 @@ def _current_hold_is_interruptible() -> bool:
   with _current_hold_lock:
     cur = _current_hold_priority
   return cur is None or cur < _INTERRUPT_PRIORITY_THRESHOLD
+
+
+def _discard_is_expected(priority: int) -> bool:
+  """Return True when a message expiring is explained by the current hold.
+
+  A higher-or-equal priority hold that outlives a message's timeout is the
+  system working: the board is already showing something more important, and
+  the stale message is correctly dropped rather than displayed late.
+
+  The case that motivated this is Plex. webhook.plex holds indefinitely while
+  media plays, and contrib.trakt.watching fires every 3 minutes with a 120s
+  timeout, so a two-hour film produced roughly forty identical warnings
+  describing correct behaviour. (#600)
+  """
+  with _current_hold_lock:
+    cur = _current_hold_priority
+  return cur is not None and cur >= priority
 
 
 def fire_hold_interrupt(supersede_tag: str = '') -> None:
