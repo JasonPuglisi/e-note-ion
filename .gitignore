@@ -25,6 +25,13 @@ content/user/*
 # Runtime data (health event log, etc. — persisted via Docker volume)
 data/
 
+# Claude Code: share the skill symlinks, keep per-machine settings local.
+# A global gitignore excludes .claude/ wholesale; re-include just skills/ here
+# so any clone (and CI) picks the project skills up natively.
+!.claude/
+.claude/*
+!.claude/skills/
+
 # Coverage tool output (pytest-cov)
 .coverage
 .coverage.*

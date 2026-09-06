@@ -1,6 +1,11 @@
 ---
 name: new-integration
 description: Add a new integration to the e-note-ion content scheduler. Covers integration module conventions (config import alias, vestaboard/media aliases, HTTP via shared helper, error handling), webhook integration shape (handle_webhook signature, WebhookMessage, supersede_tag, autogen credentials), scheduler.py registration (_KNOWN_INTEGRATIONS, _WEBHOOK_AUTOGEN), content JSON template, sidecar doc requirement, and the five-location env-var sync. Invoke when the task is "add an integration for X", "wire up Y as a content source", "support Z webhook events", or similar.
+license: MIT
+compatibility: Requires uv, git, and the gh CLI. Live-API verification needs a populated .env.
+metadata:
+  last-verified: "2026-09-06"
+  health: healthy
 ---
 
 # Add a New Integration

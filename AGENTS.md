@@ -14,6 +14,12 @@ body) and are vendor-neutral — any agent that reads this file can discover
 them. Load a skill's body when the user's task matches its trigger; don't
 preload all of them.
 
+`.claude/skills/` holds committed symlinks to each of them, because Claude Code
+only scans `.claude/skills/` and would otherwise never surface these. Keep the
+real files under `.agents/skills/`; add a matching symlink whenever you add a
+skill. (A global gitignore excludes `.claude/`, so the repo `.gitignore`
+re-includes `skills/` while leaving `settings.local.json` ignored.)
+
 | Skill | Load when |
 |---|---|
 | [`health-review`](.agents/skills/health-review/SKILL.md) | User asks for a "health check", "audit", or "project review"; before a minor/major release; after a sprint of feature work. |
