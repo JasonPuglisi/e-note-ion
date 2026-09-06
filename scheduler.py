@@ -757,8 +757,15 @@ def worker() -> None:
 # Logger names, not package names — qh3 logs under 'quic'. Verified against the
 # installed packages; guessing 'qh3' would silence nothing. See #598.
 #
-# All of these are restored at DEBUG, where the operator has asked for
-# third-party detail.
+# Applied unconditionally, DEBUG included. There used to be a DEBUG escape
+# hatch on the theory that asking for DEBUG meant asking for everything. It
+# does not: log_level = "DEBUG" means "tell me more about e-note-ion", not
+# "print APScheduler's per-job bookkeeping". The hatch shipped twice and hid
+# the problem both times, since production runs at DEBUG — first putting
+# caldav's calendar-data diff back into the log, then all 52 lines of
+# APScheduler startup noise. If anyone ever genuinely needs a dependency's
+# INFO, that deserves its own explicit config key rather than a side effect of
+# the app's own verbosity.
 _THIRD_PARTY_LOG_FLOORS: dict[str, int] = {
   'quic': logging.ERROR,
   'apscheduler': logging.WARNING,
@@ -1792,9 +1799,8 @@ def main() -> None:
   #
   # Skipped entirely at DEBUG: an operator who asked for DEBUG wants the
   # third-party detail too.
-  if level > logging.DEBUG:
-    for noisy, floor in _THIRD_PARTY_LOG_FLOORS.items():
-      logging.getLogger(noisy).setLevel(floor)
+  for noisy, floor in _THIRD_PARTY_LOG_FLOORS.items():
+    logging.getLogger(noisy).setLevel(floor)
 
   # Unconditional: personal data must not be gated on log level. Attached to the
   # handler rather than the 'caldav' logger — a logger's own filters do not run
