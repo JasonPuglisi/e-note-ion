@@ -1,4 +1,5 @@
 import json
+import logging
 import threading
 import time
 from pathlib import Path
@@ -3041,3 +3042,80 @@ def test_resolve_private_override_precedence() -> None:
   assert _mod.resolve_private(template, {'private': False}, 'x.y') is False
   assert _mod.resolve_private(template, {'private': 'nonsense'}, 'x.y') is True
   assert _mod.resolve_private({}, {'private': True}, 'x.y') is True
+
+
+# ---------------------------------------------------------------------------
+# Logging levels (#598, #599)
+# ---------------------------------------------------------------------------
+
+
+def test_expected_empty_is_not_logged_as_a_warning(caplog: pytest.LogCaptureFixture) -> None:
+  """ "UptimeRobot: all monitors up" is the healthy state, not a warning.
+
+  The code already branched on e.expected for health recording; only the log
+  line ignored it, which made WARNING meaningless — a real integration failure
+  looked identical to everything being fine.
+  """
+  err = IntegrationDataUnavailableError('UptimeRobot: all monitors up', expected=True)
+  with caplog.at_level(logging.INFO, logger='scheduler'):
+    log = _mod.logger.info if err.expected else _mod.logger.warning
+    log('Skipping %s: %s', 'contrib.uptimerobot.status', err)
+
+  records = [r for r in caplog.records if 'Skipping' in r.getMessage()]
+  assert records, 'expected the skip to be logged'
+  assert all(r.levelno == logging.INFO for r in records)
+
+
+def test_unexpected_unavailable_is_still_a_warning(caplog: pytest.LogCaptureFixture) -> None:
+  err = IntegrationDataUnavailableError('BART: departures request failed', expected=False)
+  with caplog.at_level(logging.INFO, logger='scheduler'):
+    log = _mod.logger.info if err.expected else _mod.logger.warning
+    log('Skipping %s: %s', 'contrib.bart.departures', err)
+
+  records = [r for r in caplog.records if 'Skipping' in r.getMessage()]
+  assert records
+  assert all(r.levelno == logging.WARNING for r in records)
+
+
+def test_noisy_third_party_loggers_are_named_by_logger_not_package() -> None:
+  """qh3 logs under 'quic' and caldav's vcal module under 'caldav'.
+
+  Guessing the package names ('qh3') would silence neither, so this pins the
+  names that were verified against the installed packages.
+  """
+  assert _mod._NOISY_THIRD_PARTY_LOGGERS == ('caldav', 'quic')
+
+
+@pytest.mark.parametrize(
+  ('configured', 'expect_silenced'),
+  [('INFO', True), ('WARNING', True), ('DEBUG', False)],
+)
+def test_third_party_noise_is_silenced_except_at_debug(
+  configured: str,
+  expect_silenced: bool,
+) -> None:
+  """log_level is set on the root logger, so every dependency inherits it.
+
+  caldav emits a multi-line diff of real calendar event data at WARNING, and
+  quic warns on every idle keepalive close. Both are silenced at normal levels
+  and deliberately restored at DEBUG, where the operator asked for detail.
+  """
+  level = getattr(logging, configured)
+  saved = {name: logging.getLogger(name).level for name in _mod._NOISY_THIRD_PARTY_LOGGERS}
+  try:
+    for name in _mod._NOISY_THIRD_PARTY_LOGGERS:
+      logging.getLogger(name).setLevel(logging.NOTSET)
+
+    if level > logging.DEBUG:
+      for name in _mod._NOISY_THIRD_PARTY_LOGGERS:
+        logging.getLogger(name).setLevel(logging.ERROR)
+
+    for name in _mod._NOISY_THIRD_PARTY_LOGGERS:
+      lg = logging.getLogger(name)
+      silenced = lg.level == logging.ERROR
+      assert silenced is expect_silenced, f'{name} at log_level={configured}'
+      # The specific records we care about are WARNING-level.
+      assert lg.isEnabledFor(logging.WARNING) is not expect_silenced
+  finally:
+    for name, lvl in saved.items():
+      logging.getLogger(name).setLevel(lvl)

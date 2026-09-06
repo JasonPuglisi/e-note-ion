@@ -567,7 +567,12 @@ def worker() -> None:
       with _current_hold_lock:
         _current_hold_supersede_tag = ''
         _current_hold_priority = None
-      logger.warning('Skipping %s: %s', message.name, e)
+      # An expected-empty result is the healthy state ("UptimeRobot: all
+      # monitors up"), and health already records it as such. Logging it at
+      # WARNING made WARNING meaningless: a real integration failure looked
+      # identical to everything being fine. (#599)
+      log = logger.info if e.expected else logger.warning
+      log('Skipping %s: %s', message.name, e)
       continue
     except Exception as e:
       if _health_name:
@@ -716,6 +721,11 @@ def worker() -> None:
 
 
 # --- Webhook Server ---
+
+# Logger names, not package names — qh3 logs under 'quic' and caldav's vcal
+# module logs under 'caldav'. Verified against the installed packages; guessing
+# the package name would silence neither. See #598.
+_NOISY_THIRD_PARTY_LOGGERS = ('caldav', 'quic')
 
 _MAX_WEBHOOK_BODY = 64 * 1024  # 64 KB — generous limit for any webhook payload
 
@@ -1647,6 +1657,23 @@ def main() -> None:
     logger.warning('invalid log_level %r in config.toml — defaulting to INFO', log_level_str)
     level = logging.INFO
   logging.root.setLevel(level)
+
+  # log_level is set on the root logger, so without this every dependency
+  # inherits it. Two are noisy at WARNING for reasons that are never actionable
+  # here, and one of them logs personal data:
+  #
+  #   caldav — "Ical data was modified to avoid compatibility issues" arrives
+  #     with a multi-line unified diff of the actual event data it normalised
+  #     (summaries, descriptions, timestamps), to report trailing-whitespace
+  #     changes. That lands in the Docker log in plaintext.
+  #   quic (qh3, pulled in via caldav) — "Native peer close: ... keepalive
+  #     timeout" for an idle pooled connection being closed, which is normal.
+  #
+  # Skipped entirely at DEBUG: an operator who asked for DEBUG wants the
+  # third-party detail too.
+  if level > logging.DEBUG:
+    for noisy in _NOISY_THIRD_PARTY_LOGGERS:
+      logging.getLogger(noisy).setLevel(logging.ERROR)
 
   model = _config_mod.get_model()
   if model == 'flagship':
