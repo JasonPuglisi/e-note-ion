@@ -26,7 +26,7 @@ def _clear_lru_caches() -> None:
 def test_is_configured_true(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
   assert tmdb.is_configured() is True
 
 
@@ -40,7 +40,7 @@ def test_is_configured_false_missing_section(monkeypatch: pytest.MonkeyPatch) ->
 def test_is_configured_false_empty_token(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': ''}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': ''}})
   assert tmdb.is_configured() is False
 
 
@@ -50,7 +50,7 @@ def test_is_configured_false_empty_token(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_get_show_title_returns_name(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
   mock_r = MagicMock()
   mock_r.status_code = 200
   mock_r.json.return_value = {'name': 'Attack on Titan', 'id': 1429}
@@ -64,7 +64,7 @@ def test_get_show_title_returns_name(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_get_show_title_returns_none_on_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   with patch('integrations.tmdb.fetch_with_retry', side_effect=Exception('timeout')):
     result = tmdb.get_show_title(9999)
@@ -75,7 +75,7 @@ def test_get_show_title_returns_none_on_http_error(monkeypatch: pytest.MonkeyPat
 def test_get_show_title_returns_none_on_missing_name(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
   mock_r = MagicMock()
   mock_r.status_code = 200
   mock_r.json.return_value = {}
@@ -92,7 +92,7 @@ def test_get_show_title_returns_none_on_missing_name(monkeypatch: pytest.MonkeyP
 def test_get_movie_title_returns_title(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
   mock_r = MagicMock()
   mock_r.status_code = 200
   mock_r.json.return_value = {'title': 'Inception', 'id': 27205}
@@ -106,7 +106,7 @@ def test_get_movie_title_returns_title(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_get_movie_title_returns_none_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   with patch('integrations.tmdb.fetch_with_retry', side_effect=Exception('timeout')):
     result = tmdb.get_movie_title(27205)
@@ -120,7 +120,7 @@ def test_get_movie_title_returns_none_on_error(monkeypatch: pytest.MonkeyPatch) 
 def test_find_episode_by_tvdb_id_returns_season_episode_title(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
   mock_r = MagicMock()
   mock_r.status_code = 200
   mock_r.json.return_value = {
@@ -138,7 +138,7 @@ def test_find_episode_by_tvdb_id_returns_season_episode_title(monkeypatch: pytes
 def test_find_episode_by_tvdb_id_returns_none_on_empty_results(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
   mock_r = MagicMock()
   mock_r.status_code = 200
   mock_r.json.return_value = {'tv_episode_results': []}
@@ -152,7 +152,7 @@ def test_find_episode_by_tvdb_id_returns_none_on_empty_results(monkeypatch: pyte
 def test_find_episode_by_tvdb_id_returns_none_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   with patch('integrations.tmdb.fetch_with_retry', side_effect=Exception('timeout')):
     result = tmdb.find_episode_by_tvdb_id(8765432)
@@ -163,7 +163,7 @@ def test_find_episode_by_tvdb_id_returns_none_on_error(monkeypatch: pytest.Monke
 def test_find_episode_by_tvdb_id_empty_title_returns_empty_string(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
   mock_r = MagicMock()
   mock_r.status_code = 200
   mock_r.json.return_value = {
@@ -182,7 +182,7 @@ def test_find_episode_by_tvdb_id_empty_title_returns_empty_string(monkeypatch: p
 def test_find_episode_by_imdb_id_returns_tuple(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
   mock_r = MagicMock()
   mock_r.status_code = 200
   mock_r.json.return_value = {
@@ -203,7 +203,7 @@ def test_find_episode_by_imdb_id_returns_tuple(monkeypatch: pytest.MonkeyPatch) 
 def test_find_episode_by_imdb_id_returns_none_on_empty_results(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
   mock_r = MagicMock()
   mock_r.status_code = 200
   mock_r.json.return_value = {'tv_episode_results': []}
@@ -217,7 +217,7 @@ def test_find_episode_by_imdb_id_returns_none_on_empty_results(monkeypatch: pyte
 def test_find_episode_by_imdb_id_returns_none_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   with patch('integrations.tmdb.fetch_with_retry', side_effect=Exception('timeout')):
     result = tmdb.find_episode_by_imdb_id('tt99999999')
@@ -231,7 +231,7 @@ def test_find_episode_by_imdb_id_returns_none_on_error(monkeypatch: pytest.Monke
 def test_search_show_by_title_returns_show_id(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
   mock_r = MagicMock()
   mock_r.status_code = 200
   mock_r.json.return_value = {'results': [{'id': 95479, 'name': 'Jujutsu Kaisen'}]}
@@ -246,7 +246,7 @@ def test_search_show_by_title_returns_show_id(monkeypatch: pytest.MonkeyPatch) -
 def test_search_show_by_title_returns_none_on_empty_results(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
   mock_r = MagicMock()
   mock_r.status_code = 200
   mock_r.json.return_value = {'results': []}
@@ -260,7 +260,7 @@ def test_search_show_by_title_returns_none_on_empty_results(monkeypatch: pytest.
 def test_search_show_by_title_returns_none_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   with patch('integrations.tmdb.fetch_with_retry', side_effect=Exception('timeout')):
     result = tmdb.search_show_by_title('Frieren')
@@ -274,7 +274,7 @@ def test_search_show_by_title_returns_none_on_error(monkeypatch: pytest.MonkeyPa
 def test_get_episode_by_number_returns_title_and_id(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
   mock_r = MagicMock()
   mock_r.status_code = 200
   mock_r.json.return_value = {'id': 6827061, 'name': 'Perfect Preparation'}
@@ -289,7 +289,7 @@ def test_get_episode_by_number_returns_title_and_id(monkeypatch: pytest.MonkeyPa
 def test_get_episode_by_number_returns_none_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   with patch('integrations.tmdb.fetch_with_retry', side_effect=Exception('404')):
     result = tmdb.get_episode_by_number(95479, 99, 1)
@@ -303,7 +303,7 @@ def test_get_episode_by_number_returns_none_on_error(monkeypatch: pytest.MonkeyP
 def test_get_episode_group_position_returns_correct_season_episode(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   groups_r = MagicMock()
   groups_r.status_code = 200
@@ -328,7 +328,7 @@ def test_get_episode_group_position_returns_correct_season_episode(monkeypatch: 
 def test_get_episode_group_position_skips_specials_group(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   groups_r = MagicMock()
   groups_r.status_code = 200
@@ -351,7 +351,7 @@ def test_get_episode_group_position_skips_specials_group(monkeypatch: pytest.Mon
 def test_get_episode_group_position_no_type6_group(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   groups_r = MagicMock()
   groups_r.status_code = 200
@@ -366,7 +366,7 @@ def test_get_episode_group_position_no_type6_group(monkeypatch: pytest.MonkeyPat
 def test_get_episode_group_position_returns_none_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   with patch('integrations.tmdb.fetch_with_retry', side_effect=Exception('timeout')):
     result = tmdb.get_episode_group_position(209867, 9005)
@@ -405,7 +405,7 @@ def _group_fixture() -> tuple[MagicMock, MagicMock]:
 def test_find_episode_in_group_returns_title_and_id(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
   groups_r, group_r = _group_fixture()
 
   with patch('integrations.tmdb.fetch_with_retry', side_effect=[groups_r, group_r]):
@@ -418,7 +418,7 @@ def test_find_episode_in_group_returns_title_and_id(monkeypatch: pytest.MonkeyPa
 def test_find_episode_in_group_season_1(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
   groups_r, group_r = _group_fixture()
 
   with patch('integrations.tmdb.fetch_with_retry', side_effect=[groups_r, group_r]):
@@ -430,7 +430,7 @@ def test_find_episode_in_group_season_1(monkeypatch: pytest.MonkeyPatch) -> None
 def test_find_episode_in_group_returns_none_when_season_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
   groups_r, group_r = _group_fixture()
 
   with patch('integrations.tmdb.fetch_with_retry', side_effect=[groups_r, group_r]):
@@ -442,7 +442,7 @@ def test_find_episode_in_group_returns_none_when_season_not_found(monkeypatch: p
 def test_find_episode_in_group_returns_none_when_episode_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
   groups_r, group_r = _group_fixture()
 
   with patch('integrations.tmdb.fetch_with_retry', side_effect=[groups_r, group_r]):
@@ -454,7 +454,7 @@ def test_find_episode_in_group_returns_none_when_episode_not_found(monkeypatch: 
 def test_find_episode_in_group_returns_none_when_no_type6_group(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
   groups_r = MagicMock()
   groups_r.status_code = 200
   groups_r.json.return_value = {'results': [{'id': 'grp-xyz', 'type': 5}]}

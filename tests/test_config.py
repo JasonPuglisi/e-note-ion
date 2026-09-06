@@ -527,168 +527,75 @@ def test_delete_config_section_missing_file_raises(
     _mod.delete_config_section('webhook.credentials.alice')
 
 
-# --- migrate_message_credentials ---
+# --- 2.0 credential namespace (#431) ---
 
 
-# --- migrate_quiet_config ---
-
-
-def test_migrate_quiet_config_rewrites_active_true(
-  tmp_path: Path,
-  monkeypatch: pytest.MonkeyPatch,
-) -> None:
-  content = '[scheduler]\nmodel = "note"\n\n[scheduler.quiet]\nactive = true\n'
-  cfg = _setup_wcs(tmp_path, monkeypatch, content)
-  monkeypatch.setattr(_mod, '_config', {'scheduler': {'model': 'note', 'quiet': {'active': True}}})
-  _mod.migrate_quiet_config()
-  text = cfg.read_text()
-  assert '[scheduler.quiet]' not in text
-  assert 'quiet = true' in text
-  assert _mod._config['scheduler'].get('quiet') is True  # noqa: SLF001
-
-
-def test_migrate_quiet_config_rewrites_active_false(
-  tmp_path: Path,
-  monkeypatch: pytest.MonkeyPatch,
-) -> None:
-  content = '[scheduler]\nmodel = "note"\n\n[scheduler.quiet]\nactive = false\n'
-  cfg = _setup_wcs(tmp_path, monkeypatch, content)
-  monkeypatch.setattr(_mod, '_config', {'scheduler': {'model': 'note', 'quiet': {'active': False}}})
-  _mod.migrate_quiet_config()
-  text = cfg.read_text()
-  assert '[scheduler.quiet]' not in text
-  assert 'quiet = false' in text
-
-
-def test_migrate_quiet_config_noop_when_already_flat(
-  tmp_path: Path,
-  monkeypatch: pytest.MonkeyPatch,
-) -> None:
-  content = '[scheduler]\nquiet = true\n'
-  cfg = _setup_wcs(tmp_path, monkeypatch, content)
-  monkeypatch.setattr(_mod, '_config', {'scheduler': {'quiet': True}})
-  _mod.migrate_quiet_config()
-  assert cfg.read_text() == content
-
-
-def test_migrate_quiet_config_noop_when_absent(
-  tmp_path: Path,
-  monkeypatch: pytest.MonkeyPatch,
-) -> None:
-  content = '[scheduler]\nmodel = "note"\n'
-  cfg = _setup_wcs(tmp_path, monkeypatch, content)
-  monkeypatch.setattr(_mod, '_config', {'scheduler': {'model': 'note'}})
-  _mod.migrate_quiet_config()
-  assert cfg.read_text() == content
-
-
-def test_migrate_quiet_config_logs_deprecation_warning(
-  tmp_path: Path,
-  monkeypatch: pytest.MonkeyPatch,
-  caplog: pytest.LogCaptureFixture,
-) -> None:
-  content = '[scheduler]\nmodel = "note"\n\n[scheduler.quiet]\nactive = true\n'
-  _setup_wcs(tmp_path, monkeypatch, content)
-  monkeypatch.setattr(_mod, '_config', {'scheduler': {'model': 'note', 'quiet': {'active': True}}})
-  import logging
-
-  with caplog.at_level(logging.WARNING, logger='config'):
-    _mod.migrate_quiet_config()
-  assert 'deprecated' in caplog.text.lower()
-
-
-# --- migrate_message_credentials ---
-
-
-def test_migrate_message_credentials_rewrites_friend_to_nested_path(
-  tmp_path: Path,
-  monkeypatch: pytest.MonkeyPatch,
-) -> None:
-  content = (
-    '[webhook]\nport = 8080\n\n'
-    '[webhook.credentials.alice]\nsecret_hash = "h"\nwebhooks = ["message"]\n\n'
-    '[message.friends.alice]\ncolor = "R"\n'
-  )
-  cfg = _setup_wcs(tmp_path, monkeypatch, content)
-  _mod._config = {  # noqa: SLF001
-    'webhook': {'port': 8080, 'credentials': {'alice': {'secret_hash': 'h', 'webhooks': ['message']}}},
-    'message': {'friends': {'alice': {'color': 'R'}}},
-  }
-  count = _mod.migrate_message_credentials()
-  assert count == 1
-  text = cfg.read_text()
-  assert '[webhook.credentials.message.friend.alice]' in text
-  assert '[webhook.credentials.alice]' not in text
-
-
-def test_migrate_message_credentials_rewrites_admin_to_nested_path(
-  tmp_path: Path,
-  monkeypatch: pytest.MonkeyPatch,
-) -> None:
-  content = (
-    '[webhook]\nport = 8080\n\n[webhook.credentials.message-admin]\nsecret_hash = "ha"\nwebhooks = ["message"]\n'
-  )
-  cfg = _setup_wcs(tmp_path, monkeypatch, content)
-  _mod._config = {  # noqa: SLF001
-    'webhook': {'port': 8080, 'credentials': {'message-admin': {'secret_hash': 'ha', 'webhooks': ['message']}}},
-  }
-  count = _mod.migrate_message_credentials()
-  assert count == 1
-  text = cfg.read_text()
-  assert '[webhook.credentials.message.admin]' in text
-  assert '[webhook.credentials.message-admin]' not in text
-
-
-def test_migrate_message_credentials_skips_other_integrations(
-  tmp_path: Path,
-  monkeypatch: pytest.MonkeyPatch,
-) -> None:
-  content = '[webhook]\nport = 8080\n\n[webhook.credentials.plex]\nsecret_hash = "hp"\nwebhooks = ["plex"]\n'
-  cfg = _setup_wcs(tmp_path, monkeypatch, content)
-  _mod._config = {  # noqa: SLF001
-    'webhook': {'port': 8080, 'credentials': {'plex': {'secret_hash': 'hp', 'webhooks': ['plex']}}},
-  }
-  count = _mod.migrate_message_credentials()
-  assert count == 0
-  assert '[webhook.credentials.plex]' in cfg.read_text()
-
-
-def test_migrate_message_credentials_noop_when_already_nested(
-  tmp_path: Path,
-  monkeypatch: pytest.MonkeyPatch,
-) -> None:
-  content = (
-    '[webhook]\nport = 8080\n\n[webhook.credentials.message.friend.alice]\nsecret_hash = "h"\nwebhooks = ["message"]\n'
-  )
-  cfg = _setup_wcs(tmp_path, monkeypatch, content)
-  _mod._config = {  # noqa: SLF001
-    'webhook': {
-      'port': 8080,
-      'credentials': {'message': {'friend': {'alice': {'secret_hash': 'h', 'webhooks': ['message']}}}},
+def test_flat_message_credentials_no_longer_authenticate(monkeypatch: pytest.MonkeyPatch) -> None:
+  """The breaking change: message credentials live only in the nested namespace."""
+  monkeypatch.setattr(
+    _mod,
+    '_config',
+    {
+      'webhook': {
+        'credentials': {
+          'alice': {'secret_hash': 'h', 'webhooks': ['message']},
+          'message': {'admin': {'secret_hash': 'h2'}},
+        }
+      }
     },
-  }
-  count = _mod.migrate_message_credentials()
-  assert count == 0
-  assert '[webhook.credentials.message.friend.alice]' in cfg.read_text()
-
-
-def test_migrate_message_credentials_file_stays_clean(
-  tmp_path: Path,
-  monkeypatch: pytest.MonkeyPatch,
-) -> None:
-  # After migration the file must not have double blank lines.
-  content = (
-    '[webhook]\nport = 8080\n\n'
-    '[webhook.credentials.alice]\nsecret_hash = "h"\nwebhooks = ["message"]\n\n'
-    '[message.friends.alice]\ncolor = "R"\n'
   )
-  cfg = _setup_wcs(tmp_path, monkeypatch, content)
-  _mod._config = {  # noqa: SLF001
-    'webhook': {'port': 8080, 'credentials': {'alice': {'secret_hash': 'h', 'webhooks': ['message']}}},
-    'message': {'friends': {'alice': {'color': 'R'}}},
-  }
-  _mod.migrate_message_credentials()
-  assert '\n\n\n' not in cfg.read_text()
+  assert sorted(_mod.get_credentials('message')) == ['admin'], 'flat alice must not be returned'
+
+
+def test_flat_credentials_still_work_for_other_integrations(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Only message moved to a nested namespace; everything else stays flat."""
+  monkeypatch.setattr(
+    _mod,
+    '_config',
+    {'webhook': {'credentials': {'plex': {'secret_hash': 'h', 'webhooks': ['plex']}}}},
+  )
+  assert sorted(_mod.get_credentials('plex')) == ['plex']
+
+
+# --- boolean config values are not coerced ---
+
+
+@pytest.mark.parametrize(
+  'value',
+  [
+    pytest.param({'active': False}, id='table (the pre-2.0 [scheduler.quiet] shape)'),
+    pytest.param({'active': True}, id='table-truthy'),
+    pytest.param('false', id='string-false'),
+    pytest.param('true', id='string-true'),
+    pytest.param(0, id='int'),
+  ],
+)
+def test_non_bool_boolean_value_exits_with_a_clear_error(
+  monkeypatch: pytest.MonkeyPatch,
+  capsys: pytest.CaptureFixture[str],
+  value: object,
+) -> None:
+  """bool() would coerce these, and coercion is how a user gets the opposite
+  of what they asked for: bool({'active': False}) and bool('false') are both
+  True. Refusing is the only safe reading."""
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'quiet': value}})
+  with pytest.raises(SystemExit) as exc:
+    _mod.get_optional_bool('scheduler', 'quiet')
+  assert exc.value.code == 1
+  err = capsys.readouterr().err
+  assert 'must be true or false' in err
+  assert 'quiet' in err
+
+
+@pytest.mark.parametrize(('value', 'expected'), [(True, True), (False, False)])
+def test_real_booleans_pass_through(monkeypatch: pytest.MonkeyPatch, value: bool, expected: bool) -> None:
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {'quiet': value}})
+  assert _mod.get_optional_bool('scheduler', 'quiet') is expected
+
+
+def test_absent_boolean_uses_the_default(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(_mod, '_config', {'scheduler': {}})
+  assert _mod.get_optional_bool('scheduler', 'quiet', default=True) is True
 
 
 # --- TOML string escaping (#592) ---
@@ -851,3 +758,54 @@ def test_concurrent_writers_do_not_lose_updates(tmp_path: Path, monkeypatch: pyt
   assert not errors
   parsed = tomllib.loads((tmp_path / 'config.toml').read_text())
   assert sorted(k for k in parsed['myapp'] if k.startswith('key')) == sorted(f'key{i}' for i in range(n))
+
+
+# --- OAuth state subsections (#486) ---
+
+
+def test_auth_subsection_is_written_after_the_parents_keys(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  """TOML section headers are positional, so placement is correctness.
+
+  If [trakt.auth] were inserted above a plain [trakt] key, that key would
+  silently become part of the subsection and stop being read.
+  """
+  monkeypatch.chdir(tmp_path)
+  _write_config(
+    tmp_path,
+    '[scheduler]\nmodel = "note"\n\n[trakt]\nclient_id = "cid"\ncalendar_days = 14\n\n[weather]\ncity = "Oakland"\n',
+  )
+  _mod.load_config()
+
+  _mod.write_config_section('trakt.auth', {'access_token': 'tok', 'expires_at': 999})
+
+  parsed = tomllib.loads((tmp_path / 'config.toml').read_text())
+  assert parsed['trakt']['calendar_days'] == 14, 'a sibling key must not be swallowed'
+  assert parsed['trakt']['client_id'] == 'cid'
+  assert parsed['trakt']['auth']['access_token'] == 'tok'
+  assert parsed['weather']['city'] == 'Oakland', 'later sections must be untouched'
+
+
+def test_dotted_sections_read_through_every_accessor(monkeypatch: pytest.MonkeyPatch) -> None:
+  """get() and get_optional() did not walk dotted names; get_optional_bool did.
+
+  [google.auth] nests as _config['google']['auth'], so an accessor that does not
+  walk it reads the section as absent rather than failing.
+  """
+  monkeypatch.setattr(
+    _mod,
+    '_config',
+    {'google': {'client_id': 'cid', 'auth': {'access_token': 'tok', 'enabled': True}}},
+  )
+  assert _mod.get('google.auth', 'access_token') == 'tok'
+  assert _mod.get_optional('google.auth', 'access_token') == 'tok'
+  assert _mod.get_optional_bool('google.auth', 'enabled') is True
+  assert _mod.get('google', 'client_id') == 'cid', 'the parent section still resolves'
+  assert _mod.get_optional('google.auth', 'absent', 'fallback') == 'fallback'
+
+
+def test_missing_dotted_key_names_the_full_section() -> None:
+  with pytest.raises(ValueError, match=r'\[google\.auth\]\.access_token'):
+    _mod.get('google.auth', 'access_token')

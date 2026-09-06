@@ -113,6 +113,11 @@ Until auth is complete, templates from that integration are silently skipped
 and the display shows other content normally. See each integration's sidecar
 doc under [`content/contrib/`](content/contrib/) for setup details.
 
+## Upgrading
+
+Breaking changes and the steps to move between major versions are in
+[MIGRATIONS.md](MIGRATIONS.md). Check it before upgrading across a major.
+
 ## Configuration
 
 Copy `config.example.toml` to `config.toml` and fill in your values:

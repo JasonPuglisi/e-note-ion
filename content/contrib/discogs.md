@@ -30,7 +30,7 @@ Add the following to your `config.toml`:
 
 ```toml
 [discogs]
-token = "your-discogs-personal-access-token"
+api_key = "your-discogs-personal-access-token"
 ```
 
 | Key | Required | Description |

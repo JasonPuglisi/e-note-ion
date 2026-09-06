@@ -30,7 +30,7 @@ def discogs_config(monkeypatch: pytest.MonkeyPatch) -> None:
   """Patch config with Discogs settings."""
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'discogs': {'token': 'test-token'}})
+  monkeypatch.setattr(_config_mod, '_config', {'discogs': {'api_key': 'test-token'}})
 
 
 def _mock_identity(username: str = 'testuser') -> MagicMock:

@@ -49,9 +49,17 @@ constraint), requiring weekly re-authorization via the device code flow.
 |---|---|---|
 | `client_id` | Yes | Google OAuth 2.0 client ID |
 | `client_secret` | Yes | Google OAuth 2.0 client secret |
-| `access_token` | Auto | Written by the auth flow — do not edit |
-| `refresh_token` | Auto | Written by the auth flow — do not edit |
-| `expires_at` | Auto | Written by the auth flow — do not edit |
+
+
+OAuth state is machine-managed and lives in `[google.auth]`, created on first
+auth. Do not edit it by hand, and keep the subsection last in `[google]` —
+anything below a `[google.auth]` header belongs to the subsection.
+
+| Key (in `[google.auth]`) | Description |
+|---|---|
+| `access_token` | Written by the auth flow |
+| `refresh_token` | Written by the auth flow |
+| `expires_at` | Written by the auth flow |
 
 On first startup, the scheduler logs a URL and code. Visit the URL, sign in
 with your Google account, and enter the code. Tokens are saved to `config.toml`
@@ -79,8 +87,8 @@ Testing mode, refresh tokens expire after 7 days; the scheduler automatically
 clears stale tokens and re-initiates the device code auth flow when this
 happens (check the logs for the new code and URL).
 
-If tokens become corrupted, delete `access_token`, `refresh_token`, and
-`expires_at` from `[google]` in `config.toml` and restart.
+If tokens become corrupted, delete the whole `[google.auth]` section from
+`config.toml` and restart — the auth flow recreates it.
 
 ### YouTube Data API quota
 

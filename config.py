@@ -15,6 +15,7 @@ import sys
 import tempfile
 import threading
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -66,10 +67,26 @@ def get(section: str, key: str) -> str:
   Raises ValueError with a descriptive message if the section or key is
   missing, or if the value is an empty string.
   """
-  value = _config.get(section, {}).get(key)
+  value = _resolve_section(section).get(key)
   if not value:
     raise ValueError(f'Missing required config key [{section}].{key} in config.toml')
   return str(value)
+
+
+def _resolve_section(section: str) -> dict:
+  """Return the config table for a possibly-dotted section name, or {}.
+
+  '[google.auth]' nests as _config['google']['auth'], so any accessor that
+  accepts a dotted name has to walk it. get_optional_bool already did; get()
+  and get_optional() did not, which meant a dotted section silently read as
+  absent rather than failing.
+  """
+  node: object = _config
+  for part in section.split('.'):
+    if not isinstance(node, dict):
+      return {}
+    node = node.get(part, {})
+  return node if isinstance(node, dict) else {}
 
 
 def has_section(section: str) -> bool:
@@ -147,13 +164,13 @@ def _atomic_write(text: str) -> None:
 
 def get_optional(section: str, key: str, default: str = '') -> str:
   """Return an optional string config value, or default if absent."""
-  value = _config.get(section, {}).get(key)
+  value = _resolve_section(section).get(key)
   if value is None:
     return default
   return str(value)
 
 
-def write_section_values(section: str, values: dict[str, str | int]) -> None:
+def write_section_values(section: str, values: Mapping[str, str | int]) -> None:
   """Write key-value pairs into [section] in config.toml in-place.
 
   Updates the in-memory config cache and persists to disk, preserving all
@@ -238,18 +255,22 @@ def get_optional_bool(section: str, key: str, default: bool = False) -> bool:
   Uses the raw TOML value rather than casting through str, so TOML booleans
   (e.g. `public = true`) are returned as Python bools correctly.
 
-  Supports dotted section names (e.g. ``'scheduler.quiet'``) by traversing
-  nested dicts — matching the TOML nesting produced by ``[scheduler.quiet]``.
+  Supports dotted section names by traversing nested dicts, matching TOML's
+  own nesting.
   """
-  node: dict[str, object] = _config
-  for part in section.split('.'):
-    node = node.get(part, {})  # type: ignore[assignment]
-    if not isinstance(node, dict):
-      return default
-  value = node.get(key)
+  value = _resolve_section(section).get(key)
   if value is None:
     return default
-  return bool(value)
+  if not isinstance(value, bool):
+    # Never coerce. bool() on a dict or a non-empty string is True regardless of
+    # what it contains, so `quiet = "false"` and `quiet = { active = false }`
+    # would both silently enable the thing the user was trying to turn off.
+    print(
+      f'Error: [{section}] {key} must be true or false in config.toml, found {value!r}.',
+      file=sys.stderr,
+    )
+    raise SystemExit(1)
+  return value
 
 
 def get_model() -> str:
@@ -301,10 +322,11 @@ def get_credentials(integration_name: str) -> dict[str, dict[str, Any]]:
   if not isinstance(creds, dict):
     return {}
   result: dict[str, dict[str, Any]] = {}
-  for name, data in creds.items():
-    if isinstance(data, dict) and integration_name in data.get('webhooks', []):
-      result[name] = data
-  # Message credentials live in a nested namespace: webhook.credentials.message.*
+
+  # Message credentials live only in the nested namespace as of 2.0 (#431).
+  # Returning early rather than also running the flat loop below is what
+  # actually removes flat support: a flat [webhook.credentials.<name>] with
+  # webhooks = ["message"] would otherwise still authenticate.
   if integration_name == 'message':
     msg_creds = creds.get('message', {})
     if isinstance(msg_creds, dict):
@@ -316,6 +338,11 @@ def get_credentials(integration_name: str) -> dict[str, dict[str, Any]]:
         for friend_name, friend_data in friends.items():
           if isinstance(friend_data, dict):
             result[friend_name] = friend_data
+    return result
+
+  for name, data in creds.items():
+    if isinstance(data, dict) and integration_name in data.get('webhooks', []):
+      result[name] = data
   return result
 
 
@@ -325,7 +352,7 @@ def get_message_friend(name: str) -> dict[str, Any] | None:
   return dict(friend) if isinstance(friend, dict) else None
 
 
-def write_config_section(section: str, values: dict[str, str | int | bool | list[str]]) -> None:
+def write_config_section(section: str, values: Mapping[str, str | int | bool | list[str]]) -> None:
   """Create-or-update a config section in config.toml.
 
   Handles dotted section names (e.g. 'webhook.credentials.alice').
@@ -505,65 +532,6 @@ def delete_config_section(section: str) -> None:
         return
       d = d[part]
     d.pop(parts[-1], None)
-
-
-def migrate_quiet_config() -> None:
-  """Migrate old [scheduler.quiet] section to flat [scheduler].quiet key.
-
-  Detects the old ``[scheduler.quiet]`` subsection with an ``active`` key,
-  rewrites it as ``quiet = true/false`` under ``[scheduler]``, and removes the
-  old section. Logs a deprecation warning when migration occurs.
-
-  No-op if the old section does not exist (fresh install or already migrated).
-  This migration shim is removed in 2.0 (#483).
-  """
-  import logging
-
-  quiet_section = _config.get('scheduler', {}).get('quiet')
-  if not isinstance(quiet_section, dict):
-    return  # already flat key or absent
-
-  value = bool(quiet_section.get('active', False))
-  delete_config_section('scheduler.quiet')
-  write_config_section('scheduler', {'quiet': value})
-
-  logger = logging.getLogger(__name__)
-  logger.warning(
-    'Migrated [scheduler.quiet] active = %s → [scheduler] quiet = %s '
-    '— the old format is deprecated and will be removed in 2.0',
-    str(value).lower(),
-    str(value).lower(),
-  )
-
-
-def migrate_message_credentials() -> int:
-  """Migrate old-style flat message credentials to the nested namespace.
-
-  Detects [webhook.credentials.<name>] sections with webhooks = ["message"] and
-  rewrites them as [webhook.credentials.message.admin] (for the old 'message-admin'
-  credential) or [webhook.credentials.message.friend.<name>] (for all friends).
-  Removes the old flat sections after writing the new ones.
-
-  Returns the number of credentials migrated. This migration shim is removed in 2.0.
-
-  Raises FileNotFoundError if config.toml does not exist.
-  """
-  creds = _config.get('webhook', {}).get('credentials', {})
-  if not isinstance(creds, dict):
-    return 0
-
-  to_migrate: list[tuple[str, dict]] = [
-    (name, data) for name, data in creds.items() if isinstance(data, dict) and data.get('webhooks') == ['message']
-  ]
-
-  for name, data in to_migrate:
-    new_section = (
-      'webhook.credentials.message.admin' if name == 'message-admin' else f'webhook.credentials.message.friend.{name}'
-    )
-    write_config_section(new_section, data)
-    delete_config_section(f'webhook.credentials.{name}')
-
-  return len(to_migrate)
 
 
 def get_schedule_override(template_id: str) -> dict:

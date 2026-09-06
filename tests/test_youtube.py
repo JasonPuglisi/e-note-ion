@@ -28,9 +28,11 @@ def _mock_config(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]
       'google': {
         'client_id': 'test-client-id',
         'client_secret': 'test-client-secret',
-        'access_token': 'test-access-token',
-        'refresh_token': 'test-refresh-token',
-        'expires_at': int(time.time()) + 3600,
+        'auth': {
+          'access_token': 'test-access-token',
+          'refresh_token': 'test-refresh-token',
+          'expires_at': int(time.time()) + 3600,
+        },
       }
     },
   )
@@ -354,9 +356,11 @@ def test_get_variables_no_subscriptions_raises(monkeypatch: pytest.MonkeyPatch) 
       'google': {
         'client_id': 'id',
         'client_secret': 'secret',
-        'access_token': 'token',
-        'refresh_token': 'refresh',
-        'expires_at': int(time.time()) + 3600,
+        'auth': {
+          'access_token': 'token',
+          'refresh_token': 'refresh',
+          'expires_at': int(time.time()) + 3600,
+        },
       }
     },
   )

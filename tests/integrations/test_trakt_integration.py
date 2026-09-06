@@ -27,11 +27,13 @@ def _patch_config(monkeypatch: pytest.MonkeyPatch) -> None:
       'trakt': {
         'client_id': os.environ['TRAKT_CLIENT_ID'],
         'client_secret': os.environ['TRAKT_CLIENT_SECRET'],
-        'access_token': os.environ['TRAKT_ACCESS_TOKEN'],
-        'expires_at': int(time.time()) + 7776000,  # 90 days — avoid triggering refresh during test
         # Placeholder so _handle_api_401 can call _refresh_token without a ValueError;
         # Trakt will reject the placeholder with HTTPError → IntegrationDataUnavailableError → skip
-        'refresh_token': 'expired',
+        'auth': {
+          'access_token': os.environ['TRAKT_ACCESS_TOKEN'],
+          'expires_at': int(time.time()) + 7776000,  # 90 days — avoid triggering refresh during test
+          'refresh_token': 'expired',
+        },
       }
     },
   )

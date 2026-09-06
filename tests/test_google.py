@@ -20,9 +20,11 @@ def _mock_config(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]
       'google': {
         'client_id': 'test-client-id',
         'client_secret': 'test-client-secret',
-        'access_token': 'test-access-token',
-        'refresh_token': 'test-refresh-token',
-        'expires_at': int(time.time()) + 3600,
+        'auth': {
+          'access_token': 'test-access-token',
+          'refresh_token': 'test-refresh-token',
+          'expires_at': int(time.time()) + 3600,
+        },
       }
     },
   )
@@ -79,9 +81,11 @@ def test_get_token_refreshes_near_expiry(monkeypatch: pytest.MonkeyPatch) -> Non
       'google': {
         'client_id': 'id',
         'client_secret': 'secret',
-        'access_token': 'old-token',
-        'refresh_token': 'refresh',
-        'expires_at': int(time.time()) + 60,  # expires in 60s — under 300s threshold
+        'auth': {
+          'access_token': 'old-token',
+          'refresh_token': 'refresh',
+          'expires_at': int(time.time()) + 60,  # expires in 60s — under 300s threshold
+        },
       }
     },
   )
@@ -116,9 +120,11 @@ def test_get_token_refresh_failure_clears_tokens(monkeypatch: pytest.MonkeyPatch
       'google': {
         'client_id': 'id',
         'client_secret': 'secret',
-        'access_token': 'old-token',
-        'refresh_token': 'bad-refresh',
-        'expires_at': int(time.time()) + 60,
+        'auth': {
+          'access_token': 'old-token',
+          'refresh_token': 'bad-refresh',
+          'expires_at': int(time.time()) + 60,
+        },
       }
     },
   )
@@ -139,7 +145,7 @@ def test_get_token_refresh_failure_clears_tokens(monkeypatch: pytest.MonkeyPatch
 
 
 def test_store_tokens_writes_to_config() -> None:
-  with patch('config.write_section_values') as mock_write:
+  with patch('config.write_config_section') as mock_write:
     google._store_tokens(
       {
         'access_token': 'new-access',
@@ -149,7 +155,7 @@ def test_store_tokens_writes_to_config() -> None:
     )
     mock_write.assert_called_once()
     args = mock_write.call_args
-    assert args[0][0] == 'google'
+    assert args[0][0] == 'google.auth', 'OAuth state is machine-managed and lives in its own subsection'
     values = args[0][1]
     assert values['access_token'] == 'new-access'
     assert values['refresh_token'] == 'new-refresh'
@@ -157,7 +163,7 @@ def test_store_tokens_writes_to_config() -> None:
 
 
 def test_store_tokens_omits_refresh_when_absent() -> None:
-  with patch('config.write_section_values') as mock_write:
+  with patch('config.write_config_section') as mock_write:
     google._store_tokens({'access_token': 'access', 'expires_in': 3600})
     values = mock_write.call_args[0][1]
     assert 'refresh_token' not in values
@@ -169,7 +175,7 @@ def test_store_tokens_omits_refresh_when_absent() -> None:
 
 
 def test_clear_tokens_writes_empty_strings() -> None:
-  with patch('config.write_section_values') as mock_write:
+  with patch('config.write_config_section') as mock_write:
     google._clear_tokens()
     values = mock_write.call_args[0][1]
     assert values['access_token'] == ''
@@ -227,9 +233,11 @@ def test_preflight_refreshes_near_expiry_token(monkeypatch: pytest.MonkeyPatch) 
       'google': {
         'client_id': 'x',
         'client_secret': 'y',
-        'access_token': 'old',
-        'refresh_token': 'r',
-        'expires_at': int(time.time()) + 60,  # 60s from expiry
+        'auth': {
+          'access_token': 'old',
+          'refresh_token': 'r',
+          'expires_at': int(time.time()) + 60,  # 60s from expiry
+        },
       }
     },
   )
@@ -249,9 +257,11 @@ def test_preflight_refresh_failure_clears_tokens_and_starts_auth(monkeypatch: py
       'google': {
         'client_id': 'x',
         'client_secret': 'y',
-        'access_token': 'old',
-        'refresh_token': 'r',
-        'expires_at': int(time.time()) + 60,
+        'auth': {
+          'access_token': 'old',
+          'refresh_token': 'r',
+          'expires_at': int(time.time()) + 60,
+        },
       }
     },
   )
@@ -279,9 +289,11 @@ def test_preflight_malformed_expires_at_returns_silently(monkeypatch: pytest.Mon
       'google': {
         'client_id': 'x',
         'client_secret': 'y',
-        'access_token': 'old',
-        'refresh_token': 'r',
-        'expires_at': 'not-a-number',
+        'auth': {
+          'access_token': 'old',
+          'refresh_token': 'r',
+          'expires_at': 'not-a-number',
+        },
       }
     },
   )
