@@ -28,7 +28,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from queue import Empty, PriorityQueue
@@ -1198,6 +1198,64 @@ def _start_webhook_server() -> None:
 # --- Scheduler ---
 
 
+# How far ahead to sample fire times, and the hard iteration cap that bounds
+# the work for very frequent crons. Eight days covers weekly schedules and any
+# overnight blackout; the cap keeps a per-minute cron to a couple of days of
+# samples, which is still enough to see one night.
+_CRON_SAMPLE_DAYS = 8
+_CRON_SAMPLE_LIMIT = 3000
+
+
+def cron_interval_seconds(cron: str) -> float | None:
+  """Return the longest gap between consecutive firings of *cron*, in seconds.
+
+  Used for overdue detection (#502). Computed by asking APScheduler's own
+  CronTrigger for successive fire times rather than parsing the expression
+  ourselves — the trigger is already the authority on what the cron means,
+  including the configured timezone.
+
+  The *longest* gap, not the average: "0 8,16 * * *" alternates 8h and 16h, and
+  taking the short one would flag the integration as overdue every night. Being
+  conservative here trades slower detection for no false alarms.
+
+  Returns None if the cron cannot be interpreted or never fires again.
+  """
+  from apscheduler.triggers.cron import CronTrigger  # noqa: PLC0415
+
+  try:
+    trigger = CronTrigger(**parse_cron(cron), timezone=_config_mod.get_timezone())
+  except ValueError, TypeError:
+    return None
+
+  # Sample far enough ahead to see daily and weekly blackout windows, not just
+  # the next few firings. "*/3 7-23 * * *" looks like a 3-minute cadence over a
+  # short sample, but it does not fire between 23:00 and 07:00 — measuring the
+  # short gap would mark it overdue every single night. The horizon has to
+  # outlast the longest blackout the expression can express.
+  # Use the trigger's own timezone rather than the config value: get_timezone()
+  # returns None when unset, and a naive `now` cannot be compared against the
+  # tz-aware datetimes APScheduler hands back.
+  now = datetime.now(tz=trigger.timezone)
+  horizon = now + timedelta(days=_CRON_SAMPLE_DAYS)
+
+  fire_times: list[datetime] = []
+  previous: datetime | None = None
+  for _ in range(_CRON_SAMPLE_LIMIT):
+    nxt = trigger.get_next_fire_time(previous, previous or now)
+    if nxt is None:
+      break
+    fire_times.append(nxt)
+    previous = nxt
+    if nxt >= horizon and len(fire_times) >= 2:
+      break
+  if len(fire_times) < 2:
+    return None
+
+  gaps = [(b - a).total_seconds() for a, b in zip(fire_times, fire_times[1:], strict=False)]
+  gaps = [g for g in gaps if g > 0]
+  return max(gaps) if gaps else None
+
+
 def parse_cron(cron: str) -> dict[str, str]:
   minute, hour, day, month, day_of_week = cron.split()
   return {'minute': minute, 'hour': hour, 'day': day, 'month': month, 'day_of_week': day_of_week}
@@ -1431,6 +1489,13 @@ def _load_file(
     # enqueue(). Webhook-triggered and refresh-triggered enqueues bypass this
     # entirely — only cron firings go through the gate.
     template_id = f'{content_file.stem}.{template_name}'
+    # Overdue detection needs the *effective* cron, after config.toml schedule
+    # overrides — a user who moved a job to a different cadence should not be
+    # measured against the JSON default. (#502)
+    if 'integration' in data:
+      interval = cron_interval_seconds(effective['cron'])
+      if interval is not None:
+        _health_mod.set_expected_interval(data['integration'], interval)
     gated = _make_gated_enqueue(template_id, content_file.stem)
     scheduler.add_job(
       gated,
