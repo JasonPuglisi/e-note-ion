@@ -155,7 +155,7 @@ To enable, add a `[tmdb]` section to `config.toml`:
 
 ```toml
 [tmdb]
-api_read_access_token = "your-tmdb-api-read-access-token"
+api_key = "your-tmdb-api-read-access-token"
 ```
 
 Get a free read access token at https://www.themoviedb.org/settings/api.

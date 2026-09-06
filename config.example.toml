@@ -142,7 +142,7 @@ line1_dest = "DALY"
 [discogs]
 # Personal access token (read-only) — generate at https://www.discogs.com/settings/developers
 # Your username is resolved automatically from the token; no username key required.
-token = "your-discogs-personal-access-token"
+api_key = "your-discogs-personal-access-token"
 
 # Optional: collection folder ID (default: 0 = all releases).
 # List your folders at https://www.discogs.com/users/<username>/collection
@@ -294,7 +294,7 @@ api_key = "your-unraid-api-key"
 #
 # Free read access token — sign up at https://www.themoviedb.org and generate one at
 # https://www.themoviedb.org/settings/api (under "API Read Access Token").
-# api_read_access_token = "your-tmdb-api-read-access-token"
+# api_key = "your-tmdb-api-read-access-token"
 
 [google]
 # Shared Google OAuth credentials — used by all Google API integrations (YouTube, etc.).

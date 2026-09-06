@@ -42,6 +42,33 @@ are unchanged and stay flat.
 Friends' passphrases stop working and their messages get a `401`. This is the
 one change worth doing *before* you upgrade rather than after.
 
+### Credential keys renamed
+
+Two integrations used a different key name for the same thing. Everything is
+`api_key` now:
+
+| Section | Old key | New key |
+|---|---|---|
+| `[discogs]` | `token` | `api_key` |
+| `[tmdb]` | `api_read_access_token` | `api_key` |
+
+The values are unchanged — just rename the key. Every other integration already
+used `api_key` and needs no edit.
+
+**How you'll notice:** the two fail differently, and only one is loud.
+
+- **Discogs** raises `Missing required config key [discogs].api_key in
+  config.toml` when its template fires, which the scheduler records as an
+  integration error and surfaces on `/health`.
+- **TMDb** is *optional*, so `is_configured()` simply returns false and it goes
+  dormant with no error at all. The visible symptom is Plex and Trakt cards
+  showing raw Plex titles instead of canonical ones — easy to miss.
+
+> The integration-test environment variables (`DISCOGS_TOKEN`,
+> `TMDB_API_READ_ACCESS_TOKEN`) keep their names. They are not `config.toml`
+> keys, and renaming them would break CI until the corresponding GitHub
+> environment secrets were renamed by hand.
+
 ### Everything else is unchanged
 
 Content JSON, CLI flags, the webhook and `/state` API shapes, and every other

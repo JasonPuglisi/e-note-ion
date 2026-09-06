@@ -634,7 +634,7 @@ def test_canonicalize_episode_with_tmdb_uses_canonical_data(monkeypatch: pytest.
   """With TMDb configured, returns canonical title and re-numbered episode."""
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   show_data = {'title': 'Attack on Titan', 'ids': {'tmdb': 1429}}
   ep_data = {'season': 1, 'number': 45, 'title': 'Wrong Title', 'ids': {'tvdb': 8765432}}
@@ -658,7 +658,7 @@ def test_canonicalize_episode_tmdb_show_lookup_fails_uses_trakt_title(monkeypatc
   """When TMDb show lookup returns None, falls back to Trakt title."""
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   show_data = {'title': 'My Show', 'ids': {'tmdb': 9999}}
   ep_data = {'season': 2, 'number': 5, 'title': 'Pilot', 'ids': {}}
@@ -675,7 +675,7 @@ def test_canonicalize_episode_missing_ids_skips_tmdb(monkeypatch: pytest.MonkeyP
   """When show/episode have no ids dict, TMDb lookups are skipped gracefully."""
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   show_data = {'title': 'Great Show'}
   ep_data = {'season': 2, 'number': 5, 'title': 'The One With The Test'}
@@ -697,7 +697,7 @@ def test_canonicalize_episode_show_id_mismatch_uses_trakt_se(monkeypatch: pytest
   """When resolved show_id doesn't match, falls back to Trakt S/E."""
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   show_data = {'title': 'My Anime', 'ids': {'tmdb': 1111}}
   ep_data = {'season': 1, 'number': 5, 'title': 'Episode Five', 'ids': {'tvdb': 5555555}}
@@ -719,7 +719,7 @@ def test_canonicalize_episode_missing_tmdb_show_id_skips_episode_resolution(monk
   """When show has no tmdb ID, episode resolution via TVDb is skipped."""
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   show_data = {'title': 'No TMDb Show', 'ids': {'trakt': 42}}
   ep_data = {'season': 2, 'number': 3, 'title': 'An Episode', 'ids': {'tvdb': 7777777}}
@@ -736,7 +736,7 @@ def test_canonicalize_episode_uses_episode_group_position(monkeypatch: pytest.Mo
   """Episode group position overrides base TMDb S/E when available."""
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   show_data = {'title': 'Frieren', 'ids': {'tmdb': 209867}}
   ep_data = {'season': 1, 'number': 36, 'title': 'A Magnificent End', 'ids': {'tvdb': 11447771}}
@@ -758,7 +758,7 @@ def test_canonicalize_episode_falls_back_to_tmdb_base_when_group_unavailable(mon
   """When episode group returns None, uses base TMDb S/E."""
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   show_data = {'title': 'Some Show', 'ids': {'tmdb': 5555}}
   ep_data = {'season': 1, 'number': 10, 'title': 'Ep Ten', 'ids': {'tvdb': 1234567}}
@@ -778,7 +778,7 @@ def test_canonicalize_episode_tmdb_empty_ep_title_keeps_trakt_title(monkeypatch:
   """When TMDb returns an empty episode title, the Trakt title is kept."""
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   show_data = {'title': 'Frieren', 'ids': {'tmdb': 209867}}
   ep_data = {'season': 2, 'number': 9, 'title': 'Episode 9', 'ids': {'tvdb': 11447772}}
@@ -799,7 +799,7 @@ def test_canonicalize_episode_uses_imdb_fallback_when_no_tvdb_id(monkeypatch: py
   """When tvdb_ep_id is absent, imdb is tried as a fallback for S/E and title."""
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   show_data = {'title': 'Jujutsu Kaisen', 'ids': {'tmdb': 95479}}
   ep_data = {'season': 3, 'number': 4, 'title': 'Episode 4', 'ids': {'imdb': 'tt39370459'}}
@@ -828,7 +828,7 @@ def test_canonicalize_episode_imdb_fallback_show_id_mismatch_keeps_trakt_se(
   """When imdb fallback resolves a different show, Trakt S/E and title are kept."""
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   show_data = {'title': 'My Anime', 'ids': {'tmdb': 1111}}
   ep_data = {'season': 2, 'number': 3, 'title': 'Real Title', 'ids': {'imdb': 'tt99999999'}}
@@ -864,7 +864,7 @@ def test_canonicalize_movie_no_tmdb_uses_trakt_title(monkeypatch: pytest.MonkeyP
 def test_canonicalize_movie_with_tmdb_uses_canonical_title(monkeypatch: pytest.MonkeyPatch) -> None:
   import config as _config_mod
 
-  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_read_access_token': 'tok'}})
+  monkeypatch.setattr(_config_mod, '_config', {'tmdb': {'api_key': 'tok'}})
 
   with patch('integrations.tmdb.get_movie_title', return_value='Inception') as mock_movie:
     result = trakt._canonicalize_movie({'title': 'inception', 'ids': {'tmdb': 27205}})  # noqa: SLF001

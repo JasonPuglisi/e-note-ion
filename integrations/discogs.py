@@ -138,7 +138,7 @@ def get_variables() -> dict[str, list[list[str]]]:
 
   import config as _config_mod
 
-  token = _config_mod.get('discogs', 'token')
+  token = _config_mod.get('discogs', 'api_key')
   folder_id = _config_mod.get_optional('discogs', 'folder_id') or '0'
 
   username = _resolve_username(token)

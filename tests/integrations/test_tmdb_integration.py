@@ -19,7 +19,7 @@ def _patch_config(monkeypatch: pytest.MonkeyPatch) -> None:
   monkeypatch.setattr(
     _config_mod,
     '_config',
-    {'tmdb': {'api_read_access_token': os.environ['TMDB_API_READ_ACCESS_TOKEN']}},
+    {'tmdb': {'api_key': os.environ['TMDB_API_READ_ACCESS_TOKEN']}},
   )
 
 

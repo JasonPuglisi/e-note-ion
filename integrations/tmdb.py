@@ -7,12 +7,12 @@
 # where Trakt uses TVDb's single-flat-season convention while TMDb uses the
 # canonical multi-season structure.
 #
-# Optional — only active when [tmdb] api_read_access_token is present in
+# Optional — only active when [tmdb] api_key is present in
 # config.toml. When unconfigured, all public functions return None and callers
 # fall back to their native integration data.
 #
 # Required config.toml keys ([tmdb]):
-#   api_read_access_token — read access token from
+#   api_key — read access token from
 #                           https://www.themoviedb.org/settings/api
 
 import functools
@@ -29,13 +29,13 @@ def is_configured() -> bool:
   """Return True if the TMDb API read access token is set in config."""
   import config as _config_mod
 
-  return bool(_config_mod.get_optional('tmdb', 'api_read_access_token'))
+  return bool(_config_mod.get_optional('tmdb', 'api_key'))
 
 
 def _request_headers() -> dict[str, str]:
   import config as _config_mod
 
-  token = _config_mod.get('tmdb', 'api_read_access_token')
+  token = _config_mod.get('tmdb', 'api_key')
   return {
     'Authorization': f'Bearer {token}',
     'Accept': 'application/json',
