@@ -78,8 +78,6 @@ def fetch_with_retry(
       last_exc = e
       continue
 
-  if isinstance(last_exc, requests.HTTPError):
-    raise last_exc
   raise last_exc  # type: ignore[misc]
 
 

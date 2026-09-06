@@ -122,7 +122,7 @@ def _clear_tokens() -> None:
   """Clear stored tokens from config (in-memory and on disk)."""
   import config as _config_mod
 
-  _config_mod.write_section_values('trakt', {'access_token': '', 'refresh_token': '', 'expires_at': ''})  # nosec B105 — empty strings intentionally clear stored tokens
+  _config_mod.write_section_values('trakt', {'access_token': '', 'refresh_token': '', 'expires_at': ''})  # nosec B105  # empty strings intentionally clear stored tokens
 
 
 def _get_token() -> str:

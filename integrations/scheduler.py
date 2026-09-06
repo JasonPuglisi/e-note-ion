@@ -7,8 +7,8 @@
 import logging
 from typing import Any
 
-import public
-import quiet
+import public as _public_mod
+import quiet as _quiet_mod
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +35,12 @@ def handle_webhook(
     raise ValueError(f'Invalid scheduler action: {action!r} — expected one of {sorted(_VALID_ACTIONS)}')
 
   if action == 'quiet':
-    quiet.set_quiet(True)
+    _quiet_mod.set_quiet(True)
   elif action == 'wake':
-    quiet.set_quiet(False)
+    _quiet_mod.set_quiet(False)
   elif action == 'public':
-    public.set_public(True)
+    _public_mod.set_public(True)
   elif action == 'private':
-    public.set_public(False)
+    _public_mod.set_public(False)
 
   return None

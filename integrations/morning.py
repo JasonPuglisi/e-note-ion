@@ -61,7 +61,7 @@ def _random_grid(
   min_cells: int,
 ) -> tuple[str, str, str]:
   """Generate a random 7×3 scatter grid with a minimum cell count."""
-  cells = [random.random() < density for _ in range(_GRID_CELLS)]  # nosec B311 — random visual scatter grid, not a security context
+  cells = [random.random() < density for _ in range(_GRID_CELLS)]  # nosec B311  # random visual scatter grid, not a security context
   filled = sum(cells)
   if filled < min_cells:
     empty = [i for i, c in enumerate(cells) if not c]
@@ -119,9 +119,9 @@ def _grid_key_from_weather() -> str:
   config section, import error).
   """
   try:
-    import integrations.weather as weather_mod
+    import integrations.weather as _weather
 
-    variables = weather_mod.get_variables()
+    variables = _weather.get_variables()
     condition = variables['condition'][0][0]  # e.g. '[Y] CLEAR'
     # Strip the 3-char color tag and the following space: '[Y] CLEAR' → 'CLEAR'
     condition_str = condition[4:] if len(condition) > 4 else ''

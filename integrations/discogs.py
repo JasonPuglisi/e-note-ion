@@ -162,7 +162,7 @@ def get_variables() -> dict[str, list[list[str]]]:
 
     # Pick a uniformly random position across the entire collection, then
     # derive which page and index within that page it falls on.
-    offset = random.randint(0, total - 1)  # nosec S311 — not a security context
+    offset = random.randint(0, total - 1)  # nosec B311  # not a security context
     page = offset // _PER_PAGE + 1
     index = offset % _PER_PAGE
 

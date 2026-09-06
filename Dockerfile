@@ -13,9 +13,10 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     PYTHONUNBUFFERED=1
 
-# Install dependencies before copying source for better layer caching.
-# There is no [build-system] in pyproject.toml so --no-install-project is
-# implied; the venv just needs the declared runtime dependencies.
+# Install dependencies before copying source for better layer caching. uv also
+# installs the project itself (editable, via [build-system] + [tool.uv] package
+# = true), which registers the package metadata that integrations/http.py reads
+# for the outbound User-Agent string.
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 

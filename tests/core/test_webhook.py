@@ -1281,7 +1281,7 @@ def test_state_endpoint_returns_modes() -> None:
     with (
       patch.object(_mod._quiet_mod, 'is_quiet', return_value=False),
       patch.object(_mod._public_mod, 'is_public', return_value=True),
-      patch.object(_mod.vestaboard, 'get_cached_grid', return_value=(None, 0.0)),
+      patch.object(_mod._vb, 'get_cached_grid', return_value=(None, 0.0)),
     ):
       server, port = _start_test_server()
       try:
@@ -1305,7 +1305,7 @@ def test_state_source_board_from_cache() -> None:
     with (
       patch.object(_mod._quiet_mod, 'is_quiet', return_value=False),
       patch.object(_mod._public_mod, 'is_public', return_value=False),
-      patch.object(_mod.vestaboard, 'get_cached_grid', return_value=(grid, 1_700_000_000.0)),
+      patch.object(_mod._vb, 'get_cached_grid', return_value=(grid, 1_700_000_000.0)),
     ):
       server, port = _start_test_server()
       try:
@@ -1352,8 +1352,8 @@ def test_state_refresh_calls_get_state() -> None:
     with (
       patch.object(_mod._quiet_mod, 'is_quiet', return_value=False),
       patch.object(_mod._public_mod, 'is_public', return_value=False),
-      patch.object(_mod.vestaboard, 'get_state', return_value=fake_state) as mock_get,
-      patch.object(_mod.vestaboard, 'get_cached_grid', return_value=(None, 0.0)),
+      patch.object(_mod._vb, 'get_state', return_value=fake_state) as mock_get,
+      patch.object(_mod._vb, 'get_cached_grid', return_value=(None, 0.0)),
     ):
       server, port = _start_test_server()
       try:
@@ -1375,8 +1375,8 @@ def test_state_refresh_error_falls_back_to_cache() -> None:
     with (
       patch.object(_mod._quiet_mod, 'is_quiet', return_value=False),
       patch.object(_mod._public_mod, 'is_public', return_value=False),
-      patch.object(_mod.vestaboard, 'get_state', side_effect=RuntimeError('API down')),
-      patch.object(_mod.vestaboard, 'get_cached_grid', return_value=(cached, 1_700_000_000.0)),
+      patch.object(_mod._vb, 'get_state', side_effect=RuntimeError('API down')),
+      patch.object(_mod._vb, 'get_cached_grid', return_value=(cached, 1_700_000_000.0)),
     ):
       server, port = _start_test_server()
       try:
@@ -1418,7 +1418,7 @@ def test_state_endpoint_query_param_auth() -> None:
     with (
       patch.object(_mod._quiet_mod, 'is_quiet', return_value=False),
       patch.object(_mod._public_mod, 'is_public', return_value=False),
-      patch.object(_mod.vestaboard, 'get_cached_grid', return_value=(None, 0.0)),
+      patch.object(_mod._vb, 'get_cached_grid', return_value=(None, 0.0)),
     ):
       server, port = _start_test_server()
       try:
