@@ -15,6 +15,7 @@ which before #592 produced a config.toml that tomllib could no longer parse.
 """
 
 import sys
+from pathlib import Path
 
 import config
 
@@ -24,7 +25,18 @@ _VALUE = 'quote" backslash\\ done'
 def main() -> int:
   config.load_config()
 
+  # Which write path actually ran matters. os.replace() creates a new inode; an
+  # in-place write keeps the old one. Reporting this is the difference between
+  # "the smoke test passed" and "the fallback is exercised" — without it, a
+  # successful atomic write here would look identical to a successful fallback
+  # and the fallback would stay untested.
+  before = Path(config._CONFIG_PATH).stat().st_ino
+
   config.write_config_section('smoke', {'token': _VALUE, 'items': ['a"b', 'c\\d']})
+
+  after = Path(config._CONFIG_PATH).stat().st_ino
+  path = 'in-place fallback' if before == after else 'atomic os.replace'
+  print(f'write path taken: {path} (inode {before} -> {after})')
 
   # Re-read from disk rather than trusting the in-memory cache, so a corrupt
   # file surfaces here instead of silently passing.

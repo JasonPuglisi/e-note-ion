@@ -94,6 +94,14 @@ jobs:
             -v "$PWD/scripts/docker-config-smoke.py:/app/docker-config-smoke.py" \
             e-note-ion:ci python docker-config-smoke.py
           grep -q '\[smoke\]' smoke-config.toml
+          # The point of this step is the fallback. If os.replace ever starts
+          # succeeding under a single-file bind mount, the premise behind
+          # config._atomic_write's errno handling changed and we want to know.
+          docker run --rm \
+            -v "$PWD/smoke-config.toml:/app/config.toml" \
+            -v "$PWD/scripts/docker-config-smoke.py:/app/docker-config-smoke.py" \
+            e-note-ion:ci python docker-config-smoke.py | tee smoke.out
+          grep -q 'write path taken: in-place fallback' smoke.out
 
   # Advisory only — not required by the branch ruleset. Failures surface in
   # the PR checks list but do not block merge.
