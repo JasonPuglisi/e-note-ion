@@ -3084,14 +3084,30 @@ def test_unexpected_unavailable_is_still_a_warning(caplog: pytest.LogCaptureFixt
   assert all(r.levelno == logging.WARNING for r in records)
 
 
-def test_noisy_third_party_loggers_are_named_by_logger_not_package() -> None:
+def test_third_party_floors_are_named_by_logger_and_set_per_logger() -> None:
   """qh3 logs under 'quic', not 'qh3' — guessing the package name silences nothing.
+
+  The floors differ on purpose. apscheduler's WARNING and ERROR are worth
+  hearing (missed runs, jobs raising), so only its INFO bookkeeping is cut;
+  quic has nothing useful below ERROR.
 
   caldav is deliberately absent: its event-data diff is personal data, handled
   by an unconditional handler filter rather than a level floor that DEBUG would
   lift. See test_logging.py.
   """
-  assert _mod._NOISY_THIRD_PARTY_LOGGERS == ('quic',)
+  assert _mod._THIRD_PARTY_LOG_FLOORS == {'quic': logging.ERROR, 'apscheduler': logging.WARNING}
+
+
+def test_apscheduler_warnings_survive_the_floor() -> None:
+  """Missed job runs are logged by apscheduler at WARNING and must not be cut."""
+  saved = logging.getLogger('apscheduler').level
+  try:
+    logging.getLogger('apscheduler').setLevel(_mod._THIRD_PARTY_LOG_FLOORS['apscheduler'])
+    lg = logging.getLogger('apscheduler.executors.default')
+    assert lg.isEnabledFor(logging.WARNING), 'missed-run warnings must still reach the log'
+    assert not lg.isEnabledFor(logging.INFO), 'per-job bookkeeping should be cut'
+  finally:
+    logging.getLogger('apscheduler').setLevel(saved)
 
 
 @pytest.mark.parametrize(
@@ -3109,21 +3125,24 @@ def test_third_party_noise_is_silenced_except_at_debug(
   and deliberately restored at DEBUG, where the operator asked for detail.
   """
   level = getattr(logging, configured)
-  saved = {name: logging.getLogger(name).level for name in _mod._NOISY_THIRD_PARTY_LOGGERS}
+  saved = {name: logging.getLogger(name).level for name in _mod._THIRD_PARTY_LOG_FLOORS}
   try:
-    for name in _mod._NOISY_THIRD_PARTY_LOGGERS:
+    for name in _mod._THIRD_PARTY_LOG_FLOORS:
       logging.getLogger(name).setLevel(logging.NOTSET)
 
     if level > logging.DEBUG:
-      for name in _mod._NOISY_THIRD_PARTY_LOGGERS:
-        logging.getLogger(name).setLevel(logging.ERROR)
+      for name, floor in _mod._THIRD_PARTY_LOG_FLOORS.items():
+        logging.getLogger(name).setLevel(floor)
 
-    for name in _mod._NOISY_THIRD_PARTY_LOGGERS:
+    for name, floor in _mod._THIRD_PARTY_LOG_FLOORS.items():
       lg = logging.getLogger(name)
-      silenced = lg.level == logging.ERROR
-      assert silenced is expect_silenced, f'{name} at log_level={configured}'
-      # The specific records we care about are WARNING-level.
-      assert lg.isEnabledFor(logging.WARNING) is not expect_silenced
+      assert (lg.level == floor) is expect_silenced, f'{name} at log_level={configured}'
+      # Below the floor is cut; at the floor still gets through. Checked against
+      # each logger's own floor rather than a shared one, since apscheduler
+      # keeps WARNING (missed runs) while quic does not.
+      below = logging.INFO if floor > logging.INFO else logging.DEBUG
+      assert lg.isEnabledFor(below) is not expect_silenced, f'{name} below-floor at {configured}'
+      assert lg.isEnabledFor(floor), f'{name} must always keep records at its own floor'
   finally:
     for name, lvl in saved.items():
       logging.getLogger(name).setLevel(lvl)
