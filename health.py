@@ -288,10 +288,19 @@ def _is_overdue(state: _TargetState, now: float) -> bool:
   """Return True if *state* has gone too long without firing. Caller holds _lock."""
   if state.expected_interval is None:
     return False
-  # Registration time is the reference until something actually fires, so a
-  # freshly started process is not instantly overdue.
+  # An integration cannot be overdue for a window in which the scheduler was
+  # not running, so process start floors the reference. Without it, any outage
+  # longer than 2x an interval makes every short-cadence integration report
+  # overdue the moment we come back — /health returned 503 on startup after a
+  # 50-minute stop until uptimerobot (5 min cadence) next fired.
+  #
+  # registered_at cannot serve as that floor: _load_log() rebuilds targets from
+  # health.jsonl before register() runs, stamping them with the *event's*
+  # timestamp, and register() leaves an existing target alone. So a restored
+  # target carries an old registered_at too.
   last = state.events[-1].timestamp if state.events else state.registered_at
-  return (now - last) > state.expected_interval * _OVERDUE_INTERVAL_MULTIPLIER
+  reference = max(last, _started_at)
+  return (now - reference) > state.expected_interval * _OVERDUE_INTERVAL_MULTIPLIER
 
 
 def record_success(name: str) -> None:

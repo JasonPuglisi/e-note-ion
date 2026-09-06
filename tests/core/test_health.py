@@ -577,10 +577,11 @@ def test_target_becomes_overdue_after_two_intervals() -> None:
   state = _mod._targets['bart']
 
   now = time.time()
-  state.registered_at = now - 3600 * 1.9
+  # Process start floors the reference, so age it alongside registration.
+  state.registered_at = _mod._started_at = now - 3600 * 1.9
   assert _mod._is_overdue(state, now) is False, 'under 2x should not flag'
 
-  state.registered_at = now - 3600 * 2.1
+  state.registered_at = _mod._started_at = now - 3600 * 2.1
   assert _mod._is_overdue(state, now) is True
 
 
@@ -600,6 +601,9 @@ def test_a_stalled_cron_outranks_its_successful_history() -> None:
   assert _mod._compute_status(state) == _mod.Status.HEALTHY
 
   state.events[-1] = _mod.HealthEvent(time.time() - 3600 * 5, _mod.EventType.SUCCESS)
+  # Overdue is floored by process start, so the scheduler must also have been
+  # up long enough for the silence to mean anything.
+  _mod._started_at = time.time() - 3600 * 5
   assert _mod._compute_status(state) == _mod.Status.OVERDUE
 
 
@@ -608,6 +612,7 @@ def test_overdue_drives_overall_status_and_the_503(monkeypatch: pytest.MonkeyPat
   _mod.register('bart')
   _mod.set_expected_interval('bart', 60)
   _mod._targets['bart'].registered_at = time.time() - 3600
+  _mod._started_at = time.time() - 3600  # up for an hour, bart never fired
 
   assert _mod.overall_status() == _mod.Status.OVERDUE
   assert _mod.get_summary()['status'] == 'overdue'
@@ -618,6 +623,7 @@ def test_error_still_outranks_overdue() -> None:
   _mod.register('bart')
   _mod.set_expected_interval('bart', 60)
   _mod._targets['bart'].registered_at = time.time() - 3600
+  _mod._started_at = time.time() - 3600
   _mod.register('ynab')
   _mod.record_error('ynab', 'boom')
 
@@ -766,3 +772,53 @@ def test_invalid_confirm_seconds_falls_back_to_the_default(
   with caplog.at_level(logging.WARNING, logger='health'):
     assert _mod._alert_confirm_seconds() == _mod._DEFAULT_ALERT_CONFIRM_SECONDS
   assert 'alert_confirm_seconds' in caplog.text
+
+
+def test_downtime_does_not_make_an_integration_overdue() -> None:
+  """An integration cannot be overdue for a window in which we were not running.
+
+  Reproduces a real v2.0.0 startup: the app was stopped for 50 minutes, and on
+  restart uptimerobot (5-minute cadence) had a stale event from before the
+  stop, so /health returned 503 until it next fired. Nothing was wrong.
+  """
+  _mod.init()
+  _mod.register('uptimerobot')
+  _mod.set_expected_interval('uptimerobot', 300)
+  _mod.record_success('uptimerobot')
+
+  state = _mod._targets['uptimerobot']
+  state.events[-1] = _mod.HealthEvent(time.time() - 50 * 60, _mod.EventType.SUCCESS)
+
+  assert _mod._is_overdue(state, time.time()) is False
+  assert _mod.get_summary()['status'] == 'healthy'
+
+
+def test_a_stalled_cron_is_still_overdue_once_we_have_been_up_long_enough() -> None:
+  """The downtime floor must not disable the feature it protects."""
+  _mod.init()
+  _mod.register('uptimerobot')
+  _mod.set_expected_interval('uptimerobot', 300)
+  _mod.record_success('uptimerobot')
+
+  state = _mod._targets['uptimerobot']
+  state.events[-1] = _mod.HealthEvent(time.time() - 50 * 60, _mod.EventType.SUCCESS)
+  _mod._started_at = time.time() - 3600  # up for an hour, still nothing fired
+
+  assert _mod._is_overdue(state, time.time()) is True
+  assert _mod.get_summary()['status'] == 'overdue'
+
+
+def test_restored_target_carries_a_stale_registered_at() -> None:
+  """Why process start is the floor rather than registered_at.
+
+  _load_log() rebuilds targets from health.jsonl before register() runs and
+  stamps them with the event's timestamp; register() then leaves the existing
+  target alone. So a restored target's registered_at is as old as its events
+  and cannot serve as a restart marker.
+  """
+  _mod.init()
+  old_ts = time.time() - 50 * 60
+  _mod._targets['restored'] = _mod._TargetState(registered_at=old_ts)
+  _mod.register('restored')  # must not reset it
+
+  assert _mod._targets['restored'].registered_at == old_ts
