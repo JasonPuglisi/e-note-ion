@@ -2,9 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # release/** are long-lived integration branches for major versions. They
+    # accumulate breaking changes across several PRs and merge to main once, as
+    # a single version bump — so they need CI, while auto-release.yml stays
+    # main-only and cannot fire from them.
+    branches: [main, 'release/**']
   pull_request:
-    branches: [main]
+    branches: [main, 'release/**']
 
 permissions:
   contents: read
