@@ -79,8 +79,8 @@ def _store_tokens(tokens: dict) -> None:
   import config as _config_mod
 
   expires_at = int(time.time()) + tokens.get('expires_in', 7776000)
-  _config_mod.write_section_values(
-    'trakt',
+  _config_mod.write_config_section(
+    'trakt.auth',
     {
       'access_token': tokens['access_token'],
       'refresh_token': tokens['refresh_token'],
@@ -96,7 +96,7 @@ def _refresh_token() -> None:
   logger.debug('Trakt: refreshing access token')
   client_id = _config_mod.get('trakt', 'client_id')
   client_secret = _config_mod.get('trakt', 'client_secret')
-  refresh_token = _config_mod.get('trakt', 'refresh_token')
+  refresh_token = _config_mod.get('trakt.auth', 'refresh_token')
 
   r = requests.post(
     f'{_TRAKT_API_BASE}/oauth/token',
@@ -122,7 +122,7 @@ def _clear_tokens() -> None:
   """Clear stored tokens from config (in-memory and on disk)."""
   import config as _config_mod
 
-  _config_mod.write_section_values('trakt', {'access_token': '', 'refresh_token': '', 'expires_at': ''})  # nosec B105  # empty strings intentionally clear stored tokens
+  _config_mod.write_config_section('trakt.auth', {'access_token': '', 'refresh_token': '', 'expires_at': ''})  # nosec B105  # empty strings intentionally clear stored tokens
 
 
 def _get_token() -> str:
@@ -133,12 +133,12 @@ def _get_token() -> str:
   """
   import config as _config_mod
 
-  access_token = _config_mod.get_optional('trakt', 'access_token')
+  access_token = _config_mod.get_optional('trakt.auth', 'access_token')
   if not access_token:
     _ensure_authenticated()
     raise IntegrationDataUnavailableError('Trakt auth pending — check logs for instructions')
 
-  expires_at_str = _config_mod.get_optional('trakt', 'expires_at')
+  expires_at_str = _config_mod.get_optional('trakt.auth', 'expires_at')
   if expires_at_str:
     try:
       expires_at = int(expires_at_str)
@@ -161,7 +161,7 @@ def _get_token() -> str:
           raise IntegrationDataUnavailableError(
             'Trakt auth pending — token refresh failed, re-authentication required'
           ) from None
-        access_token = _config_mod.get_optional('trakt', 'access_token')
+        access_token = _config_mod.get_optional('trakt.auth', 'access_token')
 
   return access_token
 
@@ -190,7 +190,7 @@ def _handle_api_401() -> str:
   """
   import config as _config_mod
 
-  expires_at_str = _config_mod.get_optional('trakt', 'expires_at')
+  expires_at_str = _config_mod.get_optional('trakt.auth', 'expires_at')
   if expires_at_str:
     try:
       expires_at = int(expires_at_str)
@@ -213,7 +213,7 @@ def _handle_api_401() -> str:
     _clear_tokens()
     _ensure_authenticated()
     raise IntegrationDataUnavailableError('Trakt auth pending — token invalid, re-authentication required') from None
-  new_token = _config_mod.get_optional('trakt', 'access_token')
+  new_token = _config_mod.get_optional('trakt.auth', 'access_token')
   if not new_token:
     raise IntegrationDataUnavailableError('Trakt auth pending — token unavailable after refresh')
   logger.debug('Trakt: token refreshed after 401 — retrying request')
@@ -289,12 +289,12 @@ def preflight() -> None:
   """
   import config as _config_mod
 
-  access_token = _config_mod.get_optional('trakt', 'access_token')
+  access_token = _config_mod.get_optional('trakt.auth', 'access_token')
   if not access_token:
     _ensure_authenticated()
     return
 
-  expires_at_str = _config_mod.get_optional('trakt', 'expires_at')
+  expires_at_str = _config_mod.get_optional('trakt.auth', 'expires_at')
   if expires_at_str:
     try:
       expires_at = int(expires_at_str)

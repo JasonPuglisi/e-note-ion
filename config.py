@@ -15,6 +15,7 @@ import sys
 import tempfile
 import threading
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -66,10 +67,26 @@ def get(section: str, key: str) -> str:
   Raises ValueError with a descriptive message if the section or key is
   missing, or if the value is an empty string.
   """
-  value = _config.get(section, {}).get(key)
+  value = _resolve_section(section).get(key)
   if not value:
     raise ValueError(f'Missing required config key [{section}].{key} in config.toml')
   return str(value)
+
+
+def _resolve_section(section: str) -> dict:
+  """Return the config table for a possibly-dotted section name, or {}.
+
+  '[google.auth]' nests as _config['google']['auth'], so any accessor that
+  accepts a dotted name has to walk it. get_optional_bool already did; get()
+  and get_optional() did not, which meant a dotted section silently read as
+  absent rather than failing.
+  """
+  node: object = _config
+  for part in section.split('.'):
+    if not isinstance(node, dict):
+      return {}
+    node = node.get(part, {})
+  return node if isinstance(node, dict) else {}
 
 
 def has_section(section: str) -> bool:
@@ -147,13 +164,13 @@ def _atomic_write(text: str) -> None:
 
 def get_optional(section: str, key: str, default: str = '') -> str:
   """Return an optional string config value, or default if absent."""
-  value = _config.get(section, {}).get(key)
+  value = _resolve_section(section).get(key)
   if value is None:
     return default
   return str(value)
 
 
-def write_section_values(section: str, values: dict[str, str | int]) -> None:
+def write_section_values(section: str, values: Mapping[str, str | int]) -> None:
   """Write key-value pairs into [section] in config.toml in-place.
 
   Updates the in-memory config cache and persists to disk, preserving all
@@ -241,12 +258,7 @@ def get_optional_bool(section: str, key: str, default: bool = False) -> bool:
   Supports dotted section names by traversing nested dicts, matching TOML's
   own nesting.
   """
-  node: dict[str, object] = _config
-  for part in section.split('.'):
-    node = node.get(part, {})  # type: ignore[assignment]
-    if not isinstance(node, dict):
-      return default
-  value = node.get(key)
+  value = _resolve_section(section).get(key)
   if value is None:
     return default
   if not isinstance(value, bool):
@@ -340,7 +352,7 @@ def get_message_friend(name: str) -> dict[str, Any] | None:
   return dict(friend) if isinstance(friend, dict) else None
 
 
-def write_config_section(section: str, values: dict[str, str | int | bool | list[str]]) -> None:
+def write_config_section(section: str, values: Mapping[str, str | int | bool | list[str]]) -> None:
   """Create-or-update a config section in config.toml.
 
   Handles dotted section names (e.g. 'webhook.credentials.alice').

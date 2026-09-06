@@ -69,6 +69,38 @@ used `api_key` and needs no edit.
 > keys, and renaming them would break CI until the corresponding GitHub
 > environment secrets were renamed by hand.
 
+### OAuth state moved to its own subsection
+
+`[google]` and `[trakt]` mixed credentials you supply with tokens the app
+writes for itself. The machine-managed three now live in a subsection:
+
+```toml
+[trakt]
+client_id = "..."        # yours, unchanged
+client_secret = "..."    # yours, unchanged
+calendar_days = 7        # yours, unchanged
+
+[trakt.auth]             # written by the auth flow — do not edit
+access_token = "..."
+refresh_token = "..."
+expires_at = 1234567890
+```
+
+Same shape for `[google]`. Move `access_token`, `refresh_token` and
+`expires_at` into a `[<section>.auth]` block; leave everything else where it is.
+
+**Put the `.auth` block last in its section.** TOML section headers are
+positional, so any plain `[trakt]` key written *below* `[trakt.auth]` becomes
+part of the subsection and stops being read. This is the one edit here with a
+sharp edge.
+
+If you would rather not hand-edit, deleting the three keys works too: the app
+re-runs its auth flow and writes the subsection itself.
+
+**How you'll notice:** the integration logs its auth-pending message and prints
+fresh authorisation instructions on the next run, as though it had never been
+authorised. Nothing is lost — approving again repopulates it.
+
 ### Everything else is unchanged
 
 Content JSON, CLI flags, the webhook and `/state` API shapes, and every other

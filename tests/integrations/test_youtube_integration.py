@@ -54,9 +54,11 @@ def _patch_config(monkeypatch: pytest.MonkeyPatch) -> None:
       'google': {
         'client_id': os.environ['GOOGLE_CLIENT_ID'],
         'client_secret': os.environ['GOOGLE_CLIENT_SECRET'],
-        'access_token': access_token,
-        'refresh_token': os.environ['GOOGLE_REFRESH_TOKEN'],
-        'expires_at': int(time.time()) + 3600,
+        'auth': {
+          'access_token': access_token,
+          'refresh_token': os.environ['GOOGLE_REFRESH_TOKEN'],
+          'expires_at': int(time.time()) + 3600,
+        },
       }
     },
   )

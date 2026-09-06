@@ -758,3 +758,54 @@ def test_concurrent_writers_do_not_lose_updates(tmp_path: Path, monkeypatch: pyt
   assert not errors
   parsed = tomllib.loads((tmp_path / 'config.toml').read_text())
   assert sorted(k for k in parsed['myapp'] if k.startswith('key')) == sorted(f'key{i}' for i in range(n))
+
+
+# --- OAuth state subsections (#486) ---
+
+
+def test_auth_subsection_is_written_after_the_parents_keys(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+) -> None:
+  """TOML section headers are positional, so placement is correctness.
+
+  If [trakt.auth] were inserted above a plain [trakt] key, that key would
+  silently become part of the subsection and stop being read.
+  """
+  monkeypatch.chdir(tmp_path)
+  _write_config(
+    tmp_path,
+    '[scheduler]\nmodel = "note"\n\n[trakt]\nclient_id = "cid"\ncalendar_days = 14\n\n[weather]\ncity = "Oakland"\n',
+  )
+  _mod.load_config()
+
+  _mod.write_config_section('trakt.auth', {'access_token': 'tok', 'expires_at': 999})
+
+  parsed = tomllib.loads((tmp_path / 'config.toml').read_text())
+  assert parsed['trakt']['calendar_days'] == 14, 'a sibling key must not be swallowed'
+  assert parsed['trakt']['client_id'] == 'cid'
+  assert parsed['trakt']['auth']['access_token'] == 'tok'
+  assert parsed['weather']['city'] == 'Oakland', 'later sections must be untouched'
+
+
+def test_dotted_sections_read_through_every_accessor(monkeypatch: pytest.MonkeyPatch) -> None:
+  """get() and get_optional() did not walk dotted names; get_optional_bool did.
+
+  [google.auth] nests as _config['google']['auth'], so an accessor that does not
+  walk it reads the section as absent rather than failing.
+  """
+  monkeypatch.setattr(
+    _mod,
+    '_config',
+    {'google': {'client_id': 'cid', 'auth': {'access_token': 'tok', 'enabled': True}}},
+  )
+  assert _mod.get('google.auth', 'access_token') == 'tok'
+  assert _mod.get_optional('google.auth', 'access_token') == 'tok'
+  assert _mod.get_optional_bool('google.auth', 'enabled') is True
+  assert _mod.get('google', 'client_id') == 'cid', 'the parent section still resolves'
+  assert _mod.get_optional('google.auth', 'absent', 'fallback') == 'fallback'
+
+
+def test_missing_dotted_key_names_the_full_section() -> None:
+  with pytest.raises(ValueError, match=r'\[google\.auth\]\.access_token'):
+    _mod.get('google.auth', 'access_token')

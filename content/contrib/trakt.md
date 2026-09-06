@@ -65,23 +65,32 @@ Add the following to your `config.toml`:
 client_id = "your-trakt-client-id"
 client_secret = "your-trakt-client-secret"
 
-# Set automatically by the auth flow — do not edit manually:
+# Optional: number of days ahead to show in the calendar (default 7, max 33)
+# calendar_days = 7
+
+# Set automatically by the auth flow — do not edit manually. Keep it last in
+# the section: anything below a [trakt.auth] header belongs to the subsection.
+# [trakt.auth]
 # access_token = "..."
 # refresh_token = "..."
 # expires_at = 1234567890
-
-# Optional: number of days ahead to show in the calendar (default 7, max 33)
-# calendar_days = 7
 ```
 
 | Key | Required | Description |
 |---|---|---|
 | `client_id` | Yes | OAuth client ID from your Trakt application |
 | `client_secret` | Yes | OAuth client secret from the same application |
-| `access_token` | Auto | Written by the auth flow — do not set manually |
-| `refresh_token` | Auto | Written by the auth flow — do not set manually |
-| `expires_at` | Auto | Written by the auth flow — do not set manually |
 | `calendar_days` | No | Days ahead for the calendar window (default `7`, max `33`) |
+
+OAuth state is machine-managed and lives in `[trakt.auth]`, created on first
+auth. Keep the subsection last in `[trakt]` — anything below a `[trakt.auth]`
+header belongs to the subsection.
+
+| Key (in `[trakt.auth]`) | Description |
+|---|---|
+| `access_token` | Written by the auth flow |
+| `refresh_token` | Written by the auth flow |
+| `expires_at` | Written by the auth flow |
 
 ### Creating a Trakt application
 

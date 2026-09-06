@@ -56,7 +56,7 @@ def _store_tokens(tokens: dict) -> None:
   }
   if 'refresh_token' in tokens:
     values['refresh_token'] = tokens['refresh_token']
-  _config_mod.write_section_values('google', values)
+  _config_mod.write_config_section('google.auth', values)
 
 
 def _refresh_token() -> None:
@@ -66,7 +66,7 @@ def _refresh_token() -> None:
   logger.debug('Google: refreshing access token')
   client_id = _config_mod.get('google', 'client_id')
   client_secret = _config_mod.get('google', 'client_secret')
-  refresh_token = _config_mod.get('google', 'refresh_token')
+  refresh_token = _config_mod.get('google.auth', 'refresh_token')
 
   r = requests.post(
     _TOKEN_URL,
@@ -91,8 +91,8 @@ def _clear_tokens() -> None:
   """Clear stored tokens from config (in-memory and on disk)."""
   import config as _config_mod
 
-  _config_mod.write_section_values(
-    'google',
+  _config_mod.write_config_section(
+    'google.auth',
     {'access_token': '', 'refresh_token': '', 'expires_at': ''},  # nosec B105  # empty strings intentionally clear stored tokens
   )
 
@@ -108,12 +108,12 @@ def get_token(scope: str) -> str:
   """
   import config as _config_mod
 
-  access_token = _config_mod.get_optional('google', 'access_token')
+  access_token = _config_mod.get_optional('google.auth', 'access_token')
   if not access_token:
     _ensure_authenticated(scope)
     raise IntegrationDataUnavailableError('Google auth pending — check logs for instructions')
 
-  expires_at_str = _config_mod.get_optional('google', 'expires_at')
+  expires_at_str = _config_mod.get_optional('google.auth', 'expires_at')
   if expires_at_str:
     try:
       expires_at = int(expires_at_str)
@@ -136,7 +136,7 @@ def get_token(scope: str) -> str:
           raise IntegrationDataUnavailableError(
             'Google auth pending — token refresh failed, re-authentication required'
           ) from None
-        access_token = _config_mod.get_optional('google', 'access_token')
+        access_token = _config_mod.get_optional('google.auth', 'access_token')
 
   return access_token
 
@@ -217,12 +217,12 @@ def preflight(scope: str) -> None:
   """
   import config as _config_mod
 
-  access_token = _config_mod.get_optional('google', 'access_token')
+  access_token = _config_mod.get_optional('google.auth', 'access_token')
   if not access_token:
     _ensure_authenticated(scope)
     return
 
-  expires_at_str = _config_mod.get_optional('google', 'expires_at')
+  expires_at_str = _config_mod.get_optional('google.auth', 'expires_at')
   if expires_at_str:
     try:
       expires_at = int(expires_at_str)
