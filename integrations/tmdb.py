@@ -18,7 +18,7 @@
 import functools
 import logging
 
-from integrations.http import fetch_with_retry, user_agent
+from integrations.http import fetch_with_retry, raise_for_credentials, user_agent
 
 logger = logging.getLogger(__name__)
 
@@ -351,3 +351,16 @@ def get_episode_group_position(show_id: int, tmdb_episode_id: int) -> tuple[int,
         )
         return (group_order, episode_number)
   return None
+
+
+def preflight() -> None:
+  """Validate the TMDb read access token at startup (#503).
+
+  No-op when TMDb is not configured: it is optional, and an absent token is a
+  choice rather than a fault.
+  """
+  if not is_configured():
+    return
+
+  r = fetch_with_retry('GET', f'{_TMDB_API_BASE}/configuration', headers=_request_headers(), timeout=10)
+  raise_for_credentials(r, 'tmdb')

@@ -31,7 +31,7 @@ import requests
 
 from exceptions import IntegrationDataUnavailableError
 from integrations.color import fetch_cover_color
-from integrations.http import CacheEntry, fetch_with_retry, user_agent
+from integrations.http import CacheEntry, fetch_with_retry, raise_for_credentials, user_agent
 
 logger = logging.getLogger(__name__)
 
@@ -212,3 +212,16 @@ def get_variables() -> dict[str, list[list[str]]]:
   )
   _collection_cache = CacheEntry(result)
   return result
+
+
+def preflight() -> None:
+  """Validate the Discogs token at startup (#503).
+
+  GET /oauth/identity is the cheapest authenticated call the API offers, and
+  is the same endpoint _resolve_username uses.
+  """
+  import config as _config_mod
+
+  token = _config_mod.get('discogs', 'api_key')
+  r = fetch_with_retry('GET', f'{_API_BASE}/oauth/identity', headers=_headers(token), timeout=10)
+  raise_for_credentials(r, 'discogs')

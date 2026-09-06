@@ -84,6 +84,28 @@ def user_agent() -> str:
   return _ua_cache
 
 
+class CredentialError(Exception):
+  """Raised when a service rejects our credential (HTTP 401 or 403).
+
+  Deliberately narrow. Startup credential validation (#503) marks an
+  integration unhealthy on this and nothing else: a 500, a timeout or a DNS
+  blip at boot is not an expired token, and treating it as one would page
+  someone about a network hiccup. See raise_for_credentials.
+  """
+
+
+def raise_for_credentials(response: requests.Response, integration: str) -> None:
+  """Raise CredentialError if *response* shows the credential was rejected.
+
+  One place classifies 401/403 so every integration agrees on what "bad
+  credential" means, rather than each inventing its own check.
+  """
+  if response.status_code in (401, 403):
+    raise CredentialError(
+      f'{integration}: credential rejected by the service (HTTP {response.status_code}) — check the key in config.toml'
+    )
+
+
 def fetch_with_retry(
   method: str,
   url: str,

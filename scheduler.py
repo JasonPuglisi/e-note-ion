@@ -1845,8 +1845,19 @@ def main() -> None:
       mod = _get_integration(name)
       if hasattr(mod, 'preflight'):
         mod.preflight()
+    except _http.CredentialError as e:
+      # The credential is bad, which is worth surfacing now rather than
+      # whenever this integration's cron next fires — up to a day later for the
+      # daily ones. Recorded as an error so /health reports it and #504
+      # alerting picks it up. Startup deliberately continues: one expired token
+      # should not take the board down. (#503)
+      logger.error('%s', _http.redact(str(e)))
+      _health_mod.record_error(name, _http.redact(str(e)))
     except Exception as e:  # noqa: BLE001
-      logger.warning('preflight for %r failed: %s', name, e)
+      # Anything else — a 500, a timeout, DNS at boot — is not an expired
+      # token. Logged, but not recorded, so /health keeps meaning "your
+      # credential is bad" rather than "something was briefly flaky".
+      logger.warning('preflight for %r failed: %s', name, _http.redact(str(e)))
 
   threading.Thread(target=worker, daemon=True).start()
   _health_mod.start_periodic_log()
