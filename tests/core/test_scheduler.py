@@ -3197,3 +3197,41 @@ def test_discard_behind_a_lower_priority_hold_is_still_a_warning(
   discards = [r for r in caplog.records if 'Discarding' in r.getMessage()]
   assert discards
   assert all(r.levelno == logging.WARNING for r in discards)
+
+
+# ---------------------------------------------------------------------------
+# Cron interval derivation for overdue detection (#502)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+  ('cron', 'expected_hours', 'why'),
+  [
+    ('0 * * * *', 1, 'hourly'),
+    ('45 10 * * *', 24, 'daily'),
+    ('0 8,16 * * *', 16, 'uneven daily pair — the long gap, not the short one'),
+    ('0 9 * * 1', 168, 'weekly'),
+    ('*/3 7-23 * * *', 7, 'frequent cron with an overnight blackout window'),
+  ],
+)
+def test_cron_interval_uses_the_longest_gap(cron: str, expected_hours: float, why: str) -> None:
+  """Overdue detection measures against the *longest* gap between firings.
+
+  The blackout case is the one that matters. "*/3 7-23 * * *" looks like a
+  3-minute cadence over a short sample, but it does not fire between 23:00 and
+  07:00 — measuring the short gap marks trakt.watching overdue every night.
+  """
+  interval = _mod.cron_interval_seconds(cron)
+  assert interval is not None, why
+  assert abs(interval / 3600 - expected_hours) < 1.1, f'{why}: got {interval / 3600:.2f}h'
+
+
+def test_cron_interval_returns_none_for_an_uninterpretable_cron() -> None:
+  assert _mod.cron_interval_seconds('not a cron at all') is None
+
+
+def test_cron_interval_is_cheap_enough_for_load_time() -> None:
+  """Runs once per template at startup; a per-minute cron is the worst case."""
+  started = time.monotonic()
+  _mod.cron_interval_seconds('* * * * *')
+  assert time.monotonic() - started < 2.0

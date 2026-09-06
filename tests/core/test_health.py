@@ -540,3 +540,109 @@ def test_periodic_purge_removes_stale_events(tmp_path: Path) -> None:
   # The old event should have been purged.
   for event in _mod._targets['weather'].events:
     assert event.timestamp > old_ts
+
+
+# ---------------------------------------------------------------------------
+# Overdue detection (#502)
+# ---------------------------------------------------------------------------
+
+
+def test_target_without_an_interval_is_never_overdue() -> None:
+  """Webhook-only integrations fire on external events with no cadence."""
+  _mod.init()
+  _mod.register('plex')
+  state = _mod._targets['plex']
+  state.registered_at = time.time() - 86400 * 30
+
+  assert state.expected_interval is None
+  assert _mod._is_overdue(state, time.time()) is False
+  assert _mod.get_summary()['integrations']['plex']['status'] != 'overdue'
+
+
+def test_freshly_registered_target_is_not_instantly_overdue() -> None:
+  """registered_at is the reference until something fires, so a restart is quiet."""
+  _mod.init()
+  _mod.register('bart')
+  _mod.set_expected_interval('bart', 3600)
+
+  assert _mod._is_overdue(_mod._targets['bart'], time.time()) is False
+
+
+def test_target_becomes_overdue_after_two_intervals() -> None:
+  _mod.init()
+  _mod.register('bart')
+  _mod.set_expected_interval('bart', 3600)
+  state = _mod._targets['bart']
+
+  now = time.time()
+  state.registered_at = now - 3600 * 1.9
+  assert _mod._is_overdue(state, now) is False, 'under 2x should not flag'
+
+  state.registered_at = now - 3600 * 2.1
+  assert _mod._is_overdue(state, now) is True
+
+
+def test_a_stalled_cron_outranks_its_successful_history() -> None:
+  """An integration that succeeded and then stopped firing is not healthy.
+
+  Broader than the issue asked for: #502 scoped this to targets with no events
+  at all, but a cron that ran fine and then died is the same failure and looks
+  healthy under an events-only view.
+  """
+  _mod.init()
+  _mod.register('unraid')
+  _mod.set_expected_interval('unraid', 3600)
+  _mod.record_success('unraid')
+
+  state = _mod._targets['unraid']
+  assert _mod._compute_status(state) == _mod.Status.HEALTHY
+
+  state.events[-1] = _mod.HealthEvent(time.time() - 3600 * 5, _mod.EventType.SUCCESS)
+  assert _mod._compute_status(state) == _mod.Status.OVERDUE
+
+
+def test_overdue_drives_overall_status_and_the_503(monkeypatch: pytest.MonkeyPatch) -> None:
+  _mod.init()
+  _mod.register('bart')
+  _mod.set_expected_interval('bart', 60)
+  _mod._targets['bart'].registered_at = time.time() - 3600
+
+  assert _mod.overall_status() == _mod.Status.OVERDUE
+  assert _mod.get_summary()['status'] == 'overdue'
+
+
+def test_error_still_outranks_overdue() -> None:
+  _mod.init()
+  _mod.register('bart')
+  _mod.set_expected_interval('bart', 60)
+  _mod._targets['bart'].registered_at = time.time() - 3600
+  _mod.register('ynab')
+  _mod.record_error('ynab', 'boom')
+
+  assert _mod.overall_status() == _mod.Status.ERROR
+
+
+def test_set_expected_interval_keeps_the_longest() -> None:
+  """One integration can back several templates on different crons.
+
+  Taking the shortest would flag an integration with both an hourly and a daily
+  template every time the daily one is between runs.
+  """
+  _mod.init()
+  _mod.register('calendar')
+  _mod.set_expected_interval('calendar', 3600)
+  _mod.set_expected_interval('calendar', 86400)
+  _mod.set_expected_interval('calendar', 1800)
+
+  assert _mod._targets['calendar'].expected_interval == 86400
+
+
+def test_summary_exposes_interval_and_last_activity() -> None:
+  _mod.init()
+  _mod.register('bart')
+  _mod.set_expected_interval('bart', 900)
+  _mod.record_success('bart')
+
+  detail = _mod.get_summary()['integrations']['bart']
+  assert detail['expected_interval'] == 900
+  assert detail['last_activity'] is not None

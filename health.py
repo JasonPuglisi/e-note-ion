@@ -65,8 +65,16 @@ class EventType(Enum):
 class Status(Enum):
   HEALTHY = 'healthy'
   DEGRADED = 'degraded'
+  OVERDUE = 'overdue'
   ERROR = 'error'
   UNKNOWN = 'unknown'
+
+
+# An integration is overdue once this many expected firing intervals have
+# passed with no event at all. Two rather than one so a single missed or
+# slightly-late run is not an alert; the point is to catch a cron that has
+# stopped, not one that ran late.
+_OVERDUE_INTERVAL_MULTIPLIER = 2
 
 
 @dataclass
@@ -80,6 +88,10 @@ class HealthEvent:
 class _TargetState:
   registered_at: float
   events: deque[HealthEvent] = field(default_factory=lambda: deque(maxlen=_WINDOW_SIZE))
+  # Seconds between expected firings, derived from the effective cron. None for
+  # webhook-only targets, which fire on external events with no predictable
+  # interval and are therefore never overdue.
+  expected_interval: float | None = None
 
 
 # Reserved target name for the Vestaboard send path. Registered implicitly
@@ -236,6 +248,35 @@ def register(name: str) -> None:
       _targets[name] = _TargetState(registered_at=time.time())
 
 
+def set_expected_interval(name: str, seconds: float) -> None:
+  """Record how often *name* is expected to fire, for overdue detection.
+
+  Called once the effective cron is known, which is after config.toml schedule
+  overrides have been applied — registering from the raw JSON cron would ignore
+  a user who moved a job to a different cadence.
+
+  Several templates can share one integration with different crons. The largest
+  interval wins: flagging on the shortest would fire constantly for an
+  integration that also has a daily template.
+  """
+  with _lock:
+    state = _targets.get(name)
+    if state is None:
+      return
+    if state.expected_interval is None or seconds > state.expected_interval:
+      state.expected_interval = seconds
+
+
+def _is_overdue(state: _TargetState, now: float) -> bool:
+  """Return True if *state* has gone too long without firing. Caller holds _lock."""
+  if state.expected_interval is None:
+    return False
+  # Registration time is the reference until something actually fires, so a
+  # freshly started process is not instantly overdue.
+  last = state.events[-1].timestamp if state.events else state.registered_at
+  return (now - last) > state.expected_interval * _OVERDUE_INTERVAL_MULTIPLIER
+
+
 def record_success(name: str) -> None:
   """Record a successful call against the named target."""
   with _lock:
@@ -285,6 +326,30 @@ def record_locked(name: str) -> None:
     _append_log(name, EventType.LOCKED, ts)
 
 
+# Severity ordering for rolling up per-target statuses into one overall value.
+# UNKNOWN ranks alongside HEALTHY so a freshly started process with nothing
+# recorded yet reports 200 rather than alarming. Everything above HEALTHY drives
+# /health to 503.
+_STATUS_SEVERITY: dict[Status, int] = {
+  Status.UNKNOWN: 0,
+  Status.HEALTHY: 0,
+  Status.DEGRADED: 1,
+  # Not running at all is worse than running with some failures.
+  Status.OVERDUE: 2,
+  Status.ERROR: 3,
+}
+
+
+def _worst_status(current: Status, candidate: Status) -> Status:
+  """Return whichever of the two is more severe.
+
+  Single source of truth for the rollup — overall_status() and get_summary()
+  both need it, and they previously carried separate copies that could (and
+  did) drift apart.
+  """
+  return candidate if _STATUS_SEVERITY[candidate] > _STATUS_SEVERITY[current] else current
+
+
 def _compute_status(state: _TargetState) -> Status:
   """Compute health status for a single target. Caller holds _lock.
 
@@ -297,6 +362,13 @@ def _compute_status(state: _TargetState) -> Status:
   - Non-error rate ≥ _SUCCESS_RATE_THRESHOLD → healthy
   - Below threshold → degraded
   """
+  # Overdue outranks the event-based statuses: an integration that stopped
+  # firing hours ago is not "healthy" just because its last few recorded events
+  # succeeded. This also covers the case the issue was scoped to (never fired
+  # at all), since registered_at is the reference until the first event.
+  if _is_overdue(state, time.time()):
+    return Status.OVERDUE
+
   scored = [e for e in state.events if e.event_type != EventType.LOCKED]
   if not scored:
     return Status.UNKNOWN
@@ -360,6 +432,9 @@ def _target_detail(name: str, state: _TargetState) -> dict[str, Any]:
     'success_rate': ok / total if total else None,
     'total_events': total,
     'registered_at': _format_timestamp(state.registered_at),
+    # None for webhook-only targets, which have no predictable cadence.
+    'expected_interval': state.expected_interval,
+    'last_activity': _format_timestamp(state.events[-1].timestamp if state.events else state.registered_at),
   }
   return detail
 
@@ -369,11 +444,7 @@ def overall_status() -> Status:
   with _lock:
     worst = Status.HEALTHY
     for state in _targets.values():
-      s = _compute_status(state)
-      if s == Status.ERROR:
-        return Status.ERROR
-      if s == Status.DEGRADED:
-        worst = Status.DEGRADED
+      worst = _worst_status(worst, _compute_status(state))
     return worst
 
 
@@ -394,11 +465,7 @@ def get_summary() -> dict[str, Any]:
         vestaboard_detail = detail
       else:
         integrations[name] = detail
-      s = Status(detail['status'])
-      if s == Status.ERROR:
-        worst = Status.ERROR
-      elif s == Status.DEGRADED and worst != Status.ERROR:
-        worst = Status.DEGRADED
+      worst = _worst_status(worst, Status(detail['status']))
 
     return {
       'status': worst.value,
