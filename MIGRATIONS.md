@@ -10,7 +10,9 @@ Newest first.
 2.0 removes two config formats that 1.x auto-migrated on startup. The migration
 code is gone, so these need a one-time manual edit. Both are quick.
 
-**`[scheduler.quiet]` → a flat key.** Replace:
+### `[scheduler.quiet]` became a flat key
+
+Replace:
 
 ```toml
 [scheduler.quiet]
@@ -25,7 +27,9 @@ That is deliberate. The old shape read as *enabled* whatever `active` was set
 to, so a config saying `active = false` would have silently turned quiet mode
 on — starting anyway would have been worse than not starting.
 
-**Flat message credentials → the nested namespace.** Rename any
+### Flat message credentials moved to a nested namespace
+
+Rename any
 `[webhook.credentials.<name>]` section whose `webhooks = ["message"]`:
 
 | Old | New |
