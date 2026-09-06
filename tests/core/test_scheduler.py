@@ -3119,3 +3119,81 @@ def test_third_party_noise_is_silenced_except_at_debug(
   finally:
     for name, lvl in saved.items():
       logging.getLogger(name).setLevel(lvl)
+
+
+# ---------------------------------------------------------------------------
+# Expected discards (#600)
+# ---------------------------------------------------------------------------
+
+
+def test_discard_behind_a_higher_priority_hold_is_not_a_warning(
+  caplog: pytest.LogCaptureFixture,
+) -> None:
+  """Plex holds indefinitely while media plays; trakt.watching fires every 3
+  minutes with a 120s timeout. Every one of those is correctly discarded, and
+  warning on each produced ~40 identical lines per film describing the system
+  working."""
+  _mod._queue.put(
+    _mod.QueuedMessage(
+      priority=7,
+      seq=0,
+      data={'templates': [], 'variables': {}},
+      hold=180,
+      timeout=0,  # already expired
+      name='contrib.trakt.watching',
+      scheduled_at=time.monotonic() - 300,
+    )
+  )
+  with patch.object(_mod, '_current_hold_priority', 8):
+    with caplog.at_level(logging.DEBUG, logger='scheduler'):
+      _mod.pop_valid_message()
+
+  discards = [r for r in caplog.records if 'Discarding' in r.getMessage()]
+  assert discards, 'expected the discard to be logged'
+  assert all(r.levelno == logging.DEBUG for r in discards)
+
+
+def test_discard_with_no_hold_is_still_a_warning(caplog: pytest.LogCaptureFixture) -> None:
+  """A genuine backlog is what this log line is for."""
+  _mod._queue.put(
+    _mod.QueuedMessage(
+      priority=7,
+      seq=0,
+      data={'templates': [], 'variables': {}},
+      hold=180,
+      timeout=0,
+      name='contrib.bart.departures',
+      scheduled_at=time.monotonic() - 300,
+    )
+  )
+  with patch.object(_mod, '_current_hold_priority', None):
+    with caplog.at_level(logging.DEBUG, logger='scheduler'):
+      _mod.pop_valid_message()
+
+  discards = [r for r in caplog.records if 'Discarding' in r.getMessage()]
+  assert discards
+  assert all(r.levelno == logging.WARNING for r in discards)
+
+
+def test_discard_behind_a_lower_priority_hold_is_still_a_warning(
+  caplog: pytest.LogCaptureFixture,
+) -> None:
+  """Being blocked by something *less* important is a real scheduling problem."""
+  _mod._queue.put(
+    _mod.QueuedMessage(
+      priority=8,
+      seq=0,
+      data={'templates': [], 'variables': {}},
+      hold=180,
+      timeout=0,
+      name='contrib.uptimerobot.status',
+      scheduled_at=time.monotonic() - 300,
+    )
+  )
+  with patch.object(_mod, '_current_hold_priority', 3):
+    with caplog.at_level(logging.DEBUG, logger='scheduler'):
+      _mod.pop_valid_message()
+
+  discards = [r for r in caplog.records if 'Discarding' in r.getMessage()]
+  assert discards
+  assert all(r.levelno == logging.WARNING for r in discards)
