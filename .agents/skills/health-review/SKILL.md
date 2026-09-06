@@ -90,7 +90,22 @@ Comprehensive, repeatable audit of project health across code, tests, dependenci
     `.claude/skills/` symlinks still resolve, and the content still matches how
     the project actually works. Bump `metadata.last-verified` only for skills you
     genuinely re-read this pass.
-14. **Issue hygiene**:
+14. **Sibling repo drift** — `../unraid-templates` and
+    `../homebridge-e-note-ion` (see Related Projects in AGENTS.md). CI here
+    cannot see either, so nothing catches these automatically:
+    - Every `VOLUME` / `EXPOSE` / mount path in `Dockerfile` has a matching
+      `<Config>` entry in `e-note-ion.xml`:
+      ```
+      grep -oE 'Target="[^"]*"' ../unraid-templates/e-note-ion.xml
+      grep -nE '^(VOLUME|EXPOSE)' Dockerfile
+      ```
+    - The plugin's client still matches the webhook/state surface it calls
+      (`POST /webhook/scheduler` actions, `GET /state` response shape,
+      `[homebridge]` push contract).
+    - Both repos' own dependency and CI health: `npm audit`, `npm outdated`,
+      actions SHA-pinned, Dependabot configured. They are small enough that a
+      quick pass costs little and they go stale unnoticed.
+15. **Issue hygiene**:
     - Every open issue has at least one label and a milestone; no untriaged issues.
     - Blocking relationships explicit. Prefer GitHub's native **issue dependencies** ("Add dependency" via the issue UI / `gh api`) over free-text "Blocked by #N" — they update automatically and surface in the UI.
     - **Stale blocker cleanup**: when a blocker closes, audit any open issues that referenced it. Confirm they're now actionable; add a "blocker resolved — now actionable" comment or update the body. (Free-text "Blocked by #N" notes left around after the blocker closes are easy to miss.)
