@@ -1,9 +1,11 @@
 """Tests for the health tracking module."""
 
 import json
+import logging
 import threading
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -646,3 +648,121 @@ def test_summary_exposes_interval_and_last_activity() -> None:
   detail = _mod.get_summary()['integrations']['bart']
   assert detail['expected_interval'] == 900
   assert detail['last_activity'] is not None
+
+
+# ---------------------------------------------------------------------------
+# Status transition watching (#504)
+# ---------------------------------------------------------------------------
+
+
+def _set_alert_config(monkeypatch: pytest.MonkeyPatch, **health: object) -> None:
+  import config as _config_mod
+
+  monkeypatch.setattr(_config_mod, '_config', {'health': health})
+
+
+def test_first_evaluation_only_establishes_a_baseline(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Otherwise every restart would announce a transition into its start state."""
+  _set_alert_config(monkeypatch, alert_url='https://example.com/h', alert_confirm_seconds='0')
+  _mod.init()
+  _mod.register('bart')
+  _mod.record_error('bart', 'boom')
+
+  with patch('healthalert.notify_status_change') as notify:
+    assert _mod.check_status_transition() is None
+  assert not notify.called
+
+
+def test_sustained_change_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+  _set_alert_config(monkeypatch, alert_url='https://example.com/h', alert_confirm_seconds='60')
+  _mod.init()
+  _mod.register('bart')
+  _mod.record_success('bart')
+
+  now = time.time()
+  assert _mod.check_status_transition(now) is None  # baseline: healthy
+
+  _mod.record_error('bart', 'boom')
+  with patch('healthalert.notify_status_change') as notify:
+    assert _mod.check_status_transition(now + 1) is None, 'first sighting starts the clock'
+    assert not notify.called
+
+    assert _mod.check_status_transition(now + 30) is None, 'still inside the window'
+    assert not notify.called
+
+    result = _mod.check_status_transition(now + 120)
+    # One success then one error is a 50% rate — degraded, not error.
+    assert result == ('healthy', 'degraded')
+    assert notify.called
+
+
+def test_a_blip_that_recovers_never_alerts(monkeypatch: pytest.MonkeyPatch) -> None:
+  """One failed run that recovers must not produce healthy→error→healthy pages."""
+  _set_alert_config(monkeypatch, alert_url='https://example.com/h', alert_confirm_seconds='60')
+  _mod.init()
+  _mod.register('bart')
+  _mod.record_success('bart')
+
+  now = time.time()
+  _mod.check_status_transition(now)  # baseline
+
+  with patch('healthalert.notify_status_change') as notify:
+    _mod.record_error('bart', 'transient')
+    _mod.check_status_transition(now + 1)
+    # Recovers well inside the confirmation window.
+    for _ in range(8):
+      _mod.record_success('bart')
+    assert _mod.check_status_transition(now + 30) is None
+    assert _mod.check_status_transition(now + 300) is None
+    assert not notify.called
+
+
+def test_recovery_is_reported_too(monkeypatch: pytest.MonkeyPatch) -> None:
+  """Recovery matters as much as failure — an alert you cannot clear is noise."""
+  _set_alert_config(monkeypatch, alert_url='https://example.com/h', alert_confirm_seconds='0')
+  _mod.init()
+  _mod.register('bart')
+  _mod.record_error('bart', 'boom')
+
+  now = time.time()
+  _mod.check_status_transition(now)  # baseline: error
+
+  for _ in range(10):
+    _mod.record_success('bart')
+  with patch('healthalert.notify_status_change') as notify:
+    _mod.check_status_transition(now + 1)
+    result = _mod.check_status_transition(now + 2)
+    assert result == ('error', 'healthy')
+    assert notify.called
+
+
+def test_transition_is_logged_even_when_no_endpoint_is_configured(
+  monkeypatch: pytest.MonkeyPatch,
+  caplog: pytest.LogCaptureFixture,
+) -> None:
+  """The log line is useful on its own; alerting is the optional part."""
+  _set_alert_config(monkeypatch, alert_confirm_seconds='0')
+  _mod.init()
+  _mod.register('bart')
+  _mod.record_success('bart')
+
+  now = time.time()
+  _mod.check_status_transition(now)
+  _mod.record_error('bart', 'boom')
+
+  with caplog.at_level(logging.INFO, logger='health'):
+    _mod.check_status_transition(now + 1)
+    result = _mod.check_status_transition(now + 2)
+
+  assert result == ('healthy', 'degraded')
+  assert 'healthy → degraded' in caplog.text
+
+
+def test_invalid_confirm_seconds_falls_back_to_the_default(
+  monkeypatch: pytest.MonkeyPatch,
+  caplog: pytest.LogCaptureFixture,
+) -> None:
+  _set_alert_config(monkeypatch, alert_confirm_seconds='not-a-number')
+  with caplog.at_level(logging.WARNING, logger='health'):
+    assert _mod._alert_confirm_seconds() == _mod._DEFAULT_ALERT_CONFIRM_SECONDS
+  assert 'alert_confirm_seconds' in caplog.text

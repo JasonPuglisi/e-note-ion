@@ -84,6 +84,7 @@ scheduler.py                # Entry point — scheduler, queue, worker (argparse
 public.py                   # Runtime public mode state (thread-safe, persisted to config.toml)
 quiet.py                    # Software-side quiet mode state (thread-safe, persisted to config.toml)
 homebridge.py               # Optional outbound push notifier for HomeBridge/Apple Home (fires on quiet/public transitions)
+healthalert.py              # Optional outbound push notifier for health status transitions (fires on sustained status change)
 health.py                   # Integration health tracking (thread-safe, persisted to data/health.jsonl)
 config.py                   # TOML config loader (load_config, get, get_optional, get_schedule_override, write_section_values / write_config_section — in-place persistence)
 exceptions.py               # Custom exception types (IntegrationDataUnavailableError)
@@ -155,6 +156,7 @@ scripts/
 docs/
   webhook-reverse-proxy.md  # Webhook TLS setup guide (Cloudflare Tunnel, reverse proxy)
   homebridge.md             # Apple Home / HomeBridge setup (GET /state, [homebridge] push, companion plugin)
+  health-alerts.md          # Health status push alerts ([health] alert_url) + iOS Shortcut polling recipe
 .env.example                # Template for local integration test secrets (copy to .env, fill in, git-ignored)
 Dockerfile                  # Single-stage image using ghcr.io/astral-sh/uv
 MANIFEST.in                 # sdist file inclusion rules

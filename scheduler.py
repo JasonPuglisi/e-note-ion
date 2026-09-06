@@ -1812,6 +1812,7 @@ def main() -> None:
 
   threading.Thread(target=worker, daemon=True).start()
   _health_mod.start_periodic_log()
+  _health_mod.start_status_watch()
 
   if _config_mod.has_section('webhook'):
     _start_webhook_server()
@@ -1821,6 +1822,7 @@ def main() -> None:
       time.sleep(1)
   except KeyboardInterrupt:
     _health_mod.stop_periodic_log()
+    _health_mod.stop_status_watch()
     scheduler.shutdown()
 
 
