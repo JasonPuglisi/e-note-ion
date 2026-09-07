@@ -783,6 +783,35 @@ _THIRD_PARTY_LOG_FLOORS: dict[str, int] = {
 _ICAL_DIFF_MARKER = 'Ical data was modified'
 
 
+class _RedactSecrets(logging.Filter):
+  """Scrub credentials out of every log record before it is written.
+
+  urllib3 logs each request line at DEBUG, query string included, and BART
+  takes its API key as a query parameter — so a production run at
+  log_level = "DEBUG" wrote the key into the Docker log in plaintext on every
+  BART call. The #591 work only scrubbed error strings on their way into
+  health; it never touched what dependencies log directly.
+
+  Applied to the handler so it covers records from any logger, ours and
+  third-party alike, and at every level. redact() keeps scheme, host and path
+  shape, so the line stays useful for debugging.
+  """
+
+  def filter(self, record: logging.LogRecord) -> bool:
+    try:
+      message = record.getMessage()
+    except Exception:  # noqa: BLE001 — a broken record must not break logging
+      return True
+    # Cheap guard: only the regex-worthy records pay for the substitution.
+    if '://' not in message and '?' not in message:
+      return True
+    redacted = _http.redact(message)
+    if redacted != message:
+      record.msg = redacted
+      record.args = ()
+    return True
+
+
 class _DropIcalDiff(logging.Filter):
   """Drop caldav's event-data diff, whatever the configured level."""
 
@@ -1798,6 +1827,7 @@ def main() -> None:
   # placement that holds regardless of which logger caldav emits from.
   for handler in logging.root.handlers:
     handler.addFilter(_DropIcalDiff())
+    handler.addFilter(_RedactSecrets())
 
   model = _config_mod.get_model()
   if model == 'flagship':

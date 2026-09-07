@@ -109,3 +109,71 @@ def test_caldav_is_no_longer_blanket_silenced() -> None:
 
   assert 'caldav' not in _sched._THIRD_PARTY_LOG_FLOORS
   assert 'quic' in _sched._THIRD_PARTY_LOG_FLOORS
+
+
+# --- credentials never reach the log (follow-up to #591) ---
+
+
+def _capture(record_fn: object, logger_name: str) -> str:
+  import io
+  import logging as _logging
+
+  import scheduler as _sched
+
+  buf = io.StringIO()
+  handler = _logging.StreamHandler(buf)
+  handler.addFilter(_sched._RedactSecrets())
+  handler.setLevel(_logging.DEBUG)
+  logger = _logging.getLogger(logger_name)
+  logger.handlers = [handler]
+  logger.propagate = False
+  logger.setLevel(_logging.DEBUG)
+  record_fn(logger)  # type: ignore[operator]
+  return buf.getvalue()
+
+
+def test_urllib3_request_line_does_not_leak_a_query_string_key() -> None:
+  """The exact production leak.
+
+  urllib3 logs each request line at DEBUG including the query string, and BART
+  passes its API key as a query parameter — so a run at log_level = "DEBUG"
+  wrote the key into the Docker log on every BART call.
+  """
+  out = _capture(
+    lambda lg: lg.debug(
+      '%s://%s:%s "%s %s %s" %s %s',
+      'https',
+      'api.bart.gov',
+      443,
+      'GET',
+      '/api/route.aspx?cmd=routes&key=LEAKEDKEYVALUE&json=y',
+      'HTTP/2.0',
+      200,
+      None,
+    ),
+    'urllib3.connectionpool.test',
+  )
+  # Exact output, not a substring check. A substring assertion cannot tell
+  # *where* the host ended up, and CodeQL rightly flags `host in url` as the
+  # shape of a bypassable host check. The full string also documents precisely
+  # what a reader of the log will see.
+  assert out.strip() == 'https://api.bart.gov:443 "GET /api/route.aspx?... HTTP/2.0" 200 None'
+
+
+def test_redaction_applies_to_our_own_loggers_too() -> None:
+  out = _capture(
+    lambda lg: lg.info('calendar: fetched ICS from %s', 'https://p12-caldav.icloud.com/published/2/SECRETPATH'),
+    'scheduler.test.ours',
+  )
+  assert out.strip() == 'calendar: fetched ICS from https://p12-caldav.icloud.com/...'
+
+
+def test_records_without_urls_are_untouched() -> None:
+  out = _capture(lambda lg: lg.info('Scheduler started — 26 job(s) registered'), 'scheduler.test.plain')
+  assert 'Scheduler started — 26 job(s) registered' in out
+
+
+def test_a_record_that_cannot_format_does_not_break_logging() -> None:
+  """A filter that raises would take down logging for everything."""
+  out = _capture(lambda lg: lg.info('bad format %s %s', 'only-one-arg'), 'scheduler.test.bad')
+  assert out != '' or True  # the point is that it did not raise
