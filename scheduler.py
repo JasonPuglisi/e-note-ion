@@ -201,6 +201,14 @@ def enqueue(
     seq = _counter
     _counter += 1
 
+  # An enqueue means the cron fired, which is what overdue detection actually
+  # cares about. Recorded here rather than at send time because a message that
+  # loses priority contention is discarded before the integration is ever
+  # called — see health.note_scheduled(). (#502)
+  integration = data.get('integration')
+  if integration:
+    _health_mod.note_scheduled(integration)
+
   msg = QueuedMessage(
     priority=priority,
     seq=seq,
