@@ -3254,3 +3254,23 @@ def test_cron_interval_is_cheap_enough_for_load_time() -> None:
   started = time.monotonic()
   _mod.cron_interval_seconds('* * * * *')
   assert time.monotonic() - started < 2.0
+
+
+def test_enqueue_marks_the_integration_as_scheduled() -> None:
+  """Overdue detection keys off scheduling, so enqueue has to report it."""
+  with patch('health.note_scheduled') as noted:
+    _mod.enqueue(
+      priority=5,
+      data={'integration': 'uptimerobot', 'templates': [], 'variables': {}},
+      hold=300,
+      timeout=120,
+      name='contrib.uptimerobot.status',
+    )
+  noted.assert_called_once_with('uptimerobot')
+
+
+def test_enqueue_without_an_integration_reports_nothing() -> None:
+  """Static content has no integration to mark alive."""
+  with patch('health.note_scheduled') as noted:
+    _mod.enqueue(priority=5, data={'templates': [], 'variables': {}}, hold=60, timeout=60, name='user.aria')
+  assert not noted.called

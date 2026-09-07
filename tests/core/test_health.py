@@ -822,3 +822,65 @@ def test_restored_target_carries_a_stale_registered_at() -> None:
   _mod.register('restored')  # must not reset it
 
   assert _mod._targets['restored'].registered_at == old_ts
+
+
+def test_being_enqueued_counts_as_alive_even_if_the_message_never_lands() -> None:
+  """The production case: a Plex card held the board for the length of a film.
+
+  contrib.uptimerobot.status was enqueued every 5 minutes and discarded 2
+  minutes later, so it never reached the integration and recorded no event —
+  and overdue flagged it, turning /health red on a working system. #600 already
+  classifies that discard as expected; health has to agree.
+  """
+  _mod.init()
+  _mod.register('uptimerobot')
+  _mod.set_expected_interval('uptimerobot', 300)
+  _mod.record_expected_empty('uptimerobot')
+
+  state = _mod._targets['uptimerobot']
+  state.events[-1] = _mod.HealthEvent(time.time() - 15 * 60, _mod.EventType.EXPECTED_EMPTY)
+  _mod._started_at = time.time() - 37 * 60
+
+  assert _mod._is_overdue(state, time.time()) is True, 'precondition: stale without the signal'
+
+  _mod.note_scheduled('uptimerobot')
+  assert _mod._is_overdue(state, time.time()) is False
+  assert _mod.get_summary()['status'] == 'healthy'
+
+
+def test_a_cron_that_stopped_scheduling_is_still_overdue() -> None:
+  """The signal must not disable the feature it protects."""
+  _mod.init()
+  _mod.register('uptimerobot')
+  _mod.set_expected_interval('uptimerobot', 300)
+  _mod.record_expected_empty('uptimerobot')
+
+  state = _mod._targets['uptimerobot']
+  state.events[-1] = _mod.HealthEvent(time.time() - 20 * 60, _mod.EventType.EXPECTED_EMPTY)
+  state.last_scheduled = time.time() - 20 * 60
+  _mod._started_at = time.time() - 40 * 60
+
+  assert _mod._is_overdue(state, time.time()) is True
+
+
+def test_note_scheduled_does_not_touch_the_success_rate() -> None:
+  """It says the scheduler fired, not that the integration succeeded.
+
+  Folding it into the event deque would inflate success_rate with runs that
+  never happened.
+  """
+  _mod.init()
+  _mod.register('bart')
+  _mod.record_error('bart', 'boom')
+  before = _mod.get_summary()['integrations']['bart']
+
+  _mod.note_scheduled('bart')
+  after = _mod.get_summary()['integrations']['bart']
+
+  assert after['total_events'] == before['total_events'] == 1
+  assert after['success_rate'] == before['success_rate'] == 0.0
+
+
+def test_note_scheduled_is_a_noop_for_an_unregistered_target() -> None:
+  _mod.init()
+  _mod.note_scheduled('never-registered')  # must not raise

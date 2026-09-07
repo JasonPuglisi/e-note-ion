@@ -103,6 +103,9 @@ class _TargetState:
   # webhook-only targets, which fire on external events with no predictable
   # interval and are therefore never overdue.
   expected_interval: float | None = None
+  # When this integration was last *scheduled*, which is not the same as when it
+  # last produced an event — see note_scheduled().
+  last_scheduled: float = 0.0
 
 
 # Reserved target name for the Vestaboard send path. Registered implicitly
@@ -284,6 +287,30 @@ def set_expected_interval(name: str, seconds: float) -> None:
       state.expected_interval = seconds
 
 
+def note_scheduled(name: str) -> None:
+  """Record that *name* was enqueued, whatever becomes of the message.
+
+  Overdue detection asks "has this integration stopped firing". Health events
+  cannot answer that on their own, because an event is only recorded once the
+  worker pops the message and calls the integration — and a message that loses
+  priority contention is discarded before that ever happens.
+
+  A Plex now-playing card holds the board indefinitely, so during a film
+  contrib.uptimerobot.status is enqueued every 5 minutes and discarded 2
+  minutes later, never reaching the integration. Nothing is wrong: #600 already
+  classifies exactly that discard as expected. Without this, overdue flagged it
+  anyway and /health went red for the length of the film.
+
+  Deliberately not a HealthEvent: this says the scheduler fired, not that the
+  integration succeeded, and folding it into the event deque would corrupt the
+  success-rate calculation.
+  """
+  with _lock:
+    state = _targets.get(name)
+    if state is not None:
+      state.last_scheduled = time.time()
+
+
 def _is_overdue(state: _TargetState, now: float) -> bool:
   """Return True if *state* has gone too long without firing. Caller holds _lock."""
   if state.expected_interval is None:
@@ -299,7 +326,9 @@ def _is_overdue(state: _TargetState, now: float) -> bool:
   # timestamp, and register() leaves an existing target alone. So a restored
   # target carries an old registered_at too.
   last = state.events[-1].timestamp if state.events else state.registered_at
-  reference = max(last, _started_at)
+  # Being scheduled counts as alive even when the message never reached the
+  # integration, so a long hold on the board cannot look like a stalled cron.
+  reference = max(last, _started_at, state.last_scheduled)
   return (now - reference) > state.expected_interval * _OVERDUE_INTERVAL_MULTIPLIER
 
 
