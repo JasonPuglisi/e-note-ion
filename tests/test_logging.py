@@ -153,9 +153,11 @@ def test_urllib3_request_line_does_not_leak_a_query_string_key() -> None:
     ),
     'urllib3.connectionpool.test',
   )
-  assert 'LEAKEDKEYVALUE' not in out
-  assert 'api.bart.gov' in out, 'the host is the diagnostic value; keep it'
-  assert '200' in out, 'status must survive'
+  # Exact output, not a substring check. A substring assertion cannot tell
+  # *where* the host ended up, and CodeQL rightly flags `host in url` as the
+  # shape of a bypassable host check. The full string also documents precisely
+  # what a reader of the log will see.
+  assert out.strip() == 'https://api.bart.gov:443 "GET /api/route.aspx?... HTTP/2.0" 200 None'
 
 
 def test_redaction_applies_to_our_own_loggers_too() -> None:
@@ -163,8 +165,7 @@ def test_redaction_applies_to_our_own_loggers_too() -> None:
     lambda lg: lg.info('calendar: fetched ICS from %s', 'https://p12-caldav.icloud.com/published/2/SECRETPATH'),
     'scheduler.test.ours',
   )
-  assert 'SECRETPATH' not in out
-  assert 'icloud.com' in out
+  assert out.strip() == 'calendar: fetched ICS from https://p12-caldav.icloud.com/...'
 
 
 def test_records_without_urls_are_untouched() -> None:
