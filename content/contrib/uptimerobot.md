@@ -45,6 +45,27 @@ The free plan supports up to 50 monitors and 10 API requests per minute.
 With the default 5-minute cron and 60-second refresh, API usage stays well
 within the free tier limit.
 
+## Self-monitoring
+
+`/health` is a valid monitor target — e-note-ion can watch itself and put the
+result on its own board. The endpoint returns HTTP 503 whenever an integration
+is degraded, overdue, or erroring, so a plain HTTP(s) monitor pointed at:
+
+```
+https://<your-host>/health?secret=<your-health-credential>
+```
+
+turns a broken integration into a board-visible outage through this template.
+Keep the monitor's friendly name short — it becomes row 2, truncated to the
+board width.
+
+Two caveats: `/health` has to be reachable from the internet (see
+[`docs/webhook-reverse-proxy.md`](../../docs/webhook-reverse-proxy.md)), and
+UptimeRobot only sees the status code, so the board reports that something is
+unhealthy rather than which integration broke. Full setup, credential handling,
+and the alternative outbound push are covered in
+[`docs/health-alerts.md`](../../docs/health-alerts.md).
+
 ## Display format
 
 **Outage (one or more monitors down):**
