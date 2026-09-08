@@ -97,6 +97,51 @@ If you would rather poll than configure an endpoint, this needs no changes to
 Note `/health` returns HTTP 503 when unhealthy, so a monitoring tool that only
 checks status codes works without parsing the body at all.
 
+### UptimeRobot (shows the alert on the board)
+
+The recipes above push a health change somewhere else. This one brings it back
+to the Vestaboard, using the `uptimerobot` contrib integration as the display
+path — e-note-ion monitoring itself.
+
+That 503 is enough to mark an UptimeRobot monitor down. The contrib integration
+polls UptimeRobot every 5 minutes and displays any monitor that is down, so a
+broken integration ends up on the board:
+
+```
+[R] OUTAGE
+E-NOTE-ION
+DOWN 25 MINUTES
+```
+
+Setup:
+
+1. Enable the integration — add `uptimerobot` to `[scheduler] content_enabled`
+   and set `[uptimerobot] api_key`. See
+   [`content/contrib/uptimerobot.md`](../content/contrib/uptimerobot.md).
+2. Create an HTTP(s) monitor in UptimeRobot pointing at
+   `https://<your-host>/health?secret=<your-health-credential>`.
+3. Give it a short friendly name. Row 2 of the display is the monitor name,
+   truncated to the board width — `E-NOTE-ION` reads well on a Note, a long
+   descriptive name does not.
+
+The secret goes in the query string because UptimeRobot only supports custom
+request headers on its Pro plan; `/health` accepts either. Two consequences
+worth knowing before you set this up:
+
+- **The credential is stored in UptimeRobot's monitor config** and appears in
+  their request logs. Use the dedicated `health` webhook credential rather than
+  sharing one with another integration — it is already scoped to the health
+  endpoint alone, so it can be rotated without touching anything else.
+- **`/health` has to be reachable from the internet.** See
+  [`webhook-reverse-proxy.md`](webhook-reverse-proxy.md).
+
+If neither is acceptable, `alert_url` above is outbound and needs no exposed
+endpoint.
+
+One limitation: UptimeRobot only sees the status code, so the board tells you
+*that* something is unhealthy, not *which* integration. Use `GET /health` or
+the push payload for that.
+
 ## Failure behaviour
 
 The push runs on a daemon thread with a 5-second timeout and two retries. Every
