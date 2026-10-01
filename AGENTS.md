@@ -82,7 +82,7 @@ on this project collaboratively with the user.
 ```
 scheduler.py                # Entry point — scheduler, queue, worker (argparse CLI)
 public.py                   # Runtime public mode state (thread-safe, persisted to config.toml)
-quiet.py                    # Software-side quiet mode state (thread-safe, persisted to config.toml)
+quiet.py                    # Software-side quiet mode state + delayed wake (thread-safe, persisted to config.toml / data/quiet.json)
 homebridge.py               # Optional outbound push notifier for HomeBridge/Apple Home (fires on quiet/public transitions)
 healthalert.py              # Optional outbound push notifier for health status transitions (fires on sustained status change)
 health.py                   # Integration health tracking (thread-safe, persisted to data/health.jsonl)
@@ -91,7 +91,7 @@ exceptions.py               # Custom exception types (IntegrationDataUnavailable
 config.toml                 # Runtime config with API keys (git-ignored; copy from config.example.toml)
 config.example.toml         # Config template committed to the repo
 integrations/vestaboard.py  # Vestaboard API client (get_state, set_state, render)
-integrations/scheduler.py   # Scheduler control webhook (quiet/wake/set_public actions)
+integrations/scheduler.py   # Scheduler control webhook (quiet/wake[+delay]/public/private actions)
 integrations/http.py        # Shared HTTP helper with retry logic
 integrations/weather.py     # Current weather via Open-Meteo (no API key required)
 integrations/morning.py     # Morning weather visual grid (optional; falls back to sunrise)
@@ -146,6 +146,7 @@ content/
   user/                     # Personal content (always loaded, git-ignored)
 data/                       # Runtime state directory (Docker VOLUME, git-ignored)
   health.jsonl              # Persisted health events (JSONL, auto-managed, purged after 7 days)
+  quiet.json                # Pending delayed-wake deadline (present only while a delayed wake is armed)
 tests/                      # Unit tests (pytest); see Tests below for layout
   core/                     # Unit tests for integrations with shared fixtures
   integrations/             # Live-API integration tests (deselected by default)

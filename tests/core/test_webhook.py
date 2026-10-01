@@ -348,6 +348,36 @@ def test_integration_without_handle_webhook_returns_404() -> None:
         _stop_test_server(server)
 
 
+def test_scheduler_delayed_wake_responds_without_waiting(monkeypatch: pytest.MonkeyPatch) -> None:
+  """POST /webhook/scheduler with a delay returns at once; the board stays quiet."""
+  import quiet as _quiet_mod  # noqa: PLC0415
+
+  monkeypatch.setattr(_quiet_mod, '_active', True)
+  with patch.dict(_config_mod._config, _cred_config('scheduler')):
+    with patch.object(_quiet_mod._config_mod, 'write_config_section') as mock_write:
+      server, port = _start_test_server()
+      try:
+        started = time.monotonic()
+        status, _ = _post(port, '/webhook/scheduler', {'action': 'wake', 'delay': 300})
+        assert status == 200
+        assert time.monotonic() - started < 2
+        assert _quiet_mod.is_quiet()
+        assert _quiet_mod.pending_wake_at() is not None
+        mock_write.assert_not_called()
+      finally:
+        _stop_test_server(server)
+
+
+def test_scheduler_delay_on_quiet_is_rejected() -> None:
+  with patch.dict(_config_mod._config, _cred_config('scheduler')):
+    server, port = _start_test_server()
+    try:
+      status, _ = _post(port, '/webhook/scheduler', {'action': 'quiet', 'delay': 300})
+      assert status == 500
+    finally:
+      _stop_test_server(server)
+
+
 # ---------------------------------------------------------------------------
 # Enqueue behaviour
 # ---------------------------------------------------------------------------
