@@ -138,7 +138,7 @@ Key `[scheduler]` settings:
 | `content_enabled` | _(absent)_ | Content filter for cron-scheduled templates in both `user/` and `contrib/`: absent = all user loads, no contrib; `["*"]` = all user + all contrib; `["bart", "my_quotes"]` = only matching stems from either directory. **Webhook-only integrations (`plex`, `message`, `notion`) are unaffected — their webhooks fire regardless of this setting.** |
 | `timezone` | system TZ | IANA timezone for cron job scheduling (e.g. `"America/Los_Angeles"`) |
 | `log_level` | `"INFO"` | Logging level: `"DEBUG"`, `"INFO"`, `"WARNING"`, `"ERROR"`, `"CRITICAL"`. `"DEBUG"` shows per-integration cache hits, retry attempts, and state transitions |
-| `quiet` | `false` | When `true`, render content to virtual state instead of sending it to the board. Normally written by `POST /webhook/scheduler` with `{"action": "quiet"}` / `{"action": "wake"}`, but can be set manually before startup |
+| `quiet` | `false` | When `true`, render content to virtual state instead of sending it to the board. Normally written by `POST /webhook/scheduler` with `{"action": "quiet"}` / `{"action": "wake"}` (optionally `"delay": <seconds>`; see [`scheduler.md`](content/contrib/scheduler.md)), but can be set manually before startup |
 | `min_hold` | `60` | Minimum seconds any message stays on display before a high-priority (≥8) queued message can interrupt it. Set to `0` to disable (not recommended for physical displays). |
 
 ### Calendar-driven gating

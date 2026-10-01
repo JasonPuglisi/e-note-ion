@@ -1,5 +1,8 @@
+import json
 import threading
+import time
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -126,6 +129,180 @@ def test_pop_virtual_state_returns_and_clears() -> None:
 
 def test_pop_virtual_state_none_when_empty() -> None:
   assert _mod.pop_virtual_state() is None
+
+
+# --- delayed wake ---
+
+
+def _quiet_with_wake(delay: float = 600) -> None:
+  """Put the module in quiet mode with a pending wake (config writes mocked by caller)."""
+  _mod._active = True
+  _mod.schedule_wake(delay)
+
+
+def test_schedule_wake_arms_timer_and_persists() -> None:
+  with patch('quiet._config_mod.write_config_section'):
+    before = time.time()
+    _quiet_with_wake(300)
+  at = _mod.pending_wake_at()
+  assert at is not None and before + 300 <= at <= time.time() + 300
+  assert _mod.is_quiet()
+  assert json.loads(_mod._WAKE_PATH.read_text())['wake_at'] == pytest.approx(at, abs=1)
+
+
+def test_schedule_wake_fires_and_wakes() -> None:
+  _mod._active = True
+  with (
+    patch('quiet._config_mod.write_config_section') as mock_write,
+    patch('quiet._homebridge_mod.notify_mode_change') as mock_notify,
+  ):
+    _mod.schedule_wake(0.05)
+    assert _mod.changed_event().wait(timeout=2)
+    # The event is set inside the lock, before notify runs; let it finish.
+    deadline = time.monotonic() + 2
+    while not mock_notify.called and time.monotonic() < deadline:
+      time.sleep(0.01)
+  assert not _mod.is_quiet()
+  mock_write.assert_called_once_with('scheduler', {'quiet': False})
+  mock_notify.assert_called_once_with('quiet', False)
+  assert _mod.pending_wake_at() is None
+  assert not _mod._WAKE_PATH.exists()
+
+
+def test_schedule_wake_noop_when_awake() -> None:
+  _mod.schedule_wake(300)
+  assert _mod.pending_wake_at() is None
+  assert not _mod._WAKE_PATH.exists()
+
+
+@pytest.mark.parametrize('delay', [0, -1, _mod.MAX_WAKE_DELAY + 1])
+def test_schedule_wake_rejects_out_of_range(delay: float) -> None:
+  _mod._active = True
+  with pytest.raises(ValueError):
+    _mod.schedule_wake(delay)
+  assert _mod.pending_wake_at() is None
+
+
+def test_quiet_while_quiet_cancels_pending_wake() -> None:
+  """Regression guard: the already-quiet early return must still cancel."""
+  with patch('quiet._config_mod.write_config_section') as mock_write:
+    _quiet_with_wake()
+    _mod.set_quiet(True)
+  assert _mod.pending_wake_at() is None
+  assert not _mod._WAKE_PATH.exists()
+  assert _mod.is_quiet()
+  mock_write.assert_not_called()
+
+
+def test_immediate_wake_cancels_pending_wake() -> None:
+  with patch('quiet._config_mod.write_config_section') as mock_write:
+    _quiet_with_wake()
+    _mod.set_quiet(False)
+  assert not _mod.is_quiet()
+  assert _mod.pending_wake_at() is None
+  assert not _mod._WAKE_PATH.exists()
+  mock_write.assert_called_once_with('scheduler', {'quiet': False})
+
+
+def test_second_schedule_wake_replaces_first() -> None:
+  with patch('quiet._config_mod.write_config_section'):
+    _quiet_with_wake(0.05)
+    first_generation = _mod._wake_generation
+    _mod.schedule_wake(600)
+    time.sleep(0.2)  # the first timer's deadline passes
+  assert _mod.is_quiet()
+  assert _mod._wake_generation == first_generation + 1
+  at = _mod.pending_wake_at()
+  assert at is not None and at > time.time() + 500
+
+
+def test_stale_timer_callback_is_ignored() -> None:
+  """A callback blocked on the lock while it was cancelled must not wake."""
+  with patch('quiet._config_mod.write_config_section') as mock_write:
+    _quiet_with_wake()
+    stale = _mod._wake_generation
+    _mod.schedule_wake(600)  # replace → stale generation
+    _mod._fire_pending_wake(stale)
+    assert _mod.is_quiet()
+    assert _mod.pending_wake_at() is not None
+
+    _mod.set_quiet(True)  # cancel → nothing pending
+    _mod._fire_pending_wake(_mod._wake_generation)
+  assert _mod.is_quiet()
+  mock_write.assert_not_called()
+
+
+def test_fire_pending_wake_logs_exception(caplog: pytest.LogCaptureFixture) -> None:
+  with patch('quiet._config_mod.write_config_section'):
+    _quiet_with_wake()
+  generation = _mod._wake_generation
+  with patch('quiet._config_mod.write_config_section', side_effect=OSError('disk full')):
+    _mod._fire_pending_wake(generation)  # must not raise
+  assert 'Delayed wake failed' in caplog.text
+  # Quiet=false was never persisted, so the file is kept for the next startup.
+  assert _mod._WAKE_PATH.exists()
+
+
+def test_write_wake_file_failure_still_arms_timer() -> None:
+  _mod._active = True
+  with patch('quiet.os.replace', side_effect=OSError('read-only')):
+    _mod.schedule_wake(300)
+  assert _mod.pending_wake_at() is not None
+
+
+# --- delayed wake: restore on init ---
+
+
+def _persist_wake(at: Any) -> None:
+  _mod._WAKE_PATH.write_text(json.dumps({'wake_at': at}))
+
+
+def test_init_rearms_future_wake() -> None:
+  _persist_wake(time.time() + 120)
+  with patch('quiet._config_mod.get_optional_bool', return_value=True):
+    _mod.init()
+  at = _mod.pending_wake_at()
+  assert _mod.is_quiet()
+  assert at is not None and 100 < at - time.time() <= 120
+
+
+def test_init_wakes_when_deadline_passed() -> None:
+  _persist_wake(time.time() - 5)
+  with (
+    patch('quiet._config_mod.get_optional_bool', return_value=True),
+    patch('quiet._config_mod.write_config_section') as mock_write,
+  ):
+    _mod.init()
+  assert not _mod.is_quiet()
+  mock_write.assert_called_once_with('scheduler', {'quiet': False})
+  assert not _mod._WAKE_PATH.exists()
+
+
+def test_init_discards_wake_when_not_quiet() -> None:
+  _persist_wake(time.time() + 120)
+  with patch('quiet._config_mod.get_optional_bool', return_value=False):
+    _mod.init()
+  assert _mod.pending_wake_at() is None
+  assert not _mod._WAKE_PATH.exists()
+
+
+def test_init_clamps_far_future_wake() -> None:
+  """A wall clock that moved backwards while stopped cannot extend the delay."""
+  _persist_wake(time.time() + 10 * _mod.MAX_WAKE_DELAY)
+  with patch('quiet._config_mod.get_optional_bool', return_value=True):
+    _mod.init()
+  at = _mod.pending_wake_at()
+  assert at is not None and at <= time.time() + _mod.MAX_WAKE_DELAY
+
+
+@pytest.mark.parametrize('content', ['not json', '{}', '{"wake_at": "soon"}', '{"wake_at": true}', '{"wake_at": NaN}'])
+def test_init_ignores_malformed_wake_file(content: str) -> None:
+  _mod._WAKE_PATH.write_text(content)
+  with patch('quiet._config_mod.get_optional_bool', return_value=True):
+    _mod.init()
+  assert _mod.is_quiet()
+  assert _mod.pending_wake_at() is None
+  assert not _mod._WAKE_PATH.exists()
 
 
 # --- thread safety ---

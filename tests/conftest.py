@@ -6,6 +6,7 @@ import pytest
 
 import health as _health_mod
 import integrations.vestaboard as vestaboard
+import quiet as _quiet_mod
 
 
 @pytest.fixture(autouse=True)
@@ -27,6 +28,19 @@ def _isolate_health_log(tmp_path: Path) -> None:
   """
   _health_mod._LOG_DIR = tmp_path
   _health_mod._LOG_PATH = tmp_path / 'health.jsonl'
+
+
+@pytest.fixture(autouse=True)
+def _isolate_quiet_wake(tmp_path: Path) -> Generator[None, None, None]:
+  """Point the pending-wake file at a temp directory and disarm timers.
+
+  Same reasoning as the health log: a pending wake persists to
+  data/quiet.json, and a live Timer from one test must not fire into the next.
+  """
+  _quiet_mod._DATA_DIR = tmp_path
+  _quiet_mod._WAKE_PATH = tmp_path / 'quiet.json'
+  yield
+  _quiet_mod.cancel_pending_wake()
 
 
 @pytest.fixture(autouse=True)

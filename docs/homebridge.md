@@ -15,7 +15,7 @@ The scheduler already exposes everything HomeBridge needs:
 
 | Direction | Endpoint | Purpose |
 |---|---|---|
-| **Set** | `POST /webhook/scheduler` | `{"action": "quiet"｜"wake"｜"public"｜"private"}` — toggle a mode |
+| **Set** | `POST /webhook/scheduler` | `{"action": "quiet"｜"wake"｜"public"｜"private"}` — toggle a mode (`wake` also takes an optional `"delay"` in seconds) |
 | **Read** | `GET /state` | Current `modes` (`quiet`/`public`) plus board content, for switch state sync |
 | **Push** | `[homebridge]` config (optional) | e-note-ion notifies HomeBridge instantly on a mode change |
 
@@ -51,6 +51,10 @@ X-Webhook-Secret: <secret>
 
 {"characteristic": "quiet"｜"public", "value": true｜false}
 ```
+
+A delayed wake (`{"action": "wake", "delay": N}`) is not a transition until it
+fires: `GET /state` keeps reporting `quiet: true` during the delay, and the
+push goes out when the board actually wakes.
 
 The request runs on a background thread with a short timeout; a HomeBridge
 outage is logged and never blocks toggling. Without push, a HomeBridge switch

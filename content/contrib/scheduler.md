@@ -32,6 +32,34 @@ restarting.
 2. **Wake** (`{"action": "wake"}`): sets `quiet.active = false`. On the next
    worker loop iteration (within ~1 s), the worker detects the transition,
    sends the stored virtual state to the board, and resumes normal operation.
+3. **Delayed wake** (`{"action": "wake", "delay": 300}`): the request returns
+   immediately, the board stays quiet, and the wake happens `delay` seconds
+   later (max 3600). Useful when the wake trigger is your morning alarm — the
+   board doesn't start flipping while the alarm is still going.
+
+#### Delayed wake semantics
+
+The most recent command wins. A delayed wake is a pending intent that any
+later scheduler command can override:
+
+| State | Incoming | Result |
+|---|---|---|
+| Quiet, nothing pending | `wake` + `delay` | Stays quiet; wake scheduled |
+| Quiet, wake pending | `quiet` | Pending wake cancelled; stays quiet |
+| Quiet, wake pending | `wake` (no delay) | Wakes now; pending wake cancelled |
+| Quiet, wake pending | `wake` + `delay` | Pending wake replaced with the new delay |
+| Awake | `wake` + `delay` | No-op |
+| Any | `wake` + `"delay": 0` | Same as an immediate wake |
+
+A pending wake survives restarts: its deadline is saved to `data/quiet.json`
+(the runtime data volume). If the deadline passed while the scheduler was
+stopped, the board wakes on startup; otherwise the remaining delay is re-armed.
+
+> **Watch your other wake automations.** If something else sends an immediate
+> wake during the delay window — e.g. a "Personal turns on → Vestaboard Wake"
+> Focus automation that fires when Sleep ends — it wins, and the board wakes
+> right away. Add the same `delay` to any automation that can fire around
+> your wake-up time.
 
 During quiet mode:
 - Cron jobs continue firing and rendering content normally
@@ -94,6 +122,10 @@ Copy this secret into your iOS Shortcuts (see below).
 ```
 
 ```json
+{"action": "wake", "delay": 300}
+```
+
+```json
 {"action": "public"}
 ```
 
@@ -104,8 +136,10 @@ Copy this secret into your iOS Shortcuts (see below).
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `action` | string | Yes | `"quiet"`, `"wake"`, `"public"`, or `"private"` |
+| `delay` | number | No | `wake` only. Seconds to wait before waking, `0`–`3600`. A numeric string (`"300"`) is also accepted. |
 
-Invalid or missing `action` returns a 500 error.
+Invalid or missing `action`, an out-of-range `delay`, or `delay` on any action
+other than `wake` returns a 500 error.
 
 ## iOS Shortcuts setup
 
@@ -153,6 +187,13 @@ A pre-built template is available at
 - Name it "Vestaboard Wake"
 - Change the `action` value in the JSON body to `wake`
 
+#### Vestaboard Wake (Delayed)
+
+Duplicate "Vestaboard Wake" and name it "Vestaboard Wake (Delayed)". In the
+**Get Contents of URL** JSON body, add a second key `delay` with Type
+**Number** and a value in seconds (e.g. `300` for 5 minutes). Use this one
+for wake triggers tied to your alarm.
+
 #### Vestaboard Public
 
 A pre-built template is available at
@@ -184,7 +225,9 @@ is a single "Run Shortcut" action.
 
 Same as above, but:
 - Choose **Waking Up** instead of Bedtime Begins
-- Select "Vestaboard Wake" instead of "Vestaboard Quiet"
+- Select "Vestaboard Wake" instead of "Vestaboard Quiet" — or
+  "Vestaboard Wake (Delayed)" to give yourself a few quiet minutes after the
+  alarm
 
 ### Focus mode triggers
 
@@ -230,7 +273,7 @@ be delayed in low-power mode.
 | Trigger | Shortcut | Purpose |
 |---|---|---|
 | Bedtime Begins | Vestaboard Quiet | Nightly quiet |
-| Waking Up | Vestaboard Wake | Scheduled wake |
+| Waking Up | Vestaboard Wake (Delayed) | Scheduled wake, a few minutes after the alarm |
 | DND turns on | Vestaboard Quiet | Nap / ad-hoc quiet |
 | Personal turns on | Vestaboard Wake | Wake on Focus switch |
 | Work turns on | Vestaboard Wake | Wake on Focus switch |
